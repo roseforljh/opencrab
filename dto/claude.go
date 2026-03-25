@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -213,7 +213,7 @@ type ClaudeRequest struct {
 	Thinking          *Thinking       `json:"thinking,omitempty"`
 	McpServers        json.RawMessage `json:"mcp_servers,omitempty"`
 	Metadata          json.RawMessage `json:"metadata,omitempty"`
-	// ServiceTier specifies upstream service level and may affect billing.
+	// ServiceTier specifies upstream service level and may affect upstream behavior.
 	// This field is filtered by default and can be enabled via channel setting allow_service_tier.
 	ServiceTier string `json:"service_tier,omitempty"`
 }

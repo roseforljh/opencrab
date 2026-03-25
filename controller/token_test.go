@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/model"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"

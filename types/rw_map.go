@@ -3,7 +3,7 @@
 import (
 	"sync"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 )
 
 type RWMap[K comparable, V any] struct {

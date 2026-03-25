@@ -1,34 +1,5 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React from 'react';
-import {
-  Button,
-  Dropdown,
-  InputNumber,
-  Modal,
-  Space,
-  SplitButtonGroup,
-  Tag,
-  Tooltip,
-  Typography,
-} from '@douyinfe/semi-ui';
 import {
   timestamp2string,
   renderGroup,
@@ -50,6 +21,31 @@ import {
   IconAlertTriangle,
 } from '@douyinfe/semi-icons';
 import { FaRandom } from 'react-icons/fa';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Render functions
 const renderType = (type, record = {}, t) => {
@@ -66,21 +62,25 @@ const renderType = (type, record = {}, t) => {
     icon =
       channelInfo?.multi_key_mode === 'random' ? (
         <div className='flex items-center gap-1'>
-          <FaRandom className='text-blue-500' />
+          <FaRandom className='text-blue-400' />
           {icon}
         </div>
       ) : (
         <div className='flex items-center gap-1'>
-          <IconTreeTriangleDown className='text-blue-500' />
+          <IconTreeTriangleDown className='text-blue-400' />
           {icon}
         </div>
       );
   }
 
   const typeTag = (
-    <Tag color={type2label[type]?.color} shape='circle' prefixIcon={icon}>
+    <Badge
+      variant='outline'
+      className={`rounded-full gap-1 border-white/20 bg-white/5 text-white/80 font-normal`}
+    >
+      {icon}
       {type2label[type]?.label}
-    </Tag>
+    </Badge>
   );
 
   let ionetMeta = null;
@@ -109,11 +109,20 @@ const renderType = (type, record = {}, t) => {
   };
 
   return (
-    <Space spacing={6}>
+    <div className='flex flex-wrap items-center gap-1.5'>
       {typeTag}
-      <Tooltip
-        content={
-          <div className='max-w-xs'>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant='secondary'
+            className='bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 cursor-pointer rounded-full'
+            onClick={handleNavigate}
+          >
+            IO.NET
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className='bg-black/90 border-white/10 text-white max-w-xs'>
+          <div>
             <div className='text-xs text-white/55'>
               {t('挂载自 IO.NET 实例')}
             </div>
@@ -123,28 +132,20 @@ const renderType = (type, record = {}, t) => {
               </div>
             )}
           </div>
-        }
-      >
-        <span>
-          <Tag
-            color='purple'
-            type='light'
-            className='cursor-pointer'
-            onClick={handleNavigate}
-          >
-            IO.NET
-          </Tag>
-        </span>
+        </TooltipContent>
       </Tooltip>
-    </Space>
+    </div>
   );
 };
 
 const renderTagType = (t) => {
   return (
-    <Tag color='light-blue' shape='circle' type='light'>
+    <Badge
+      variant='secondary'
+      className='bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 rounded-full font-normal'
+    >
       {t('标签聚合')}
-    </Tag>
+    </Badge>
   );
 };
 
@@ -163,27 +164,39 @@ const renderStatus = (status, channelInfo = undefined, t) => {
   switch (status) {
     case 1:
       return (
-        <Tag color='green' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-green-500/20 text-green-400 border-green-500/30 rounded-full font-medium'
+        >
           {t('已启用')}
-        </Tag>
+        </Badge>
       );
     case 2:
       return (
-        <Tag color='red' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-red-500/20 text-red-400 border-red-500/30 rounded-full font-medium'
+        >
           {t('已禁用')}
-        </Tag>
+        </Badge>
       );
     case 3:
       return (
-        <Tag color='yellow' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-yellow-500/20 text-yellow-400 border-yellow-500/30 rounded-full font-medium'
+        >
           {t('自动禁用')}
-        </Tag>
+        </Badge>
       );
     default:
       return (
-        <Tag color='grey' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-gray-500/20 text-gray-400 border-gray-500/30 rounded-full font-medium'
+        >
           {t('未知状态')}
-        </Tag>
+        </Badge>
       );
   }
 };
@@ -192,27 +205,39 @@ const renderMultiKeyStatus = (status, keySize, enabledKeySize, t) => {
   switch (status) {
     case 1:
       return (
-        <Tag color='green' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-green-500/20 text-green-400 border-green-500/30 rounded-full font-medium'
+        >
           {t('已启用')} {enabledKeySize}/{keySize}
-        </Tag>
+        </Badge>
       );
     case 2:
       return (
-        <Tag color='red' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-red-500/20 text-red-400 border-red-500/30 rounded-full font-medium'
+        >
           {t('已禁用')} {enabledKeySize}/{keySize}
-        </Tag>
+        </Badge>
       );
     case 3:
       return (
-        <Tag color='yellow' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-yellow-500/20 text-yellow-400 border-yellow-500/30 rounded-full font-medium'
+        >
           {t('自动禁用')} {enabledKeySize}/{keySize}
-        </Tag>
+        </Badge>
       );
     default:
       return (
-        <Tag color='grey' shape='circle'>
+        <Badge
+          variant='outline'
+          className='bg-gray-500/20 text-gray-400 border-gray-500/30 rounded-full font-medium'
+        >
           {t('未知状态')} {enabledKeySize}/{keySize}
-        </Tag>
+        </Badge>
       );
   }
 };
@@ -222,33 +247,48 @@ const renderResponseTime = (responseTime, t) => {
   time = time.toFixed(2) + t(' 秒');
   if (responseTime === 0) {
     return (
-      <Tag color='grey' shape='circle'>
+      <Badge
+        variant='outline'
+        className='bg-gray-500/20 text-gray-400 border-gray-500/30 rounded-full font-medium'
+      >
         {t('未测试')}
-      </Tag>
+      </Badge>
     );
   } else if (responseTime <= 1000) {
     return (
-      <Tag color='green' shape='circle'>
+      <Badge
+        variant='outline'
+        className='bg-green-500/20 text-green-400 border-green-500/30 rounded-full font-medium'
+      >
         {time}
-      </Tag>
+      </Badge>
     );
   } else if (responseTime <= 3000) {
     return (
-      <Tag color='lime' shape='circle'>
+      <Badge
+        variant='outline'
+        className='bg-lime-500/20 text-lime-400 border-lime-500/30 rounded-full font-medium'
+      >
         {time}
-      </Tag>
+      </Badge>
     );
   } else if (responseTime <= 5000) {
     return (
-      <Tag color='yellow' shape='circle'>
+      <Badge
+        variant='outline'
+        className='bg-yellow-500/20 text-yellow-400 border-yellow-500/30 rounded-full font-medium'
+      >
         {time}
-      </Tag>
+      </Badge>
     );
   } else {
     return (
-      <Tag color='red' shape='circle'>
+      <Badge
+        variant='outline'
+        className='bg-red-500/20 text-red-400 border-red-500/30 rounded-full font-medium'
+      >
         {time}
-      </Tag>
+      </Badge>
     );
   }
 };
@@ -330,15 +370,17 @@ export const getChannelsColumns = ({
 }) => {
   return [
     {
-      key: COLUMN_KEYS.ID,
-      title: t('ID'),
-      dataIndex: 'id',
+      id: COLUMN_KEYS.ID,
+      header: t('ID'),
+      accessorKey: 'id',
     },
     {
-      key: COLUMN_KEYS.NAME,
-      title: t('名称'),
-      dataIndex: 'name',
-      render: (text, record, index) => {
+      id: COLUMN_KEYS.NAME,
+      header: t('名称'),
+      accessorKey: 'name',
+      cell: ({ row }) => {
+        const record = row.original;
+        const text = record.name;
         const passThroughEnabled = isRequestPassThroughEnabled(record);
         const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
         const pendingAddCount = upstreamUpdateMeta.pendingAddModels.length;
@@ -393,7 +435,7 @@ export const getChannelsColumns = ({
             {passThroughEnabled && (
               <Tooltip
                 content={t(
-                  '该渠道已开启请求透传：参数覆写、模型重定向、渠道适配等 NewAPI 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
+                  '该渠道已开启请求透传：参数覆写、模型重定向、渠道适配等 OpenCrab 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
                 )}
                 trigger='hover'
                 position='topLeft'
@@ -458,12 +500,13 @@ export const getChannelsColumns = ({
       },
     },
     {
-      key: COLUMN_KEYS.GROUP,
-      title: t('分组'),
-      dataIndex: 'group',
-      render: (text, record, index) => (
-        <div>
-          <Space spacing={2}>
+      id: COLUMN_KEYS.GROUP,
+      header: t('分组'),
+      accessorKey: 'group',
+      cell: ({ row }) => {
+        const text = row.original.group;
+        return (
+          <div className='flex flex-wrap gap-1'>
             {text
               ?.split(',')
               .sort((a, b) => {
@@ -471,16 +514,20 @@ export const getChannelsColumns = ({
                 if (b === 'default') return 1;
                 return a.localeCompare(b);
               })
-              .map((item, index) => renderGroup(item))}
-          </Space>
-        </div>
-      ),
+              .map((item, index) => (
+                <span key={index}>{renderGroup(item)}</span>
+              ))}
+          </div>
+        );
+      },
     },
     {
-      key: COLUMN_KEYS.TYPE,
-      title: t('类型'),
-      dataIndex: 'type',
-      render: (text, record, index) => {
+      id: COLUMN_KEYS.TYPE,
+      header: t('类型'),
+      accessorKey: 'type',
+      cell: ({ row }) => {
+        const record = row.original;
+        const text = record.type;
         if (record.children === undefined) {
           return <>{renderType(text, record, t)}</>;
         } else {
@@ -489,10 +536,12 @@ export const getChannelsColumns = ({
       },
     },
     {
-      key: COLUMN_KEYS.STATUS,
-      title: t('状态'),
-      dataIndex: 'status',
-      render: (text, record, index) => {
+      id: COLUMN_KEYS.STATUS,
+      header: t('状态'),
+      accessorKey: 'status',
+      cell: ({ row }) => {
+        const record = row.original;
+        const text = record.status;
         if (text === 3) {
           if (record.other_info === '') {
             record.other_info = '{}';
@@ -501,15 +550,21 @@ export const getChannelsColumns = ({
           let reason = otherInfo['status_reason'];
           let time = otherInfo['status_time'];
           return (
-            <div>
-              <Tooltip
-                content={
-                  t('原因：') + reason + t('，时间：') + timestamp2string(time)
-                }
-              >
-                {renderStatus(text, record.channel_info, t)}
-              </Tooltip>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className='cursor-help'>
+                  {renderStatus(text, record.channel_info, t)}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className='bg-black/90 border-white/10 text-white max-w-xs'>
+                <p>
+                  {t('原因：') +
+                    reason +
+                    t('，时间：') +
+                    timestamp2string(time)}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           );
         } else {
           return renderStatus(text, record.channel_info, t);
@@ -517,214 +572,242 @@ export const getChannelsColumns = ({
       },
     },
     {
-      key: COLUMN_KEYS.RESPONSE_TIME,
-      title: t('响应时间'),
-      dataIndex: 'response_time',
-      render: (text, record, index) => <div>{renderResponseTime(text, t)}</div>,
+      id: COLUMN_KEYS.RESPONSE_TIME,
+      header: t('响应时间'),
+      accessorKey: 'response_time',
+      cell: ({ row }) => (
+        <div>{renderResponseTime(row.original.response_time, t)}</div>
+      ),
     },
     {
-      key: COLUMN_KEYS.BALANCE,
-      title: t('已用/剩余'),
-      dataIndex: 'expired_time',
-      render: (text, record, index) => {
+      id: COLUMN_KEYS.BALANCE,
+      header: t('已用/剩余'),
+      accessorKey: 'expired_time',
+      cell: ({ row }) => {
+        const record = row.original;
         if (record.children === undefined) {
           return (
-            <div>
-              <Space spacing={1}>
-                <Tooltip content={t('已用额度')}>
-                  <Tag color='white' type='ghost' shape='circle'>
+            <div className='flex items-center gap-1'>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant='outline'
+                    className='border-white/20 text-white/80 font-normal rounded-full cursor-help'
+                  >
                     {renderQuota(record.used_quota)}
-                  </Tag>
-                </Tooltip>
-                <Tooltip
-                  content={
-                    t('剩余额度') +
-                    ': ' +
-                    renderQuotaWithAmount(record.balance) +
-                    t('，点击更新')
-                  }
-                >
-                  <Tag
-                    color='white'
-                    type='ghost'
-                    shape='circle'
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className='bg-black/90 border-white/10 text-white'>
+                  <p>{t('已用额度')}</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant='outline'
+                    className='border-white/20 text-white/80 font-normal rounded-full cursor-pointer hover:bg-white/10 transition-colors'
                     onClick={() => updateChannelBalance(record)}
                   >
                     {renderQuotaWithAmount(record.balance)}
-                  </Tag>
-                </Tooltip>
-              </Space>
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className='bg-black/90 border-white/10 text-white'>
+                  <p>
+                    {t('剩余额度') +
+                      ': ' +
+                      renderQuotaWithAmount(record.balance) +
+                      t('，点击更新')}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           );
         } else {
           return (
-            <Tooltip content={t('已用额度')}>
-              <Tag color='white' type='ghost' shape='circle'>
-                {renderQuota(record.used_quota)}
-              </Tag>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  variant='outline'
+                  className='border-white/20 text-white/80 font-normal rounded-full cursor-help'
+                >
+                  {renderQuota(record.used_quota)}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent className='bg-black/90 border-white/10 text-white'>
+                <p>{t('已用额度')}</p>
+              </TooltipContent>
             </Tooltip>
           );
         }
       },
     },
     {
-      key: COLUMN_KEYS.PRIORITY,
-      title: t('优先级'),
-      dataIndex: 'priority',
-      render: (text, record, index) => {
+      id: COLUMN_KEYS.PRIORITY,
+      header: t('优先级'),
+      accessorKey: 'priority',
+      cell: ({ row }) => {
+        const record = row.original;
         if (record.children === undefined) {
           return (
-            <div>
-              <InputNumber
-                style={{ width: 70 }}
-                name='priority'
-                onBlur={(e) => {
-                  manageChannel(record.id, 'priority', record, e.target.value);
-                }}
-                keepFocus={true}
-                innerButtons
-                defaultValue={record.priority}
-                min={-999}
-                size='small'
-              />
-            </div>
-          );
-        } else {
-          return (
-            <InputNumber
-              style={{ width: 70 }}
-              name='priority'
-              keepFocus={true}
-              onBlur={(e) => {
-                Modal.warning({
-                  title: t('修改子渠道优先级'),
-                  content:
-                    t('确定要修改所有子渠道优先级为 ') +
-                    e.target.value +
-                    t(' 吗？'),
-                  onOk: () => {
-                    if (e.target.value === '') {
-                      return;
-                    }
-                    submitTagEdit('priority', {
-                      tag: record.key,
-                      priority: e.target.value,
-                    });
-                  },
-                });
-              }}
-              innerButtons
+            <Input
+              type='number'
+              className='w-16 h-8 text-center bg-black/20 border-white/10 text-white focus-visible:ring-white/20 p-1'
               defaultValue={record.priority}
               min={-999}
-              size='small'
+              onBlur={(e) => {
+                manageChannel(record.id, 'priority', record, e.target.value);
+              }}
             />
-          );
-        }
-      },
-    },
-    {
-      key: COLUMN_KEYS.WEIGHT,
-      title: t('权重'),
-      dataIndex: 'weight',
-      render: (text, record, index) => {
-        if (record.children === undefined) {
-          return (
-            <div>
-              <InputNumber
-                style={{ width: 70 }}
-                name='weight'
-                onBlur={(e) => {
-                  manageChannel(record.id, 'weight', record, e.target.value);
-                }}
-                keepFocus={true}
-                innerButtons
-                defaultValue={record.weight}
-                min={0}
-                size='small'
-              />
-            </div>
           );
         } else {
           return (
-            <InputNumber
-              style={{ width: 70 }}
-              name='weight'
-              keepFocus={true}
-              onBlur={(e) => {
-                Modal.warning({
-                  title: t('修改子渠道权重'),
-                  content:
-                    t('确定要修改所有子渠道权重为 ') +
-                    e.target.value +
-                    t(' 吗？'),
-                  onOk: () => {
-                    if (e.target.value === '') {
-                      return;
-                    }
-                    submitTagEdit('weight', {
-                      tag: record.key,
-                      weight: e.target.value,
-                    });
-                  },
-                });
-              }}
-              innerButtons
-              defaultValue={record.weight}
-              min={-999}
-              size='small'
-            />
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Input
+                  type='number'
+                  className='w-16 h-8 text-center bg-black/20 border-white/10 text-white focus-visible:ring-white/20 p-1'
+                  defaultValue={record.priority}
+                  min={-999}
+                />
+              </AlertDialogTrigger>
+              <AlertDialogContent className='bg-black border-white/10 text-white'>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('修改子渠道优先级')}</AlertDialogTitle>
+                  <AlertDialogDescription className='text-white/60'>
+                    {t('确定要修改所有子渠道优先级吗？')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className='bg-white/5 hover:bg-white/10 border-0'>
+                    {t('取消')}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className='bg-white text-black hover:bg-white/90'
+                    onClick={(e) => {
+                      const inputVal = e.currentTarget
+                        .closest('[role="dialog"]')
+                        ?.querySelector('input[type="number"]')?.value;
+                      if (inputVal === '') return;
+                      submitTagEdit('priority', {
+                        tag: record.key,
+                        priority: inputVal,
+                      });
+                    }}
+                  >
+                    {t('确认修改')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           );
         }
       },
     },
     {
-      key: COLUMN_KEYS.OPERATE,
-      title: '',
-      dataIndex: 'operate',
-      fixed: 'right',
-      render: (text, record, index) => {
+      id: COLUMN_KEYS.WEIGHT,
+      header: t('权重'),
+      accessorKey: 'weight',
+      cell: ({ row }) => {
+        const record = row.original;
+        if (record.children === undefined) {
+          return (
+            <Input
+              type='number'
+              className='w-16 h-8 text-center bg-black/20 border-white/10 text-white focus-visible:ring-white/20 p-1'
+              defaultValue={record.weight}
+              min={0}
+              onBlur={(e) => {
+                manageChannel(record.id, 'weight', record, e.target.value);
+              }}
+            />
+          );
+        } else {
+          return (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Input
+                  type='number'
+                  className='w-16 h-8 text-center bg-black/20 border-white/10 text-white focus-visible:ring-white/20 p-1'
+                  defaultValue={record.weight}
+                  min={-999}
+                />
+              </AlertDialogTrigger>
+              <AlertDialogContent className='bg-black border-white/10 text-white'>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('修改子渠道权重')}</AlertDialogTitle>
+                  <AlertDialogDescription className='text-white/60'>
+                    {t('确定要修改所有子渠道权重吗？')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className='bg-white/5 hover:bg-white/10 border-0'>
+                    {t('取消')}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className='bg-white text-black hover:bg-white/90'
+                    onClick={(e) => {
+                      const inputVal = e.currentTarget
+                        .closest('[role="dialog"]')
+                        ?.querySelector('input[type="number"]')?.value;
+                      if (inputVal === '') return;
+                      submitTagEdit('weight', {
+                        tag: record.key,
+                        weight: inputVal,
+                      });
+                    }}
+                  >
+                    {t('确认修改')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          );
+        }
+      },
+    },
+    {
+      id: COLUMN_KEYS.OPERATE,
+      header: '',
+      accessorKey: 'operate',
+      cell: ({ row }) => {
+        const record = row.original;
         if (record.children === undefined) {
           const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
           const moreMenuItems = [
             {
-              node: 'item',
+              key: 'delete',
               name: t('删除'),
               type: 'danger',
-              onClick: () => {
-                Modal.confirm({
-                  title: t('确定是否要删除此渠道？'),
-                  content: t('此修改将不可逆'),
-                  onOk: () => {
-                    (async () => {
-                      await manageChannel(record.id, 'delete', record);
-                      await refresh();
-                      setTimeout(() => {
-                        if (channels.length === 0 && activePage > 1) {
-                          refresh(activePage - 1);
-                        }
-                      }, 100);
-                    })();
-                  },
-                });
+              isAlert: true,
+              alertTitle: t('确定是否要删除此渠道？'),
+              alertDesc: t('此修改将不可逆'),
+              onConfirm: () => {
+                (async () => {
+                  await manageChannel(record.id, 'delete', record);
+                  await refresh();
+                  setTimeout(() => {
+                    if (channels.length === 0 && activePage > 1) {
+                      refresh(activePage - 1);
+                    }
+                  }, 100);
+                })();
               },
             },
             {
-              node: 'item',
+              key: 'copy',
               name: t('复制'),
               type: 'tertiary',
-              onClick: () => {
-                Modal.confirm({
-                  title: t('确定是否要复制此渠道？'),
-                  content: t('复制渠道的所有信息'),
-                  onOk: () => copySelectedChannel(record),
-                });
-              },
+              isAlert: true,
+              alertTitle: t('确定是否要复制此渠道？'),
+              alertDesc: t('复制渠道的所有信息'),
+              onConfirm: () => copySelectedChannel(record),
             },
           ];
 
           if (upstreamUpdateMeta.supported) {
             moreMenuItems.push({
-              node: 'item',
+              key: 'detect_upstream',
               name: t('仅检测上游模型更新'),
               type: 'tertiary',
               onClick: () => {
@@ -732,7 +815,7 @@ export const getChannelsColumns = ({
               },
             });
             moreMenuItems.push({
-              node: 'item',
+              key: 'handle_upstream',
               name: t('处理上游模型更新'),
               type: 'tertiary',
               onClick: () => {
@@ -761,7 +844,7 @@ export const getChannelsColumns = ({
 
           if (record.type === 4) {
             moreMenuItems.unshift({
-              node: 'item',
+              key: 'test_alive',
               name: t('测活'),
               type: 'tertiary',
               onClick: () => checkOllamaVersion(record),
@@ -769,40 +852,43 @@ export const getChannelsColumns = ({
           }
 
           return (
-            <Space wrap>
-              <SplitButtonGroup
-                className='overflow-hidden'
-                aria-label={t('测试单个渠道操作项目组')}
-              >
+            <div className='flex flex-wrap items-center gap-2'>
+              <div className='flex -space-x-px border border-white/10 rounded-md overflow-hidden shrink-0'>
                 <Button
-                  size='small'
-                  type='tertiary'
+                  variant='secondary'
+                  size='sm'
+                  className='h-7 px-2 rounded-none border-r border-white/10 bg-white/5 hover:bg-white/10 text-white/80'
                   onClick={() => testChannel(record, '')}
                 >
                   {t('测试')}
                 </Button>
                 <Button
-                  size='small'
-                  type='tertiary'
-                  icon={<IconTreeTriangleDown />}
+                  variant='secondary'
+                  size='icon'
+                  className='h-7 w-6 rounded-none bg-white/5 hover:bg-white/10 text-white/80'
                   onClick={() => {
                     setCurrentTestChannel(record);
                     setShowModelTestModal(true);
                   }}
-                />
-              </SplitButtonGroup>
+                >
+                  <IconTreeTriangleDown className='h-3 w-3' />
+                </Button>
+              </div>
 
               {record.status === 1 ? (
                 <Button
-                  type='danger'
-                  size='small'
+                  variant='destructive'
+                  size='sm'
+                  className='h-7 px-3 bg-red-500/20 text-red-400 hover:bg-red-500/30'
                   onClick={() => manageChannel(record.id, 'disable', record)}
                 >
                   {t('禁用')}
                 </Button>
               ) : (
                 <Button
-                  size='small'
+                  variant='secondary'
+                  size='sm'
+                  className='h-7 px-3 bg-green-500/20 text-green-400 hover:bg-green-500/30'
                   onClick={() => manageChannel(record.id, 'enable', record)}
                 >
                   {t('启用')}
@@ -810,10 +896,11 @@ export const getChannelsColumns = ({
               )}
 
               {record.channel_info?.is_multi_key ? (
-                <SplitButtonGroup aria-label={t('多密钥渠道操作项目组')}>
+                <div className='flex -space-x-px border border-white/10 rounded-md overflow-hidden shrink-0'>
                   <Button
-                    type='tertiary'
-                    size='small'
+                    variant='secondary'
+                    size='sm'
+                    className='h-7 px-2 rounded-none border-r border-white/10 bg-white/5 hover:bg-white/10 text-white/80'
                     onClick={() => {
                       setEditingChannel(record);
                       setShowEdit(true);
@@ -821,31 +908,34 @@ export const getChannelsColumns = ({
                   >
                     {t('编辑')}
                   </Button>
-                  <Dropdown
-                    trigger='click'
-                    position='bottomRight'
-                    menu={[
-                      {
-                        node: 'item',
-                        name: t('多密钥管理'),
-                        onClick: () => {
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant='secondary'
+                        size='icon'
+                        className='h-7 w-6 rounded-none bg-white/5 hover:bg-white/10 text-white/80'
+                      >
+                        <IconTreeTriangleDown className='h-3 w-3' />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className='bg-black/90 border-white/10 text-white'>
+                      <DropdownMenuItem
+                        onClick={() => {
                           setCurrentMultiKeyChannel(record);
                           setShowMultiKeyManageModal(true);
-                        },
-                      },
-                    ]}
-                  >
-                    <Button
-                      type='tertiary'
-                      size='small'
-                      icon={<IconTreeTriangleDown />}
-                    />
-                  </Dropdown>
-                </SplitButtonGroup>
+                        }}
+                        className='hover:bg-white/10 cursor-pointer'
+                      >
+                        {t('多密钥管理')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ) : (
                 <Button
-                  type='tertiary'
-                  size='small'
+                  variant='secondary'
+                  size='sm'
+                  className='h-7 px-3 bg-white/5 hover:bg-white/10 text-white'
                   onClick={() => {
                     setEditingChannel(record);
                     setShowEdit(true);
@@ -855,36 +945,94 @@ export const getChannelsColumns = ({
                 </Button>
               )}
 
-              <Dropdown
-                trigger='click'
-                position='bottomRight'
-                menu={moreMenuItems}
-              >
-                <Button icon={<IconMore />} type='tertiary' size='small' />
-              </Dropdown>
-            </Space>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='h-7 w-7 text-white/70 hover:text-white hover:bg-white/10'
+                  >
+                    <IconMore />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className='bg-black/90 border-white/10 text-white'>
+                  {moreMenuItems.map((item) =>
+                    item.isAlert ? (
+                      <AlertDialog key={item.key}>
+                        <AlertDialogTrigger asChild>
+                          <DropdownMenuItem
+                            onSelect={(e) => e.preventDefault()}
+                            className={`cursor-pointer ${item.type === 'danger' ? 'text-red-400 hover:text-red-300 hover:bg-red-500/20' : 'hover:bg-white/10'}`}
+                          >
+                            {item.name}
+                          </DropdownMenuItem>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className='bg-black border-white/10 text-white'>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              {item.alertTitle}
+                            </AlertDialogTitle>
+                            <AlertDialogDescription className='text-white/60'>
+                              {item.alertDesc}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className='bg-white/5 hover:bg-white/10 border-0'>
+                              {t('取消')}
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              className={
+                                item.type === 'danger'
+                                  ? 'bg-red-500 hover:bg-red-600 text-white'
+                                  : 'bg-white text-black hover:bg-white/90'
+                              }
+                              onClick={item.onConfirm}
+                            >
+                              {item.type === 'danger'
+                                ? t('确认删除')
+                                : t('确认')}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : (
+                      <DropdownMenuItem
+                        key={item.key}
+                        onClick={item.onClick}
+                        className='hover:bg-white/10 cursor-pointer'
+                      >
+                        {item.name}
+                      </DropdownMenuItem>
+                    ),
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           );
         } else {
           // 标签操作按钮
           return (
-            <Space wrap>
+            <div className='flex flex-wrap gap-2'>
               <Button
-                type='tertiary'
-                size='small'
+                variant='secondary'
+                size='sm'
+                className='h-7 px-3 bg-white/5 hover:bg-white/10 text-white'
                 onClick={() => manageTag(record.key, 'enable')}
               >
                 {t('启用全部')}
               </Button>
               <Button
-                type='tertiary'
-                size='small'
+                variant='secondary'
+                size='sm'
+                className='h-7 px-3 bg-white/5 hover:bg-white/10 text-white'
                 onClick={() => manageTag(record.key, 'disable')}
               >
                 {t('禁用全部')}
               </Button>
               <Button
-                type='tertiary'
-                size='small'
+                variant='secondary'
+                size='sm'
+                className='h-7 px-3 bg-white/5 hover:bg-white/10 text-white'
                 onClick={() => {
                   setShowEditTag(true);
                   setEditingTag(record.key);
@@ -892,7 +1040,7 @@ export const getChannelsColumns = ({
               >
                 {t('编辑')}
               </Button>
-            </Space>
+            </div>
           );
         }
       },

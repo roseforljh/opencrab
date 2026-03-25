@@ -5,15 +5,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/relay/channel"
-	openaichannel "github.com/QuantumNous/opencrab/relay/channel/openai"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	relayconstant "github.com/QuantumNous/opencrab/relay/constant"
-	"github.com/QuantumNous/opencrab/service"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/relay/channel"
+	openaichannel "github.com/roseforljh/opencrab/relay/channel/openai"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	relayconstant "github.com/roseforljh/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/service"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -69,7 +69,7 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 	}
 }
 
-func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.GeneralOpenAIRequest) (*dto.Usage, *types.NewAPIError) {
+func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.GeneralOpenAIRequest) (*dto.Usage, *types.OpenCrabError) {
 	chatJSON, err := common.Marshal(request)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -83,7 +83,7 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	if len(info.ParamOverride) > 0 {
 		chatJSON, err = relaycommon.ApplyParamOverrideWithRelayInfo(chatJSON, info)
 		if err != nil {
-			return nil, newAPIErrorFromParamOverride(err)
+			return nil, openCrabErrorFromParamOverride(err)
 		}
 	}
 
@@ -138,24 +138,24 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	httpResp = resp.(*http.Response)
 	info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 	if httpResp.StatusCode != http.StatusOK {
-		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
-		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
-		return nil, newApiErr
+		openCrabErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+		service.ResetStatusCode(openCrabErr, statusCodeMappingStr)
+		return nil, openCrabErr
 	}
 
 	if info.IsStream {
-		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
-		if newApiErr != nil {
-			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
-			return nil, newApiErr
+		usage, openCrabErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
+		if openCrabErr != nil {
+			service.ResetStatusCode(openCrabErr, statusCodeMappingStr)
+			return nil, openCrabErr
 		}
 		return usage, nil
 	}
 
-	usage, newApiErr := openaichannel.OaiResponsesToChatHandler(c, info, httpResp)
-	if newApiErr != nil {
-		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
-		return nil, newApiErr
+	usage, openCrabErr := openaichannel.OaiResponsesToChatHandler(c, info, httpResp)
+	if openCrabErr != nil {
+		service.ResetStatusCode(openCrabErr, statusCodeMappingStr)
+		return nil, openCrabErr
 	}
 	return usage, nil
 }

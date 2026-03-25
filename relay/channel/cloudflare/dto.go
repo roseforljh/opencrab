@@ -1,6 +1,6 @@
 ﻿package cloudflare
 
-import "github.com/QuantumNous/opencrab/dto"
+import "github.com/roseforljh/opencrab/dto"
 
 type CfRequest struct {
 	Messages    []dto.Message `json:"messages,omitempty"`

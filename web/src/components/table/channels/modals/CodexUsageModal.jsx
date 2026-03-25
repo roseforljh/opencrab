@@ -1,34 +1,13 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Modal,
-  Button,
-  Progress,
-  Tag,
-  Typography,
-  Spin,
-} from '@douyinfe/semi-ui';
 import { API, showError } from '../../../../helpers';
-
-const { Text } = Typography;
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Progress,
+  ProgressLabel,
+  ProgressTrack,
+  ProgressValue,
+} from '@/components/ui/progress';
 
 const clampPercent = (value) => {
   const v = Number(value);
@@ -145,25 +124,39 @@ const RateLimitWindowCard = ({ t, title, windowData }) => {
     <div className='rounded-lg border border-semi-color-border bg-semi-color-bg-0 p-3'>
       <div className='flex items-center justify-between gap-2'>
         <div className='font-medium'>{title}</div>
-        <Text type='tertiary' size='small'>
+        <div className='text-sm text-white/45'>
           {tt('重置时间：')}
           {formatUnixSeconds(resetAt)}
-        </Text>
+        </div>
       </div>
 
       {hasWindowData ? (
         <div className='mt-2'>
-          <Progress
-            percent={percent}
-            stroke={pickStrokeColor(percent)}
-            showInfo={true}
-          />
+          <Progress value={percent} className='gap-2'>
+            <div className='flex items-center gap-2'>
+              <ProgressLabel className='text-sm text-white'>
+                {tt('使用率')}
+              </ProgressLabel>
+              <ProgressValue className='text-sm text-white/60'>
+                {percent}%
+              </ProgressValue>
+            </div>
+            <ProgressTrack className='bg-white/10'>
+              <div
+                className='h-full rounded-full transition-all'
+                style={{
+                  width: `${percent}%`,
+                  backgroundColor: pickStrokeColor(percent),
+                }}
+              />
+            </ProgressTrack>
+          </Progress>
         </div>
       ) : (
-        <div className='mt-3 text-sm text-semi-color-text-2'>-</div>
+        <div className='mt-3 text-sm text-white/45'>-</div>
       )}
 
-      <div className='mt-1 flex flex-wrap items-center gap-2 text-xs text-semi-color-text-2'>
+      <div className='mt-1 flex flex-wrap items-center gap-2 text-xs text-white/45'>
         <div>
           {tt('已使用：')}
           {hasWindowData ? `${percent}%` : '-'}
@@ -193,9 +186,13 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
 
   const statusTag =
     allowed && !limitReached ? (
-      <Tag color='green'>{tt('可用')}</Tag>
+      <Badge className='border-green-500/20 bg-green-500/15 text-green-200'>
+        {tt('可用')}
+      </Badge>
     ) : (
-      <Tag color='red'>{tt('受限')}</Tag>
+      <Badge className='border-red-500/20 bg-red-500/15 text-red-200'>
+        {tt('受限')}
+      </Badge>
     );
 
   const rawText =
@@ -204,17 +201,17 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
   return (
     <div className='flex flex-col gap-3'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <Text type='tertiary' size='small'>
+        <div className='text-sm text-white/45'>
           {tt('渠道：')}
           {record?.name || '-'} ({tt('编号：')}
           {record?.id || '-'})
-        </Text>
+        </div>
         <div className='flex items-center gap-2'>
           {statusTag}
           <Button
-            size='small'
-            type='tertiary'
-            theme='borderless'
+            type='button'
+            variant='secondary'
+            size='sm'
             onClick={onRefresh}
           >
             {tt('刷新')}
@@ -223,10 +220,10 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
       </div>
 
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <Text type='tertiary' size='small'>
+        <div className='text-sm text-white/45'>
           {tt('上游状态码：')}
           {upstreamStatus ?? '-'}
-        </Text>
+        </div>
       </div>
 
       <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
@@ -246,16 +243,16 @@ const CodexUsageView = ({ t, record, payload, onCopy, onRefresh }) => {
         <div className='mb-1 flex items-center justify-between gap-2'>
           <div className='text-sm font-medium'>{tt('原始 JSON')}</div>
           <Button
-            size='small'
-            type='primary'
-            theme='outline'
+            type='button'
+            variant='secondary'
+            size='sm'
             onClick={() => onCopy?.(rawText)}
             disabled={!rawText}
           >
             {tt('复制')}
           </Button>
         </div>
-        <pre className='max-h-[50vh] overflow-auto rounded-lg bg-semi-color-fill-0 p-3 text-xs text-semi-color-text-0'>
+        <pre className='max-h-[50vh] overflow-auto rounded-lg bg-white/6 p-3 text-xs text-white/80'>
           {rawText}
         </pre>
       </div>
@@ -315,7 +312,7 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
   if (loading) {
     return (
       <div className='flex items-center justify-center py-10'>
-        <Spin spinning={true} size='large' tip={tt('加载中...')} />
+        <div className='text-sm text-white/60'>{tt('加载中...')}</div>
       </div>
     );
   }
@@ -323,12 +320,12 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
   if (!payload) {
     return (
       <div className='flex flex-col gap-3'>
-        <Text type='danger'>{tt('获取用量失败')}</Text>
+        <div className='text-sm text-red-300'>{tt('获取用量失败')}</div>
         <div className='flex justify-end'>
           <Button
-            size='small'
-            type='primary'
-            theme='outline'
+            type='button'
+            variant='secondary'
+            size='sm'
             onClick={fetchUsage}
           >
             {tt('刷新')}
@@ -351,26 +348,35 @@ const CodexUsageLoader = ({ t, record, initialPayload, onCopy }) => {
 
 export const openCodexUsageModal = ({ t, record, payload, onCopy }) => {
   const tt = typeof t === 'function' ? t : (v) => v;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
 
-  Modal.info({
-    title: tt('Codex 用量'),
-    centered: true,
-    width: 900,
-    style: { maxWidth: '95vw' },
-    content: (
-      <CodexUsageLoader
-        t={tt}
-        record={record}
-        initialPayload={payload}
-        onCopy={onCopy}
-      />
-    ),
-    footer: (
-      <div className='flex justify-end gap-2'>
-        <Button type='primary' theme='solid' onClick={() => Modal.destroyAll()}>
-          {tt('关闭')}
-        </Button>
-      </div>
-    ),
+  const close = async () => {
+    const ReactDOM = await import('react-dom/client');
+    const root = ReactDOM.createRoot(container);
+    root.unmount();
+    container.remove();
+  };
+
+  import('react-dom/client').then((ReactDOM) => {
+    const root = ReactDOM.createRoot(container);
+    root.render(
+      <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'>
+        <div className='w-full max-w-[900px] rounded-xl border border-white/10 bg-black p-4 text-white shadow-2xl'>
+          <div className='mb-4 flex items-center justify-between'>
+            <div className='text-lg font-medium'>{tt('Codex 用量')}</div>
+            <Button type='button' variant='secondary' size='sm' onClick={close}>
+              {tt('关闭')}
+            </Button>
+          </div>
+          <CodexUsageLoader
+            t={tt}
+            record={record}
+            initialPayload={payload}
+            onCopy={onCopy}
+          />
+        </div>
+      </div>,
+    );
   });
 };

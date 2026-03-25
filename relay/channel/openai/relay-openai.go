@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/relay/channel/openrouter"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/helper"
-	"github.com/QuantumNous/opencrab/service"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/relay/channel/openrouter"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/helper"
+	"github.com/roseforljh/opencrab/service"
 
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -103,7 +103,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	return helper.ObjectData(c, lastStreamResponse)
 }
 
-func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.OpenCrabError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
@@ -193,7 +193,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	return usage, nil
 }
 
-func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.OpenCrabError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
 	var simpleResponse dto.OpenAITextResponse
@@ -333,7 +333,7 @@ func streamTTSResponse(c *gin.Context, resp *http.Response) {
 	}
 }
 
-func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.RealtimeUsage) {
+func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.OpenCrabError, *dto.RealtimeUsage) {
 	if info == nil || info.ClientWs == nil || info.TargetWs == nil {
 		return types.NewError(fmt.Errorf("invalid websocket connection"), types.ErrorCodeBadResponse), nil
 	}
@@ -558,7 +558,7 @@ func preConsumeUsage(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.R
 	return err
 }
 
-func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.OpenCrabError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
 	responseBody, err := io.ReadAll(resp.Body)

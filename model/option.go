@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/setting"
-	"github.com/QuantumNous/opencrab/setting/config"
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
-	"github.com/QuantumNous/opencrab/setting/performance_setting"
-	"github.com/QuantumNous/opencrab/setting/system_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/setting"
+	"github.com/roseforljh/opencrab/setting/config"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/setting/performance_setting"
+	"github.com/roseforljh/opencrab/setting/system_setting"
 )
 
 type Option struct {
@@ -58,7 +58,6 @@ func InitOptionMap() {
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
-	common.OptionMap["HomePageContent"] = ""
 	common.OptionMap["Footer"] = common.Footer
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo

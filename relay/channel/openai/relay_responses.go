@@ -6,18 +6,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/logger"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/helper"
-	"github.com/QuantumNous/opencrab/service"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/logger"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/helper"
+	"github.com/roseforljh/opencrab/service"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
 
-func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.OpenCrabError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
 	// read response body
@@ -68,7 +68,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	return &usage, nil
 }
 
-func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.OpenCrabError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
 		return nil, types.NewError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse)

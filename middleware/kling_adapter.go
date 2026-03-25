@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
 
 	"github.com/gin-gonic/gin"
 )

@@ -5,13 +5,13 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/helper"
-	"github.com/QuantumNous/opencrab/service"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/helper"
+	"github.com/roseforljh/opencrab/service"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -50,7 +50,7 @@ func streamResponsePaLM2OpenAI(palmResponse *PaLMChatResponse) *dto.ChatCompleti
 	return &response
 }
 
-func palmStreamHandler(c *gin.Context, resp *http.Response) (*types.NewAPIError, string) {
+func palmStreamHandler(c *gin.Context, resp *http.Response) (*types.OpenCrabError, string) {
 	responseText := ""
 	responseId := helper.GetResponseID(c)
 	createdTime := common.GetTimestamp()
@@ -101,7 +101,7 @@ func palmStreamHandler(c *gin.Context, resp *http.Response) (*types.NewAPIError,
 	return nil, responseText
 }
 
-func palmHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+func palmHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.OpenCrabError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)

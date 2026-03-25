@@ -1,24 +1,15 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React from 'react';
-import { Modal } from '@douyinfe/semi-ui';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const DeleteTokensModal = ({
   visible,
@@ -28,19 +19,29 @@ const DeleteTokensModal = ({
   t,
 }) => {
   return (
-    <Modal
-      title={t('批量删除令牌')}
-      visible={visible}
-      onCancel={onCancel}
-      onOk={onConfirm}
-      type='warning'
-    >
-      <div>
-        {t('确定要删除所选的 {{count}} 个令牌吗？', {
-          count: selectedKeys.length,
-        })}
-      </div>
-    </Modal>
+    <AlertDialog open={visible} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent className='border-white/10 bg-black text-white'>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('批量删除令牌')}</AlertDialogTitle>
+          <AlertDialogDescription className='text-white/60'>
+            {t('确定要删除所选的 {{count}} 个令牌吗？', {
+              count: selectedKeys.length,
+            })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className='border-0 bg-white/5 hover:bg-white/10'>
+            {t('取消')}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            className='bg-red-500 text-white hover:bg-red-600'
+            onClick={onConfirm}
+          >
+            {t('确认删除')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 };
 

@@ -3,7 +3,7 @@
 import (
 	"sync"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/tiktoken-go/tokenizer/codec"
 )

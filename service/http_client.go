@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/setting/system_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/setting/system_setting"
 
 	"golang.org/x/net/proxy"
 )

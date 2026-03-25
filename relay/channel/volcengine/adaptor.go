@@ -10,15 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	channelconstant "github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/relay/channel"
-	"github.com/QuantumNous/opencrab/relay/channel/claude"
-	"github.com/QuantumNous/opencrab/relay/channel/openai"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/constant"
-	"github.com/QuantumNous/opencrab/setting/model_setting"
-	"github.com/QuantumNous/opencrab/types"
+	channelconstant "github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/relay/channel"
+	"github.com/roseforljh/opencrab/relay/channel/claude"
+	"github.com/roseforljh/opencrab/relay/channel/openai"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/setting/model_setting"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -345,7 +345,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
-func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.OpenCrabError) {
 	if info.RelayFormat == types.RelayFormatClaude {
 		if _, ok := channelconstant.ChannelSpecialBases[info.ChannelBaseUrl]; ok {
 			adaptor := claude.Adaptor{}

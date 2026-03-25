@@ -1,35 +1,18 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import {
-  Collapse,
-  Empty,
-  Input,
-  Modal,
-  Radio,
-  Typography,
-} from '@douyinfe/semi-ui';
-import { IconSearch } from '@douyinfe/semi-icons';
+import { ChevronDown, Search } from 'lucide-react';
 import { getModelCategories } from '../../../../helpers/render';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const SingleModelSelectModal = ({
   visible,
@@ -49,11 +32,13 @@ const SingleModelSelectModal = ({
 
   const [keyword, setKeyword] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [openSections, setOpenSections] = useState({});
 
   useEffect(() => {
     if (visible) {
       setKeyword('');
       setSelectedModel(normalizeModelName(selected));
+      setOpenSections({});
     }
   }, [visible, selected]);
 
@@ -106,87 +91,108 @@ const SingleModelSelectModal = ({
   );
 
   return (
-    <Modal
-      header={
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 py-4'>
-          <Typography.Title heading={5} className='m-0'>
-            {t('选择模型')}
-          </Typography.Title>
-        </div>
-      }
-      visible={visible}
-      onOk={() => onConfirm?.(selectedModel)}
-      onCancel={onCancel}
-      okText={t('确定')}
-      cancelText={t('取消')}
-      okButtonProps={{ disabled: !selectedModel }}
-      size={isMobile ? 'full-width' : 'large'}
-      closeOnEsc
-      maskClosable
-      centered
-    >
-      <Input
-        prefix={<IconSearch size={14} />}
-        placeholder={t('搜索模型')}
-        value={keyword}
-        onChange={(v) => setKeyword(v)}
-        showClear
-      />
+    <Dialog open={visible} onOpenChange={(open) => !open && onCancel?.()}>
+      <DialogContent
+        className={
+          isMobile
+            ? 'max-w-[95vw] border-white/10 bg-black text-white'
+            : 'max-w-[900px] border-white/10 bg-black text-white'
+        }
+      >
+        <DialogHeader>
+          <DialogTitle>{t('选择模型')}</DialogTitle>
+        </DialogHeader>
 
-      <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}>
-        {filteredModels.length === 0 ? (
-          <Empty
-            image={
-              <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
+        <div className='relative'>
+          <Search className='pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/40' />
+          <Input
+            placeholder={t('搜索模型')}
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            className='border-white/10 bg-white/6 pl-9 text-white'
+          />
+        </div>
+
+        <div className='max-h-[400px] overflow-y-auto pr-2'>
+          {filteredModels.length === 0 ? (
+            <div className='flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-black/30 p-6 text-center'>
+              <div className='mb-3 flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
                 ⌕
               </div>
-            }
-            title={t('暂无匹配模型')}
-            description={t('请尝试缩短关键词，或检查模型名称是否准确。')}
-            style={{ padding: 30 }}
-          />
-        ) : (
-          <Radio.Group
-            className='w-full'
-            style={{ width: '100%' }}
-            value={selectedModel}
-            onChange={(val) => {
-              const next = val && val.target ? val.target.value : val;
-              setSelectedModel(next);
-            }}
-          >
-            <Collapse
-              className='w-full'
-              style={{ width: '100%' }}
-              defaultActiveKey={[]}
-            >
-              {categoryEntries.map(([key, categoryData], index) => (
-                <Collapse.Panel
-                  key={`${key}_${index}`}
-                  itemKey={`${key}_${index}`}
-                  header={
-                    <span className='flex items-center gap-2'>
-                      {categoryData.icon}
-                      <span>
-                        {categoryData.label} ({categoryData.models.length})
+              <div className='font-medium'>{t('暂无匹配模型')}</div>
+              <div className='mt-1 text-sm text-white/45'>
+                {t('请尝试缩短关键词，或检查模型名称是否准确。')}
+              </div>
+            </div>
+          ) : (
+            <div className='space-y-3'>
+              {categoryEntries.map(([key, categoryData], index) => {
+                const sectionKey = `${key}_${index}`;
+                const isOpen = Boolean(openSections[sectionKey]);
+                return (
+                  <div
+                    key={sectionKey}
+                    className='rounded-xl border border-white/10 bg-white/5'
+                  >
+                    <button
+                      type='button'
+                      className='flex w-full items-center justify-between gap-2 px-4 py-3 text-left'
+                      onClick={() =>
+                        setOpenSections((prev) => ({
+                          ...prev,
+                          [sectionKey]: !prev[sectionKey],
+                        }))
+                      }
+                    >
+                      <span className='flex items-center gap-2'>
+                        {categoryData.icon}
+                        <span>
+                          {categoryData.label} ({categoryData.models.length})
+                        </span>
                       </span>
-                    </span>
-                  }
-                >
-                  <div className='grid grid-cols-2 gap-x-4'>
-                    {categoryData.models.map((model) => (
-                      <Radio key={model} value={model} className='my-1'>
-                        {model}
-                      </Radio>
-                    ))}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                    {isOpen && (
+                      <div className='grid grid-cols-2 gap-x-4 px-4 pb-4'>
+                        {categoryData.models.map((model) => (
+                          <label
+                            key={model}
+                            className='my-1 flex items-center gap-2 text-sm'
+                          >
+                            <Checkbox
+                              checked={selectedModel === model}
+                              onCheckedChange={(checked) =>
+                                setSelectedModel(checked ? model : '')
+                              }
+                            />
+                            <span>{model}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </Collapse.Panel>
-              ))}
-            </Collapse>
-          </Radio.Group>
-        )}
-      </div>
-    </Modal>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button type='button' variant='secondary' onClick={onCancel}>
+            {t('取消')}
+          </Button>
+          <Button
+            type='button'
+            onClick={() => onConfirm?.(selectedModel)}
+            disabled={!selectedModel}
+          >
+            {t('确定')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

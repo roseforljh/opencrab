@@ -1,6 +1,6 @@
 ﻿package xunfei
 
-import "github.com/QuantumNous/opencrab/dto"
+import "github.com/roseforljh/opencrab/dto"
 
 type XunfeiMessage struct {
 	Role    string `json:"role"`

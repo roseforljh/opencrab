@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -86,7 +86,7 @@ func AsParamOverrideReturnError(err error) (*ParamOverrideReturnError, bool) {
 	return nil, false
 }
 
-func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIError {
+func OpenCrabErrorFromParamOverride(err *ParamOverrideReturnError) *types.OpenCrabError {
 	if err == nil {
 		return types.NewError(
 			errors.New("param override return error is nil"),
@@ -115,7 +115,7 @@ func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIEr
 		message = "request blocked by param override"
 	}
 
-	opts := make([]types.NewAPIErrorOptions, 0, 1)
+	opts := make([]types.OpenCrabErrorOptions, 0, 1)
 	if err.SkipRetry {
 		opts = append(opts, types.ErrOptionWithSkipRetry())
 	}

@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/helper"
-	"github.com/QuantumNous/opencrab/service"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/helper"
+	"github.com/roseforljh/opencrab/service"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -114,7 +114,7 @@ func embeddingResponseBaidu2OpenAI(response *BaiduEmbeddingResponse) *dto.OpenAI
 	return &openAIEmbeddingResponse
 }
 
-func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
+func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.OpenCrabError, *dto.Usage) {
 	usage := &dto.Usage{}
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
 		var baiduResponse BaiduChatStreamResponse
@@ -139,7 +139,7 @@ func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	return nil, usage
 }
 
-func baiduHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
+func baiduHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.OpenCrabError, *dto.Usage) {
 	var baiduResponse BaiduChatResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -164,7 +164,7 @@ func baiduHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 	return nil, &fullTextResponse.Usage
 }
 
-func baiduEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.NewAPIError, *dto.Usage) {
+func baiduEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*types.OpenCrabError, *dto.Usage) {
 	var baiduResponse BaiduEmbeddingResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {

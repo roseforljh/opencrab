@@ -1,27 +1,24 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useState } from 'react';
 import MissingModelsModal from './modals/MissingModelsModal';
 import PrefillGroupManagement from './modals/PrefillGroupManagement';
 import EditPrefillGroupModal from './modals/EditPrefillGroupModal';
-import { Button, Modal, Popover, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { showSuccess, showError, copy } from '../../../helpers';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import SelectionNotification from './components/SelectionNotification';
@@ -104,35 +101,43 @@ const ModelsActions = ({
 
   return (
     <>
-      <div className='flex w-full flex-wrap gap-2 md:w-auto order-2 md:order-1'>
+      <div className='order-2 flex w-full flex-wrap gap-2 md:order-1 md:w-auto'>
         <Button
-          type='primary'
-          className='!h-11 !rounded-2xl !border-0 !bg-white/90 hover:!bg-white/80 !px-5 !text-black'
+          className='h-11 rounded-2xl border-0 bg-white/90 px-5 text-black hover:bg-white/80'
           onClick={() => {
             setEditingModel({
               id: undefined,
             });
             setShowEdit(true);
           }}
-          size='small'
         >
           {t('添加模型')}
         </Button>
 
         <Button
-          type='secondary'
-          className='!h-11 !rounded-2xl !border !border-white/10 !bg-white/6 !px-5 !text-white hover:!bg-white/10'
-          size='small'
+          variant='secondary'
+          className='h-11 rounded-2xl border border-white/10 bg-white/6 px-5 text-white hover:bg-white/10'
           onClick={() => setShowMissingModal(true)}
         >
           {t('未配置模型')}
         </Button>
 
-        <Popover
-          position='bottom'
-          trigger='hover'
-          content={
-            <div className='p-2 max-w-[360px]'>
+        <Popover openDelay={100} closeDelay={100}>
+          <PopoverTrigger asChild>
+            <Button
+              variant='secondary'
+              className='h-11 rounded-2xl border border-white/10 bg-white/6 px-5 text-white hover:bg-white/10'
+              disabled={syncing || previewing}
+              onClick={() => {
+                setSyncLocale('zh');
+                setShowSyncModal(true);
+              }}
+            >
+              {t('同步')}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className='max-w-[360px] border-white/10 bg-[#0b1220] text-white'>
+            <div className='p-2'>
               <div className='text-[var(--semi-color-text-2)] text-sm'>
                 {t(
                   '模型社区需要大家的共同维护，如发现数据有误或想贡献新的模型数据，请访问：',
@@ -147,26 +152,12 @@ const ModelsActions = ({
                 https://github.com/basellm/llm-metadata
               </a>
             </div>
-          }
-        >
-          <Button
-            type='secondary'
-            className='!h-11 !rounded-2xl !border !border-white/10 !bg-white/6 !px-5 !text-white hover:!bg-white/10'
-            size='small'
-            loading={syncing || previewing}
-            onClick={() => {
-              setSyncLocale('zh');
-              setShowSyncModal(true);
-            }}
-          >
-            {t('同步')}
-          </Button>
+          </PopoverContent>
         </Popover>
 
         <Button
-          type='secondary'
-          className='!h-11 !rounded-2xl !border !border-white/10 !bg-white/6 !px-5 !text-white hover:!bg-white/10'
-          size='small'
+          variant='secondary'
+          className='h-11 rounded-2xl border border-white/10 bg-white/6 px-5 text-white hover:bg-white/10'
           onClick={() => setShowGroupManagement(true)}
         >
           {t('预填组管理')}
@@ -188,20 +179,29 @@ const ModelsActions = ({
         onCopy={handleCopyNames}
       />
 
-      <Modal
-        title={t('批量删除模型')}
-        visible={showDeleteModal}
-        onCancel={() => setShowDeleteModal(false)}
-        onOk={handleConfirmDelete}
-        type='warning'
-        className='opencrab-modal'
-      >
-        <div>
-          {t('确定要删除所选的 {{count}} 个模型吗？', {
-            count: selectedKeys.length,
-          })}
-        </div>
-      </Modal>
+      <AlertDialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <AlertDialogContent className='border-white/10 bg-black text-white'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('批量删除模型')}</AlertDialogTitle>
+            <AlertDialogDescription className='text-white/60'>
+              {t('确定要删除所选的 {{count}} 个模型吗？', {
+                count: selectedKeys.length,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className='border-0 bg-white/5 hover:bg-white/10'>
+              {t('取消')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className='bg-red-500 text-white hover:bg-red-600'
+              onClick={handleConfirmDelete}
+            >
+              {t('确认删除')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <SyncWizardModal
         visible={showSyncModal}

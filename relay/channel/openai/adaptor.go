@@ -12,23 +12,23 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/relay/channel"
-	"github.com/QuantumNous/opencrab/relay/channel/ai360"
-	"github.com/QuantumNous/opencrab/relay/channel/lingyiwanwu"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/relay/channel"
+	"github.com/roseforljh/opencrab/relay/channel/ai360"
+	"github.com/roseforljh/opencrab/relay/channel/lingyiwanwu"
 
-	//"github.com/QuantumNous/opencrab/relay/channel/minimax"
-	"github.com/QuantumNous/opencrab/relay/channel/openrouter"
-	"github.com/QuantumNous/opencrab/relay/channel/xinference"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/common_handler"
-	relayconstant "github.com/QuantumNous/opencrab/relay/constant"
-	"github.com/QuantumNous/opencrab/service"
-	"github.com/QuantumNous/opencrab/setting/model_setting"
-	"github.com/QuantumNous/opencrab/types"
+	//"github.com/roseforljh/opencrab/relay/channel/minimax"
+	"github.com/roseforljh/opencrab/relay/channel/openrouter"
+	"github.com/roseforljh/opencrab/relay/channel/xinference"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/common_handler"
+	relayconstant "github.com/roseforljh/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/service"
+	"github.com/roseforljh/opencrab/setting/model_setting"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -159,7 +159,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		if info.ChannelCreateTime < constant.AzureNoRemoveDotTime {
 			model_ = strings.Replace(model_, ".", "", -1)
 		}
-		// https://github.com/songquanpeng/one-api/issues/67
+		// Historical Azure deployment compatibility behavior.
 		requestURL = fmt.Sprintf("/openai/deployments/%s/%s", model_, task)
 		if info.RelayMode == relayconstant.RelayModeRealtime {
 			requestURL = fmt.Sprintf("/openai/realtime?deployment=%s&api-version=%s", model_, apiVersion)
@@ -229,7 +229,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 			header.Set("HTTP-Referer", "https://www.opencrab.ai")
 		}
 		if header.Get("X-OpenRouter-Title") == "" {
-			header.Set("X-OpenRouter-Title", "New API")
+			header.Set("X-OpenRouter-Title", "OpenCrab")
 		}
 	}
 	return nil
@@ -611,7 +611,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	}
 }
 
-func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.OpenCrabError) {
 	switch info.RelayMode {
 	case relayconstant.RelayModeRealtime:
 		err, usage = OpenaiRealtimeHandler(c, info)

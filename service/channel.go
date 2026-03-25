@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/types"
 )
 
 func formatNotifyType(channelId int, status int) string {
@@ -44,7 +44,7 @@ func EnableChannel(channelId int, usingKey string, channelName string) {
 	}
 }
 
-func ShouldDisableChannel(channelType int, err *types.NewAPIError) bool {
+func ShouldDisableChannel(channelType int, err *types.OpenCrabError) bool {
 	if !common.AutomaticDisableChannelEnabled {
 		return false
 	}
@@ -101,11 +101,11 @@ func ShouldDisableChannel(channelType int, err *types.NewAPIError) bool {
 	return search
 }
 
-func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {
+func ShouldEnableChannel(openCrabError *types.OpenCrabError, status int) bool {
 	if !common.AutomaticEnableChannelEnabled {
 		return false
 	}
-	if newAPIError != nil {
+	if openCrabError != nil {
 		return false
 	}
 	if status != common.ChannelStatusAutoDisabled {

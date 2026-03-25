@@ -1,36 +1,5 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React, { useState, useEffect } from 'react';
-import {
-  SideSheet,
-  Button,
-  Typography,
-  Space,
-  Tag,
-  Popconfirm,
-  Card,
-  Avatar,
-  Spin,
-  Empty,
-} from '@douyinfe/semi-ui';
-import { IconPlus, IconLayers } from '@douyinfe/semi-icons';
+import { Layers, Plus } from 'lucide-react';
 import {
   API,
   showError,
@@ -39,14 +8,32 @@ import {
 } from '../../../../helpers';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import CardTable from '../../../common/ui/CardTable';
 import EditPrefillGroupModal from './EditPrefillGroupModal';
+import { Button } from '@/components/ui/button';
 import {
-  renderLimitedItems,
-  renderDescription,
-} from '../../../common/ui/RenderUtils';
-
-const { Text, Title } = Typography;
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { DataTable } from '../../../ui/data-table';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 const PrefillGroupManagement = ({ visible, onClose }) => {
   const { t } = useTranslation();
@@ -55,6 +42,7 @@ const PrefillGroupManagement = ({ visible, onClose }) => {
   const [groups, setGroups] = useState([]);
   const [showEdit, setShowEdit] = useState(false);
   const [editingGroup, setEditingGroup] = useState({ id: undefined });
+  const [deletingGroup, setDeletingGroup] = useState(null);
 
   const typeOptions = [
     { label: t('模型组'), value: 'model' },
@@ -113,100 +101,134 @@ const PrefillGroupManagement = ({ visible, onClose }) => {
     loadGroups();
   };
 
-  // 表格列定义
+  const renderLimitedBadges = (items) => {
+    if (!items || items.length === 0) {
+      return <span className='text-white/45'>{t('暂无项目')}</span>;
+    }
+
+    const displayItems = items.slice(0, 3);
+    const remainingItems = items.slice(3);
+
+    return (
+      <div className='flex flex-wrap items-center gap-2'>
+        {displayItems.map((item) => (
+          <Badge
+            key={item}
+            variant='secondary'
+            className='border-white/10 bg-white/10 text-white'
+            style={{ backgroundColor: `${stringToColor(item)}20` }}
+          >
+            {item}
+          </Badge>
+        ))}
+        {remainingItems.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type='button'>
+                <Badge
+                  variant='secondary'
+                  className='border-white/10 bg-white/10 text-white'
+                >
+                  +{remainingItems.length}
+                </Badge>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className='max-w-xs border-white/10 bg-black text-white'>
+              <div className='flex flex-wrap gap-2'>
+                {remainingItems.map((item) => (
+                  <Badge
+                    key={item}
+                    variant='secondary'
+                    className='border-white/10 bg-white/10 text-white'
+                    style={{ backgroundColor: `${stringToColor(item)}20` }}
+                  >
+                    {item}
+                  </Badge>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+    );
+  };
+
   const columns = [
     {
-      title: t('组名'),
-      dataIndex: 'name',
-      key: 'name',
-      render: (text, record) => (
-        <Space>
-          <Text strong>{text}</Text>
-          <Tag color='white' shape='circle' size='small'>
-            {typeOptions.find((opt) => opt.value === record.type)?.label ||
-              record.type}
-          </Tag>
-        </Space>
+      id: 'name',
+      header: t('组名'),
+      accessorKey: 'name',
+      cell: ({ row }) => (
+        <div className='flex items-center gap-2'>
+          <span className='font-semibold text-white'>{row.original.name}</span>
+          <Badge
+            variant='secondary'
+            className='border-white/10 bg-white/10 text-white'
+          >
+            {typeOptions.find((opt) => opt.value === row.original.type)
+              ?.label ||
+              row.original.type}
+          </Badge>
+        </div>
       ),
     },
     {
-      title: t('描述'),
-      dataIndex: 'description',
-      key: 'description',
-      render: (text) => renderDescription(text, 150),
+      id: 'description',
+      header: t('描述'),
+      accessorKey: 'description',
+      cell: ({ row }) => (
+        <span className='line-clamp-2 max-w-[220px] text-white/80'>
+          {row.original.description || '-'}
+        </span>
+      ),
     },
     {
-      title: t('项目内容'),
-      dataIndex: 'items',
-      key: 'items',
-      render: (items, record) => {
+      id: 'items',
+      header: t('项目内容'),
+      accessorKey: 'items',
+      cell: ({ row }) => {
+        const { items, type } = row.original;
         try {
-          if (record.type === 'endpoint') {
+          if (type === 'endpoint') {
             const obj =
               typeof items === 'string'
                 ? JSON.parse(items || '{}')
                 : items || {};
             const keys = Object.keys(obj);
-            if (keys.length === 0)
-              return <Text type='tertiary'>{t('暂无项目')}</Text>;
-            return renderLimitedItems({
-              items: keys,
-              renderItem: (key, idx) => (
-                <Tag
-                  key={idx}
-                  size='small'
-                  shape='circle'
-                  color={stringToColor(key)}
-                >
-                  {key}
-                </Tag>
-              ),
-              maxDisplay: 3,
-            });
+            return renderLimitedBadges(keys);
           }
           const itemsArray =
             typeof items === 'string' ? JSON.parse(items) : items;
-          if (!Array.isArray(itemsArray) || itemsArray.length === 0) {
-            return <Text type='tertiary'>{t('暂无项目')}</Text>;
-          }
-          return renderLimitedItems({
-            items: itemsArray,
-            renderItem: (item, idx) => (
-              <Tag
-                key={idx}
-                size='small'
-                shape='circle'
-                color={stringToColor(item)}
-              >
-                {item}
-              </Tag>
-            ),
-            maxDisplay: 3,
-          });
+          return renderLimitedBadges(
+            Array.isArray(itemsArray) ? itemsArray : [],
+          );
         } catch {
-          return <Text type='tertiary'>{t('数据格式错误')}</Text>;
+          return <span className='text-white/45'>{t('数据格式错误')}</span>;
         }
       },
     },
     {
-      title: '',
-      key: 'action',
-      fixed: 'right',
-      width: 140,
-      render: (_, record) => (
-        <Space>
-          <Button size='small' onClick={() => handleEdit(record)}>
+      id: 'action',
+      header: '',
+      cell: ({ row }) => (
+        <div className='flex gap-2'>
+          <Button
+            type='button'
+            variant='secondary'
+            size='sm'
+            onClick={() => handleEdit(row.original)}
+          >
             {t('编辑')}
           </Button>
-          <Popconfirm
-            title={t('确定删除此组？')}
-            onConfirm={() => deleteGroup(record.id)}
+          <Button
+            type='button'
+            variant='destructive'
+            size='sm'
+            onClick={() => setDeletingGroup(row.original)}
           >
-            <Button size='small' type='danger'>
-              {t('删除')}
-            </Button>
-          </Popconfirm>
-        </Space>
+            {t('删除')}
+          </Button>
+        </div>
       ),
     },
   ];
@@ -219,82 +241,100 @@ const PrefillGroupManagement = ({ visible, onClose }) => {
 
   return (
     <>
-      <SideSheet
-        placement='left'
-        title={
-          <Space>
-            <Tag color='blue' shape='circle'>
-              {t('管理')}
-            </Tag>
-            <Title heading={4} className='m-0'>
-              {t('预填组管理')}
-            </Title>
-          </Space>
-        }
-        visible={visible}
-        onCancel={onClose}
-        width={isMobile ? '100%' : 800}
-        bodyStyle={{ padding: '0' }}
-        closeIcon={null}
-      >
-        <Spin spinning={loading}>
-          <div className='p-2'>
-            <Card className='!rounded-2xl shadow-sm border-0'>
-              <div className='flex items-center mb-2'>
-                <Avatar size='small' color='blue' className='mr-2 shadow-md'>
-                  <IconLayers size={16} />
-                </Avatar>
-                <div>
-                  <Text className='text-lg font-medium'>{t('组列表')}</Text>
-                  <div className='text-xs text-gray-600'>
-                    {t('管理模型、标签、端点等预填组')}
+      <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent
+          className={
+            isMobile
+              ? 'max-w-[95vw] border-white/10 bg-black text-white'
+              : 'max-w-[980px] border-white/10 bg-black text-white'
+          }
+        >
+          <DialogHeader>
+            <div className='flex items-center gap-2'>
+              <Badge
+                variant='secondary'
+                className='border-white/10 bg-white/10 text-white'
+              >
+                {t('管理')}
+              </Badge>
+              <DialogTitle>{t('预填组管理')}</DialogTitle>
+            </div>
+          </DialogHeader>
+
+          <Card className='border-white/10 bg-white/6 text-white'>
+            <CardContent className='space-y-4 p-5'>
+              <div className='flex items-center justify-between gap-4'>
+                <div className='flex items-center gap-3'>
+                  <div className='flex h-9 w-9 items-center justify-center rounded-full bg-white/10'>
+                    <Layers className='h-4 w-4' />
+                  </div>
+                  <div>
+                    <div className='text-lg font-medium'>{t('组列表')}</div>
+                    <div className='text-xs text-white/45'>
+                      {t('管理模型、标签、端点等预填组')}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className='flex justify-end mb-4'>
-                <Button
-                  type='primary'
-                  theme='solid'
-                  size='small'
-                  icon={<IconPlus />}
-                  onClick={() => handleEdit()}
-                >
+                <Button type='button' onClick={() => handleEdit()}>
+                  <Plus className='mr-1 h-4 w-4' />
                   {t('新建组')}
                 </Button>
               </div>
-              {groups.length > 0 ? (
-                <CardTable
-                  columns={columns}
-                  dataSource={groups}
-                  rowKey='id'
-                  hidePagination={true}
-                  size='small'
-                  scroll={{ x: 'max-content' }}
-                />
-              ) : (
-                <Empty
-                  image={
-                    <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
-                      ○
-                    </div>
-                  }
-                  title={t('暂无预填组')}
-                  description={t('当前还没有创建任何预填组。')}
-                  style={{ padding: 30 }}
-                />
-              )}
-            </Card>
-          </div>
-        </Spin>
-      </SideSheet>
 
-      {/* 编辑组件 */}
+              {groups.length > 0 ? (
+                <DataTable columns={columns} data={groups} loading={loading} />
+              ) : (
+                <div className='flex min-h-[180px] flex-col items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-center'>
+                  <div className='mb-3 flex h-[88px] w-[88px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
+                    ○
+                  </div>
+                  <div className='font-medium'>{t('暂无预填组')}</div>
+                  <div className='mt-1 text-sm text-white/45'>
+                    {t('当前还没有创建任何预填组。')}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </DialogContent>
+      </Dialog>
+
       <EditPrefillGroupModal
         visible={showEdit}
         onClose={closeEdit}
         editingGroup={editingGroup}
         onSuccess={handleEditSuccess}
       />
+
+      <AlertDialog
+        open={Boolean(deletingGroup)}
+        onOpenChange={(open) => !open && setDeletingGroup(null)}
+      >
+        <AlertDialogContent className='border-white/10 bg-black text-white'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('确定删除此组？')}</AlertDialogTitle>
+            <AlertDialogDescription className='text-white/60'>
+              {deletingGroup?.name}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className='border-white/10 bg-transparent'>
+            <AlertDialogCancel
+              variant='secondary'
+              onClick={() => setDeletingGroup(null)}
+            >
+              {t('取消')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                await deleteGroup(deletingGroup.id);
+                setDeletingGroup(null);
+              }}
+            >
+              {t('删除')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

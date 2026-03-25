@@ -1,8 +1,8 @@
 ﻿package common
 
 import (
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/types"
 )
 
 func GuessRelayFormatFromRequest(req any) (types.RelayFormat, bool) {

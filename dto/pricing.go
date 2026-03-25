@@ -1,6 +1,6 @@
 ﻿package dto
 
-import "github.com/QuantumNous/opencrab/constant"
+import "github.com/roseforljh/opencrab/constant"
 
 // 这里不好动就不动了，本来想独立出来的（
 type OpenAIModels struct {

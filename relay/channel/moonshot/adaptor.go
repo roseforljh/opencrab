@@ -6,14 +6,14 @@ import (
 	"io"
 	"net/http"
 
-	channelconstant "github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/relay/channel"
-	"github.com/QuantumNous/opencrab/relay/channel/claude"
-	"github.com/QuantumNous/opencrab/relay/channel/openai"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/constant"
-	"github.com/QuantumNous/opencrab/types"
+	channelconstant "github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/relay/channel"
+	"github.com/roseforljh/opencrab/relay/channel/claude"
+	"github.com/roseforljh/opencrab/relay/channel/openai"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -99,7 +99,7 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	return request, nil
 }
 
-func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.OpenCrabError) {
 	switch info.RelayFormat {
 	case types.RelayFormatClaude:
 		adaptor := claude.Adaptor{}

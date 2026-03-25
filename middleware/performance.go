@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,7 +38,7 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 }
 
 // checkSystemPerformance 检查系统性能是否超过阈值
-func checkSystemPerformance() *types.NewAPIError {
+func checkSystemPerformance() *types.OpenCrabError {
 	config := common.GetPerformanceMonitorConfig()
 	if !config.Enabled {
 		return nil

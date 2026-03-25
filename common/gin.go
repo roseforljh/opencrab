@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/constant"
+	"github.com/roseforljh/opencrab/constant"
 	"github.com/pkg/errors"
 
 	"github.com/gin-gonic/gin"

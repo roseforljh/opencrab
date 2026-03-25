@@ -3,7 +3,7 @@
 import (
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/model"
+	"github.com/roseforljh/opencrab/model"
 
 	"github.com/gin-gonic/gin"
 )

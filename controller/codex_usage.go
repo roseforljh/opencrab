@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/relay/channel/codex"
-	"github.com/QuantumNous/opencrab/service"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/relay/channel/codex"
+	"github.com/roseforljh/opencrab/service"
 
 	"github.com/gin-gonic/gin"
 )

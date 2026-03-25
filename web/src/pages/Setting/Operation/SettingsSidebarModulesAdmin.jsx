@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,7 +37,6 @@ export default function SettingsSidebarModulesAdmin(props) {
     },
     personal: {
       enabled: true,
-      topup: true,
       personal: true,
     },
     admin: {
@@ -116,8 +97,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       },
       personal: {
         enabled: true,
-        topup: true,
-        personal: true,
+          personal: true,
       },
       admin: {
         enabled: true,
@@ -187,7 +167,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             midjourney: true,
             task: true,
           },
-          personal: { enabled: true, topup: true, personal: true },
+          personal: { enabled: true, personal: true },
           admin: {
             enabled: true,
             channel: true,
@@ -240,7 +220,6 @@ export default function SettingsSidebarModulesAdmin(props) {
       title: t('个人中心区域'),
       description: t('用户个人功能'),
       modules: [
-        { key: 'topup', title: t('钱包管理'), description: t('余额充值管理') },
         {
           key: 'personal',
           title: t('个人设置'),

@@ -7,17 +7,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/middleware"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/middleware"
 
 	"github.com/gin-gonic/gin"
 )
 
 func SetRouter(router *gin.Engine, buildFS embed.FS, indexPage []byte) {
 	SetApiRouter(router)
-	SetDashboardRouter(router)
 	SetRelayRouter(router)
-	SetVideoRouter(router)
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

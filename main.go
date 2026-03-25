@@ -11,17 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/controller"
-	"github.com/QuantumNous/opencrab/i18n"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/middleware"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/relay"
-	"github.com/QuantumNous/opencrab/router"
-	"github.com/QuantumNous/opencrab/service"
-	_ "github.com/QuantumNous/opencrab/setting/performance_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/controller"
+	"github.com/roseforljh/opencrab/i18n"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/middleware"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/router"
+	"github.com/roseforljh/opencrab/service"
+	_ "github.com/roseforljh/opencrab/setting/performance_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-contrib/sessions"
@@ -47,7 +45,7 @@ func main() {
 		return
 	}
 
-	common.SysLog("New API " + common.Version + " started")
+	common.SysLog("OpenCrab " + common.Version + " started")
 	if os.Getenv("GIN_MODE") != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -94,13 +92,7 @@ func main() {
 	// 数据看板
 	go model.UpdateQuotaData()
 
-	if os.Getenv("CHANNEL_UPDATE_FREQUENCY") != "" {
-		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_UPDATE_FREQUENCY"))
-		if err != nil {
-			common.FatalLog("failed to parse CHANNEL_UPDATE_FREQUENCY: " + err.Error())
-		}
-		go controller.AutomaticallyUpdateChannels(frequency)
-	}
+	// Channel upstream model update check task disabled in personal build
 
 	go controller.AutomaticallyTestChannels()
 
@@ -108,28 +100,28 @@ func main() {
 	service.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
-	service.StartSubscriptionQuotaResetTask()
+	// service.StartSubscriptionQuotaResetTask()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
-	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
-		a := relay.GetTaskAdaptor(platform)
-		if a == nil {
-			return nil
-		}
-		return a
-	}
+	// service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
+	// 	a := relay.GetTaskAdaptor(platform)
+	// 	if a == nil {
+	// 		return nil
+	// 	}
+	// 	return a
+	// }
 
 	// Channel upstream model update check task
 	controller.StartChannelUpstreamModelUpdateTask()
 
-	if common.IsMasterNode && constant.UpdateTask {
-		gopool.Go(func() {
-			controller.UpdateMidjourneyTaskBulk()
-		})
-		gopool.Go(func() {
-			controller.UpdateTaskBulk()
-		})
-	}
+	// if common.IsMasterNode && constant.UpdateTask {
+	// 	gopool.Go(func() {
+	// 		controller.UpdateMidjourneyTaskBulk()
+	// 	})
+	// 	gopool.Go(func() {
+	// 		controller.UpdateTaskBulk()
+	// 	})
+	// }
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
 		common.SysLog("batch update enabled with interval " + strconv.Itoa(common.BatchUpdateInterval) + "s")
@@ -210,7 +202,7 @@ func InjectUmamiAnalytics() {
 		analyticsInjectBuilder.WriteString(umamiSiteID)
 		analyticsInjectBuilder.WriteString("\"></script>")
 	}
-	analyticsInjectBuilder.WriteString("<!--Umami QuantumNous-->\n")
+	analyticsInjectBuilder.WriteString("<!--Umami-->\n")
 	analyticsInject := analyticsInjectBuilder.String()
 	indexPage = bytes.ReplaceAll(indexPage, []byte("<!--umami-->\n"), []byte(analyticsInject))
 }
@@ -232,7 +224,7 @@ func InjectGoogleAnalytics() {
 		analyticsInjectBuilder.WriteString("');")
 		analyticsInjectBuilder.WriteString("</script>")
 	}
-	analyticsInjectBuilder.WriteString("<!--Google Analytics QuantumNous-->\n")
+	analyticsInjectBuilder.WriteString("<!--Google Analytics-->\n")
 	analyticsInject := analyticsInjectBuilder.String()
 	indexPage = bytes.ReplaceAll(indexPage, []byte("<!--Google Analytics-->\n"), []byte(analyticsInject))
 }
@@ -272,7 +264,7 @@ func InitResources() error {
 	common.CleanupOldCacheFiles()
 
 	// 初始化模型
-	model.GetPricing()
+	// model.GetPricing()
 
 	// Initialize SQL Database
 	err = model.InitLogDB()

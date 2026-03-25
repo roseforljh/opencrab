@@ -1,6 +1,6 @@
 ﻿package operation_setting
 
-import "github.com/QuantumNous/opencrab/setting/config"
+import "github.com/roseforljh/opencrab/setting/config"
 
 // 额度展示类型
 const (

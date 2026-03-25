@@ -1,13 +1,13 @@
-﻿package service
+package service
 
 import (
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -73,7 +73,6 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)
-	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	return other
 }
@@ -83,60 +82,6 @@ func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]
 		return
 	}
 	other["po"] = relayInfo.ParamOverrideAudit
-}
-
-func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
-	if relayInfo == nil || other == nil {
-		return
-	}
-	// billing_source: "wallet" or "subscription"
-	if relayInfo.BillingSource != "" {
-		other["billing_source"] = relayInfo.BillingSource
-	}
-	if relayInfo.UserSetting.BillingPreference != "" {
-		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
-	}
-	if relayInfo.BillingSource == "subscription" {
-		if relayInfo.SubscriptionId != 0 {
-			other["subscription_id"] = relayInfo.SubscriptionId
-		}
-		if relayInfo.SubscriptionPreConsumed > 0 {
-			other["subscription_pre_consumed"] = relayInfo.SubscriptionPreConsumed
-		}
-		// post_delta: settlement delta applied after actual usage is known (can be negative for refund)
-		if relayInfo.SubscriptionPostDelta != 0 {
-			other["subscription_post_delta"] = relayInfo.SubscriptionPostDelta
-		}
-		if relayInfo.SubscriptionPlanId != 0 {
-			other["subscription_plan_id"] = relayInfo.SubscriptionPlanId
-		}
-		if relayInfo.SubscriptionPlanTitle != "" {
-			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
-		}
-		// Compute "this request" subscription consumed + remaining
-		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
-		usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
-		if consumed < 0 {
-			consumed = 0
-		}
-		if usedFinal < 0 {
-			usedFinal = 0
-		}
-		if relayInfo.SubscriptionAmountTotal > 0 {
-			remain := relayInfo.SubscriptionAmountTotal - usedFinal
-			if remain < 0 {
-				remain = 0
-			}
-			other["subscription_total"] = relayInfo.SubscriptionAmountTotal
-			other["subscription_used"] = usedFinal
-			other["subscription_remain"] = remain
-		}
-		if consumed > 0 {
-			other["subscription_consumed"] = consumed
-		}
-		// Wallet quota is not deducted when billed from subscription.
-		other["wallet_quota_deducted"] = 0
-	}
 }
 
 func appendRequestConversionChain(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

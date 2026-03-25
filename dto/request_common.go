@@ -1,7 +1,7 @@
 ﻿package dto
 
 import (
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/gin-gonic/gin"
 )
 

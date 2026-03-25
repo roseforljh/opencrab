@@ -1,6 +1,6 @@
 ﻿package model_setting
 
-import "github.com/QuantumNous/opencrab/setting/config"
+import "github.com/roseforljh/opencrab/setting/config"
 
 // GrokSettings defines Grok model configuration.
 type GrokSettings struct {

@@ -1,52 +1,40 @@
-﻿package relay
+package relay
 
 import (
-	"strconv"
-
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/relay/channel"
-	"github.com/QuantumNous/opencrab/relay/channel/ali"
-	"github.com/QuantumNous/opencrab/relay/channel/aws"
-	"github.com/QuantumNous/opencrab/relay/channel/baidu"
-	"github.com/QuantumNous/opencrab/relay/channel/baidu_v2"
-	"github.com/QuantumNous/opencrab/relay/channel/claude"
-	"github.com/QuantumNous/opencrab/relay/channel/cloudflare"
-	"github.com/QuantumNous/opencrab/relay/channel/codex"
-	"github.com/QuantumNous/opencrab/relay/channel/cohere"
-	"github.com/QuantumNous/opencrab/relay/channel/coze"
-	"github.com/QuantumNous/opencrab/relay/channel/deepseek"
-	"github.com/QuantumNous/opencrab/relay/channel/dify"
-	"github.com/QuantumNous/opencrab/relay/channel/gemini"
-	"github.com/QuantumNous/opencrab/relay/channel/jimeng"
-	"github.com/QuantumNous/opencrab/relay/channel/jina"
-	"github.com/QuantumNous/opencrab/relay/channel/minimax"
-	"github.com/QuantumNous/opencrab/relay/channel/mistral"
-	"github.com/QuantumNous/opencrab/relay/channel/mokaai"
-	"github.com/QuantumNous/opencrab/relay/channel/moonshot"
-	"github.com/QuantumNous/opencrab/relay/channel/ollama"
-	"github.com/QuantumNous/opencrab/relay/channel/openai"
-	"github.com/QuantumNous/opencrab/relay/channel/palm"
-	"github.com/QuantumNous/opencrab/relay/channel/perplexity"
-	"github.com/QuantumNous/opencrab/relay/channel/replicate"
-	"github.com/QuantumNous/opencrab/relay/channel/siliconflow"
-	"github.com/QuantumNous/opencrab/relay/channel/submodel"
-	taskali "github.com/QuantumNous/opencrab/relay/channel/task/ali"
-	taskdoubao "github.com/QuantumNous/opencrab/relay/channel/task/doubao"
-	taskGemini "github.com/QuantumNous/opencrab/relay/channel/task/gemini"
-	"github.com/QuantumNous/opencrab/relay/channel/task/hailuo"
-	taskjimeng "github.com/QuantumNous/opencrab/relay/channel/task/jimeng"
-	"github.com/QuantumNous/opencrab/relay/channel/task/kling"
-	tasksora "github.com/QuantumNous/opencrab/relay/channel/task/sora"
-	"github.com/QuantumNous/opencrab/relay/channel/task/suno"
-	taskvertex "github.com/QuantumNous/opencrab/relay/channel/task/vertex"
-	taskVidu "github.com/QuantumNous/opencrab/relay/channel/task/vidu"
-	"github.com/QuantumNous/opencrab/relay/channel/tencent"
-	"github.com/QuantumNous/opencrab/relay/channel/vertex"
-	"github.com/QuantumNous/opencrab/relay/channel/volcengine"
-	"github.com/QuantumNous/opencrab/relay/channel/xai"
-	"github.com/QuantumNous/opencrab/relay/channel/xunfei"
-	"github.com/QuantumNous/opencrab/relay/channel/zhipu"
-	"github.com/QuantumNous/opencrab/relay/channel/zhipu_4v"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/relay/channel"
+	"github.com/roseforljh/opencrab/relay/channel/ali"
+	"github.com/roseforljh/opencrab/relay/channel/aws"
+	"github.com/roseforljh/opencrab/relay/channel/baidu"
+	"github.com/roseforljh/opencrab/relay/channel/baidu_v2"
+	"github.com/roseforljh/opencrab/relay/channel/claude"
+	"github.com/roseforljh/opencrab/relay/channel/cloudflare"
+	"github.com/roseforljh/opencrab/relay/channel/codex"
+	"github.com/roseforljh/opencrab/relay/channel/cohere"
+	"github.com/roseforljh/opencrab/relay/channel/coze"
+	"github.com/roseforljh/opencrab/relay/channel/deepseek"
+	"github.com/roseforljh/opencrab/relay/channel/dify"
+	"github.com/roseforljh/opencrab/relay/channel/gemini"
+	"github.com/roseforljh/opencrab/relay/channel/jimeng"
+	"github.com/roseforljh/opencrab/relay/channel/jina"
+	"github.com/roseforljh/opencrab/relay/channel/minimax"
+	"github.com/roseforljh/opencrab/relay/channel/mistral"
+	"github.com/roseforljh/opencrab/relay/channel/mokaai"
+	"github.com/roseforljh/opencrab/relay/channel/moonshot"
+	"github.com/roseforljh/opencrab/relay/channel/ollama"
+	"github.com/roseforljh/opencrab/relay/channel/openai"
+	"github.com/roseforljh/opencrab/relay/channel/palm"
+	"github.com/roseforljh/opencrab/relay/channel/perplexity"
+	"github.com/roseforljh/opencrab/relay/channel/replicate"
+	"github.com/roseforljh/opencrab/relay/channel/siliconflow"
+	"github.com/roseforljh/opencrab/relay/channel/submodel"
+	"github.com/roseforljh/opencrab/relay/channel/tencent"
+	"github.com/roseforljh/opencrab/relay/channel/vertex"
+	"github.com/roseforljh/opencrab/relay/channel/volcengine"
+	"github.com/roseforljh/opencrab/relay/channel/xai"
+	"github.com/roseforljh/opencrab/relay/channel/xunfei"
+	"github.com/roseforljh/opencrab/relay/channel/zhipu"
+	"github.com/roseforljh/opencrab/relay/channel/zhipu_4v"
 	"github.com/gin-gonic/gin"
 )
 
@@ -111,7 +99,7 @@ func GetAdaptor(apiType int) channel.Adaptor {
 	case constant.APITypeJimeng:
 		return &jimeng.Adaptor{}
 	case constant.APITypeMoonshot:
-		return &moonshot.Adaptor{} // Moonshot uses Claude API
+		return &moonshot.Adaptor{}
 	case constant.APITypeSubmodel:
 		return &submodel.Adaptor{}
 	case constant.APITypeMiniMax:
@@ -125,41 +113,11 @@ func GetAdaptor(apiType int) channel.Adaptor {
 }
 
 func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
-	channelType := c.GetInt("channel_type")
-	if channelType > 0 {
-		return constant.TaskPlatform(strconv.Itoa(channelType))
-	}
-	return constant.TaskPlatform(c.GetString("platform"))
+	_ = c
+	return ""
 }
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
-	switch platform {
-	//case constant.APITypeAIProxyLibrary:
-	//	return &aiproxy.Adaptor{}
-	case constant.TaskPlatformSuno:
-		return &suno.TaskAdaptor{}
-	}
-	if channelType, err := strconv.ParseInt(string(platform), 10, 64); err == nil {
-		switch channelType {
-		case constant.ChannelTypeAli:
-			return &taskali.TaskAdaptor{}
-		case constant.ChannelTypeKling:
-			return &kling.TaskAdaptor{}
-		case constant.ChannelTypeJimeng:
-			return &taskjimeng.TaskAdaptor{}
-		case constant.ChannelTypeVertexAi:
-			return &taskvertex.TaskAdaptor{}
-		case constant.ChannelTypeVidu:
-			return &taskVidu.TaskAdaptor{}
-		case constant.ChannelTypeDoubaoVideo, constant.ChannelTypeVolcEngine:
-			return &taskdoubao.TaskAdaptor{}
-		case constant.ChannelTypeSora, constant.ChannelTypeOpenAI:
-			return &tasksora.TaskAdaptor{}
-		case constant.ChannelTypeGemini:
-			return &taskGemini.TaskAdaptor{}
-		case constant.ChannelTypeMiniMax:
-			return &hailuo.TaskAdaptor{}
-		}
-	}
+	_ = platform
 	return nil
 }

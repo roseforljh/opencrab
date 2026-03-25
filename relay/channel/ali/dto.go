@@ -3,9 +3,9 @@
 import (
 	"strings"
 
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/service"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/service"
 	"github.com/gin-gonic/gin"
 )
 

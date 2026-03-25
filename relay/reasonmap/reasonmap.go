@@ -3,7 +3,7 @@
 import (
 	"strings"
 
-	"github.com/QuantumNous/opencrab/constant"
+	"github.com/roseforljh/opencrab/constant"
 )
 
 func ClaudeStopReasonToOpenAIFinishReason(stopReason string) string {

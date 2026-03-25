@@ -1,6 +1,6 @@
-﻿# New API Electron Desktop App
+# OpenCrab Electron Desktop App
 
-This directory contains the Electron wrapper for New API, providing a native desktop application with system tray support for Windows, macOS, and Linux.
+This directory contains the Electron wrapper for OpenCrab, providing a native desktop application with system tray support for Windows, macOS, and Linux.
 
 ## Prerequisites
 
@@ -9,14 +9,14 @@ The Electron app requires the compiled Go binary to function. You have two optio
 
 **Option A: Use existing binary (without Go installed)**
 ```bash
-# If you have a pre-built binary (e.g., opencrab-macos)
+# If you have a pre-built binary
 cp ../opencrab-macos ../opencrab
 ```
 
 **Option B: Build from source (requires Go)**
-TODO
+Build the backend binary in the project root first.
 
-### 3. Electron Dependencies
+### 2. Electron Dependencies
 ```bash
 cd electron
 npm install
@@ -26,14 +26,12 @@ npm install
 
 Run the app in development mode:
 ```bash
-npm start
+npm run dev-app
 ```
 
-This will:
-- Start the Go backend on port 3000
-- Open an Electron window with DevTools enabled
-- Create a system tray icon (menu bar on macOS)
-- Store database in `../data/opencrab.db`
+This expects:
+- Go backend on port 3000
+- Frontend dev server on port 5173
 
 ## Building for Production
 
@@ -46,15 +44,15 @@ ls ../opencrab  # Should exist
 npm run build
 
 # Platform-specific builds
-npm run build:mac    # Creates .dmg and .zip
-npm run build:win    # Creates .exe installer
-npm run build:linux  # Creates .AppImage and .deb
+npm run build:mac
+npm run build:win
+npm run build:linux
 ```
 
 ### Build Output
 - Built applications are in `electron/dist/`
-- macOS: `.dmg` (installer) and `.zip` (portable)
-- Windows: `.exe` (installer) and portable exe
+- macOS: `.dmg` and `.zip`
+- Windows: installer and portable exe
 - Linux: `.AppImage` and `.deb`
 
 ## Configuration
@@ -62,12 +60,12 @@ npm run build:linux  # Creates .AppImage and .deb
 ### Port
 Default port is 3000. To change, edit `main.js`:
 ```javascript
-const PORT = 3000; // Change to desired port
+const PORT = 3000;
 ```
 
 ### Database Location
-- **Development**: `../data/opencrab.db` (project directory)
+- **Development**: `../data/opencrab.db`
 - **Production**:
-  - macOS: `~/Library/Application Support/New API/data/`
-  - Windows: `%APPDATA%/New API/data/`
-  - Linux: `~/.config/New API/data/`
+  - macOS: `~/Library/Application Support/OpenCrab/data/`
+  - Windows: `%APPDATA%/OpenCrab/data/`
+  - Linux: `~/.config/OpenCrab/data/`

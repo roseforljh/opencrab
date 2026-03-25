@@ -1,36 +1,17 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React, { useEffect, useState } from 'react';
 import {
-  Modal,
-  Table,
-  Spin,
-  Button,
-  Typography,
-  Empty,
-  Input,
-} from '@douyinfe/semi-ui';
-import { IconSearch } from '@douyinfe/semi-icons';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { DataTable } from '../../../ui/data-table';
 import { API, showError } from '../../../../helpers';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
+import { Search } from 'lucide-react';
 
 const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
   const [loading, setLoading] = useState(false);
@@ -80,24 +61,22 @@ const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
 
   const columns = [
     {
-      title: t('模型名称'),
-      dataIndex: 'model',
-      render: (text) => (
+      id: 'model',
+      header: t('模型名称'),
+      accessorKey: 'model',
+      cell: ({ row }) => (
         <div className='flex items-center'>
-          <Typography.Text strong>{text}</Typography.Text>
+          <span className='font-semibold text-white'>{row.original.model}</span>
         </div>
       ),
     },
     {
-      title: '',
-      dataIndex: 'operate',
-      fixed: 'right',
-      width: 120,
-      render: (text, record) => (
+      id: 'operate',
+      header: '',
+      cell: ({ row }) => (
         <Button
-          type='primary'
-          size='small'
-          onClick={() => onConfigureModel(record.model)}
+          type='button'
+          onClick={() => onConfigureModel(row.original.model)}
         >
           {t('配置')}
         </Button>
@@ -106,90 +85,64 @@ const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
   ];
 
   return (
-    <Modal
-      title={
-        <div className='flex flex-col gap-2 w-full'>
-          <div className='flex items-center gap-2'>
-            <Typography.Text
-              strong
-              className='!text-[var(--semi-color-text-0)] !text-base'
-            >
-              {t('未配置的模型列表')}
-            </Typography.Text>
-            <Typography.Text type='tertiary' size='small'>
-              {t('共')} {missingModels.length} {t('个未配置模型')}
-            </Typography.Text>
-          </div>
-        </div>
-      }
-      visible={visible}
-      onCancel={onClose}
-      footer={null}
-      size={isMobile ? 'full-width' : 'medium'}
-      className='!rounded-lg'
-    >
-      <Spin spinning={loading}>
-        {missingModels.length === 0 && !loading ? (
-          <Empty
-            image={
-              <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
-                ○
+    <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className={
+          isMobile
+            ? 'max-w-[95vw] border-white/10 bg-black text-white'
+            : 'max-w-[900px] border-white/10 bg-black text-white'
+        }
+      >
+        <DialogHeader>
+          <DialogTitle>
+            <div className='flex flex-col gap-2 w-full'>
+              <div className='flex items-center gap-2'>
+                <span className='text-base font-semibold text-white'>
+                  {t('未配置的模型列表')}
+                </span>
+                <span className='text-sm text-white/60'>
+                  {t('共')} {missingModels.length} {t('个未配置模型')}
+                </span>
               </div>
-            }
-            title={t('暂无缺失模型')}
-            description={t('当前所有模型都已配置完成。')}
-            style={{ padding: 30 }}
-          />
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+        {missingModels.length === 0 && !loading ? (
+          <div className='py-8 text-center text-white/60'>
+            {t('当前所有模型都已配置完成。')}
+          </div>
         ) : (
           <div className='missing-models-content'>
-            {/* 搜索框 */}
             <div className='flex items-center justify-end gap-2 w-full mb-4'>
+              <Search className='h-4 w-4 text-white/40' />
               <Input
                 placeholder={t('搜索模型...')}
                 value={searchKeyword}
-                onChange={(v) => {
-                  setSearchKeyword(v);
+                onChange={(e) => {
+                  setSearchKeyword(e.target.value);
                   setCurrentPage(1);
                 }}
-                className='!w-full'
-                prefix={<IconSearch />}
-                showClear
+                className='w-full border-white/10 bg-white/6 text-white'
               />
             </div>
 
-            {/* 表格 */}
             {filteredModels.length > 0 ? (
-              <Table
+              <DataTable
                 columns={columns}
-                dataSource={dataSource}
-                pagination={{
-                  currentPage: currentPage,
-                  pageSize: MODEL_TABLE_PAGE_SIZE,
-                  total: filteredModels.length,
-                  showSizeChanger: false,
-                  onPageChange: (page) => setCurrentPage(page),
-                }}
+                data={dataSource}
+                loading={loading}
               />
             ) : (
-              <Empty
-                image={
-                  <div className='flex h-[96px] w-[96px] items-center justify-center rounded-[24px] border border-white/10 bg-black/50 text-2xl text-white/30'>
-                    ⌕
-                  </div>
-                }
-                title={searchKeyword ? t('没有匹配模型') : t('暂无缺失模型')}
-                description={
-                  searchKeyword
-                    ? t('可尝试缩短关键词，或检查命名是否准确。')
-                    : t('当前所有模型都已配置完成。')
-                }
-                style={{ padding: 20 }}
-              />
+              <div className='py-6 text-center text-white/60'>
+                {searchKeyword
+                  ? t('可尝试缩短关键词，或检查命名是否准确。')
+                  : t('当前所有模型都已配置完成。')}
+              </div>
             )}
           </div>
         )}
-      </Spin>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 };
 

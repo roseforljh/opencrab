@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/dto"
+	"github.com/roseforljh/opencrab/dto"
 )
 
 func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesResponse, id string) (*dto.OpenAITextResponse, *dto.Usage, error) {

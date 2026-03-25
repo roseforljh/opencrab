@@ -1,11 +1,10 @@
 ﻿package router
 
 import (
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/controller"
-	"github.com/QuantumNous/opencrab/middleware"
-	"github.com/QuantumNous/opencrab/relay"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/controller"
+	"github.com/roseforljh/opencrab/middleware"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,8 +23,8 @@ func SetRelayRouter(router *gin.Engine) {
 			switch {
 			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
 				controller.ListModels(c, constant.ChannelTypeAnthropic)
-			case c.GetHeader("x-goog-api-key") != "" || c.Query("key") != "": // 单独的适配
-				controller.RetrieveModel(c, constant.ChannelTypeGemini)
+			case c.GetHeader("x-goog-api-key") != "" || c.Query("key") != "":
+				controller.ListModels(c, constant.ChannelTypeGemini)
 			default:
 				controller.ListModels(c, constant.ChannelTypeOpenAI)
 			}
@@ -34,9 +33,9 @@ func SetRelayRouter(router *gin.Engine) {
 		modelsRouter.GET("/:model", func(c *gin.Context) {
 			switch {
 			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
-				controller.RetrieveModel(c, constant.ChannelTypeAnthropic)
+				controller.ListModels(c, constant.ChannelTypeAnthropic)
 			default:
-				controller.RetrieveModel(c, constant.ChannelTypeOpenAI)
+				controller.ListModels(c, constant.ChannelTypeOpenAI)
 			}
 		})
 	}
@@ -165,27 +164,6 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 	}
 
-	relayMjRouter := router.Group("/mj")
-	relayMjRouter.Use(middleware.RouteTag("relay"))
-	relayMjRouter.Use(middleware.SystemPerformanceCheck())
-	registerMjRouterGroup(relayMjRouter)
-
-	relayMjModeRouter := router.Group("/:mode/mj")
-	relayMjModeRouter.Use(middleware.RouteTag("relay"))
-	relayMjModeRouter.Use(middleware.SystemPerformanceCheck())
-	registerMjRouterGroup(relayMjModeRouter)
-	//relayMjRouter.Use()
-
-	relaySunoRouter := router.Group("/suno")
-	relaySunoRouter.Use(middleware.RouteTag("relay"))
-	relaySunoRouter.Use(middleware.SystemPerformanceCheck())
-	relaySunoRouter.Use(middleware.TokenAuth(), middleware.Distribute())
-	{
-		relaySunoRouter.POST("/submit/:action", controller.RelayTask)
-		relaySunoRouter.POST("/fetch", controller.RelayTaskFetch)
-		relaySunoRouter.GET("/fetch/:id", controller.RelayTaskFetch)
-	}
-
 	relayGeminiRouter := router.Group("/v1beta")
 	relayGeminiRouter.Use(middleware.RouteTag("relay"))
 	relayGeminiRouter.Use(middleware.SystemPerformanceCheck())
@@ -197,28 +175,5 @@ func SetRelayRouter(router *gin.Engine) {
 		relayGeminiRouter.POST("/models/*path", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatGemini)
 		})
-	}
-}
-
-func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
-	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
-	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
-	{
-		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/modal", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/imagine", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/describe", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
-		//relayMjRouter.POST("/notify", controller.RelayMidjourney)
-		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
-		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
-		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
-		relayMjRouter.POST("/insight-face/swap", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/upload-discord-images", controller.RelayMidjourney)
 	}
 }

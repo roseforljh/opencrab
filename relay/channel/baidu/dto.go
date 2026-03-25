@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/QuantumNous/opencrab/dto"
+	"github.com/roseforljh/opencrab/dto"
 )
 
 type BaiduMessage struct {

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/types"
 )
 
 type StatusCodeRange struct {

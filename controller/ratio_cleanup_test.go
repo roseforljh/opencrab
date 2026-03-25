@@ -225,9 +225,6 @@ func TestBillingChainDoesNotReferenceRatioSetting(t *testing.T) {
 			`ratio_setting\.`,
 			`GetUserGroupRatio\(`,
 		},
-		"../service/task_billing.go": {
-			`ratio_setting\.`,
-		},
 		"../service/quota.go": {
 			`ratio_setting\.`,
 		},

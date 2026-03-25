@@ -1,14 +1,23 @@
 package model
 
-// RefreshPricing 强制立即重新计算与定价相关的缓存。
-// 该方法用于需要最新数据的内部管理 API，
-// 因此会绕过默认的 1 分钟延迟刷新。
-func RefreshPricing() {
-	updatePricingLock.Lock()
-	defer updatePricingLock.Unlock()
+import "github.com/roseforljh/opencrab/constant"
 
-	modelSupportEndpointsLock.Lock()
-	defer modelSupportEndpointsLock.Unlock()
+func RefreshPricing() {}
 
-	updatePricing()
+func GetAllPricingFromCache() []struct {
+	ModelName               string
+	SupportedEndpointTypes  []constant.EndpointType
+	EnableGroup             []string
+	QuotaType               int
+} {
+	return []struct {
+		ModelName              string
+		SupportedEndpointTypes []constant.EndpointType
+		EnableGroup            []string
+		QuotaType              int
+	}{}
+}
+
+func GetModelSupportEndpointTypes(modelName string) []constant.EndpointType {
+	return []constant.EndpointType{}
 }

@@ -1,35 +1,16 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Modal,
-  Button,
-  Space,
-  Typography,
-  Input,
-  Banner,
-} from '@douyinfe/semi-ui';
 import { API, copy, showError, showSuccess } from '../../../../helpers';
-
-const { Text } = Typography;
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { AlertTriangle } from 'lucide-react';
 
 const CodexOAuthModal = ({ visible, onCancel, onSuccess }) => {
   const { t } = useTranslation();
@@ -108,64 +89,66 @@ const CodexOAuthModal = ({ visible, onCancel, onSuccess }) => {
   }, [visible]);
 
   return (
-    <Modal
-      title={t('Codex 授权')}
-      visible={visible}
-      onCancel={onCancel}
-      maskClosable={false}
-      closeOnEsc
-      width={720}
-      footer={
-        <Space>
-          <Button theme='borderless' onClick={onCancel} disabled={loading}>
+    <Dialog open={visible} onOpenChange={(open) => !open && onCancel?.()}>
+      <DialogContent className='max-w-[720px] border-white/10 bg-black text-white'>
+        <DialogHeader>
+          <DialogTitle>{t('Codex 授权')}</DialogTitle>
+        </DialogHeader>
+        <div className='flex flex-col gap-3'>
+          <div className='rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-100'>
+            <div className='flex gap-2'>
+              <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
+              <span>
+                {t(
+                  '1) 点击「打开授权页面」完成登录；2) 浏览器会跳转到 localhost（页面打不开也没关系）；3) 复制地址栏完整 URL 粘贴到下方；4) 点击「生成并填入」。',
+                )}
+              </span>
+            </div>
+          </div>
+
+          <div className='flex flex-wrap gap-2'>
+            <Button type='button' onClick={startOAuth} disabled={loading}>
+              {t('打开授权页面')}
+            </Button>
+            <Button
+              type='button'
+              variant='secondary'
+              disabled={!authorizeUrl || loading}
+              onClick={() => copy(authorizeUrl)}
+            >
+              {t('复制授权链接')}
+            </Button>
+          </div>
+
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={t('请粘贴完整回调 URL（包含 code 与 state）')}
+            className='border-white/10 bg-white/6 text-white'
+          />
+
+          <div className='text-xs text-white/60'>
+            {t(
+              '说明：生成结果是可直接粘贴到渠道密钥里的 JSON（包含 access_token / refresh_token / account_id）。',
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button
+            type='button'
+            variant='secondary'
+            onClick={onCancel}
+            disabled={loading}
+          >
             {t('取消')}
           </Button>
-          <Button
-            theme='solid'
-            type='primary'
-            onClick={completeOAuth}
-            loading={loading}
-          >
+          <Button type='button' onClick={completeOAuth} disabled={loading}>
             {t('生成并填入')}
           </Button>
-        </Space>
-      }
-    >
-      <Space vertical spacing='tight' style={{ width: '100%' }}>
-        <Banner
-          type='info'
-          description={t(
-            '1) 点击「打开授权页面」完成登录；2) 浏览器会跳转到 localhost（页面打不开也没关系）；3) 复制地址栏完整 URL 粘贴到下方；4) 点击「生成并填入」。',
-          )}
-        />
-
-        <Space wrap>
-          <Button type='primary' onClick={startOAuth} loading={loading}>
-            {t('打开授权页面')}
-          </Button>
-          <Button
-            theme='outline'
-            disabled={!authorizeUrl || loading}
-            onClick={() => copy(authorizeUrl)}
-          >
-            {t('复制授权链接')}
-          </Button>
-        </Space>
-
-        <Input
-          value={input}
-          onChange={(value) => setInput(value)}
-          placeholder={t('请粘贴完整回调 URL（包含 code 与 state）')}
-          showClear
-        />
-
-        <Text type='tertiary' size='small'>
-          {t(
-            '说明：生成结果是可直接粘贴到渠道密钥里的 JSON（包含 access_token / refresh_token / account_id）。',
-          )}
-        </Text>
-      </Space>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

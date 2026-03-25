@@ -1,38 +1,6 @@
-/*
-Copyright (C) 2025 QuantumNous
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
-import React from 'react';
-import {
-  Button,
-  Dropdown,
-  Space,
-  SplitButtonGroup,
-  Tag,
-  AvatarGroup,
-  Avatar,
-  Tooltip,
-  Progress,
-  Popover,
-  Typography,
-  Input,
-  Modal,
-} from '@douyinfe/semi-ui';
+import React, { useState } from 'react';
+import { Space, SplitButtonGroup, Typography } from '@douyinfe/semi-ui';
 import {
   timestamp2string,
   renderGroup,
@@ -46,13 +14,45 @@ import {
   IconEyeOpened,
   IconEyeClosed,
 } from '@douyinfe/semi-icons';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // progress color helper
 const getProgressColor = (pct) => {
-  if (pct === 100) return 'var(--semi-color-success)';
-  if (pct <= 10) return 'var(--semi-color-danger)';
-  if (pct <= 30) return 'var(--semi-color-warning)';
-  return undefined;
+  if (pct === 100) return 'bg-green-500';
+  if (pct <= 10) return 'bg-red-500';
+  if (pct <= 30) return 'bg-yellow-500';
+  return 'bg-blue-500';
 };
 
 // Render functions
@@ -64,26 +64,26 @@ function renderTimestamp(timestamp) {
 const renderStatus = (text, record, t) => {
   const enabled = text === 1;
 
-  let tagColor = 'black';
+  let tagColor = 'bg-gray-500';
   let tagText = t('未知状态');
   if (enabled) {
-    tagColor = 'green';
+    tagColor = 'bg-green-500/20 text-green-400 border-green-500/30';
     tagText = t('已启用');
   } else if (text === 2) {
-    tagColor = 'red';
+    tagColor = 'bg-red-500/20 text-red-400 border-red-500/30';
     tagText = t('已禁用');
   } else if (text === 3) {
-    tagColor = 'yellow';
+    tagColor = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
     tagText = t('已过期');
   } else if (text === 4) {
-    tagColor = 'grey';
+    tagColor = 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     tagText = t('已耗尽');
   }
 
   return (
-    <Tag color={tagColor} shape='circle' size='small'>
+    <Badge variant='outline' className={`rounded-full font-medium ${tagColor}`}>
       {tagText}
-    </Tag>
+    </Badge>
   );
 };
 
@@ -91,16 +91,23 @@ const renderStatus = (text, record, t) => {
 const renderGroupColumn = (text, record, t) => {
   if (text === 'auto') {
     return (
-      <Tooltip
-        content={t(
-          '当前分组为 auto，会自动选择最优分组，当一个组不可用时自动降级到下一个组（熔断机制）',
-        )}
-        position='top'
-      >
-        <Tag color='white' shape='circle'>
-          {t('智能熔断')}
-          {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
-        </Tag>
+      <Tooltip>
+        <TooltipTrigger>
+          <Badge
+            variant='secondary'
+            className='bg-white/10 text-white hover:bg-white/20 rounded-full cursor-help'
+          >
+            {t('智能熔断')}
+            {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className='bg-black/90 text-white border-white/10 text-xs'>
+          <p>
+            {t(
+              '当前分组为 auto，会自动选择最优分组，当一个组不可用时自动降级到下一个组（熔断机制）',
+            )}
+          </p>
+        </TooltipContent>
       </Tooltip>
     );
   }
@@ -126,40 +133,44 @@ const renderTokenKey = (
   const displayedKey = keyValue ? `sk-${keyValue}` : '';
 
   return (
-    <div className='w-[200px]'>
+    <div className='w-[200px] relative flex items-center'>
       <Input
         readOnly
         value={displayedKey}
-        size='small'
-        suffix={
-          <div className='flex items-center'>
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={revealed ? <IconEyeClosed /> : <IconEyeOpened />}
-              loading={loading}
-              aria-label='toggle token visibility'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await toggleTokenVisibility(record);
-              }}
-            />
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={<IconCopy />}
-              loading={loading}
-              aria-label='copy token key'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await copyTokenKey(record);
-              }}
-            />
-          </div>
-        }
+        className='h-8 pr-16 bg-black/20 border-white/10 text-white focus-visible:ring-white/20 text-xs'
       />
+      <div className='absolute right-1 flex items-center'>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-white/60 hover:text-white hover:bg-white/10'
+          disabled={loading}
+          aria-label='toggle token visibility'
+          onClick={async (e) => {
+            e.stopPropagation();
+            await toggleTokenVisibility(record);
+          }}
+        >
+          {revealed ? (
+            <IconEyeClosed className='h-3 w-3' />
+          ) : (
+            <IconEyeOpened className='h-3 w-3' />
+          )}
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-white/60 hover:text-white hover:bg-white/10'
+          disabled={loading}
+          aria-label='copy token key'
+          onClick={async (e) => {
+            e.stopPropagation();
+            await copyTokenKey(record);
+          }}
+        >
+          <IconCopy className='h-3 w-3' />
+        </Button>
+      </div>
     </div>
   );
 };
@@ -180,19 +191,20 @@ const renderModelLimits = (text, record, t) => {
       );
       if (vendorModels.length > 0) {
         vendorAvatars.push(
-          <Tooltip
-            key={key}
-            content={vendorModels.join(', ')}
-            position='top'
-            showArrow
-          >
-            <Avatar
-              size='extra-extra-small'
-              alt={category.label}
-              color='transparent'
-            >
-              {category.icon}
-            </Avatar>
+          <Tooltip key={key}>
+            <TooltipTrigger asChild>
+              <Avatar className='h-6 w-6 border-2 border-background cursor-help'>
+                <AvatarFallback className='bg-white/10 text-[10px]'>
+                  {category.label?.slice(0, 2)}
+                </AvatarFallback>
+                <div className='w-full h-full flex items-center justify-center bg-white/5'>
+                  {category.icon}
+                </div>
+              </Avatar>
+            </TooltipTrigger>
+            <TooltipContent className='bg-black/90 text-white border-white/10 text-xs'>
+              <p>{vendorModels.join(', ')}</p>
+            </TooltipContent>
           </Tooltip>,
         );
         vendorModels.forEach((m) => matchedModels.add(m));
@@ -202,25 +214,32 @@ const renderModelLimits = (text, record, t) => {
     const unmatchedModels = models.filter((m) => !matchedModels.has(m));
     if (unmatchedModels.length > 0) {
       vendorAvatars.push(
-        <Tooltip
-          key='unknown'
-          content={unmatchedModels.join(', ')}
-          position='top'
-          showArrow
-        >
-          <Avatar size='extra-extra-small' alt='unknown'>
-            {t('其他')}
-          </Avatar>
+        <Tooltip key='unknown'>
+          <TooltipTrigger asChild>
+            <Avatar className='h-6 w-6 border-2 border-background cursor-help'>
+              <AvatarFallback className='bg-white/10 text-[10px]'>
+                {t('其他')}
+              </AvatarFallback>
+            </Avatar>
+          </TooltipTrigger>
+          <TooltipContent className='bg-black/90 text-white border-white/10 text-xs'>
+            <p>{unmatchedModels.join(', ')}</p>
+          </TooltipContent>
         </Tooltip>,
       );
     }
 
-    return <AvatarGroup size='extra-extra-small'>{vendorAvatars}</AvatarGroup>;
+    return (
+      <div className='flex -space-x-2 overflow-hidden'>{vendorAvatars}</div>
+    );
   } else {
     return (
-      <Tag color='white' shape='circle'>
+      <Badge
+        variant='secondary'
+        className='bg-white/10 text-white hover:bg-white/20 rounded-full'
+      >
         {t('无限制')}
-      </Tag>
+      </Badge>
     );
   }
 };
@@ -229,9 +248,12 @@ const renderModelLimits = (text, record, t) => {
 const renderAllowIps = (text, t) => {
   if (!text || text.trim() === '') {
     return (
-      <Tag color='white' shape='circle'>
+      <Badge
+        variant='secondary'
+        className='bg-white/10 text-white hover:bg-white/20 rounded-full'
+      >
         {t('无限制')}
-      </Tag>
+      </Badge>
     );
   }
 
@@ -244,77 +266,95 @@ const renderAllowIps = (text, t) => {
   const extraCount = ips.length - displayIps.length;
 
   const ipTags = displayIps.map((ip, idx) => (
-    <Tag key={idx} shape='circle'>
+    <Badge
+      key={idx}
+      variant='outline'
+      className='rounded-full border-white/20 text-white/80 font-normal'
+    >
       {ip}
-    </Tag>
+    </Badge>
   ));
 
   if (extraCount > 0) {
     ipTags.push(
-      <Tooltip
-        key='extra'
-        content={ips.slice(1).join(', ')}
-        position='top'
-        showArrow
-      >
-        <Tag shape='circle'>{'+' + extraCount}</Tag>
+      <Tooltip key='extra'>
+        <TooltipTrigger asChild>
+          <Badge
+            variant='outline'
+            className='rounded-full border-white/20 text-white/80 cursor-help font-normal'
+          >
+            +{extraCount}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className='bg-black/90 text-white border-white/10 text-xs max-w-xs break-words'>
+          <p>{ips.slice(1).join(', ')}</p>
+        </TooltipContent>
       </Tooltip>,
     );
   }
 
-  return <Space wrap>{ipTags}</Space>;
+  return <div className='flex flex-wrap gap-1'>{ipTags}</div>;
 };
 
-// Render separate quota usage column
+// Render separate usage summary column
 const renderQuotaUsage = (text, record, t) => {
-  const { Paragraph } = Typography;
   const used = parseInt(record.used_quota) || 0;
   const remain = parseInt(record.remain_quota) || 0;
   const total = used + remain;
   if (record.unlimited_quota) {
-    const popoverContent = (
-      <div className='text-xs p-2'>
-        <Paragraph copyable={{ content: renderQuota(used) }}>
-          {t('已用额度')}: {renderQuota(used)}
-        </Paragraph>
-      </div>
-    );
     return (
-      <Popover content={popoverContent} position='top'>
-        <Tag color='white' shape='circle'>
-          {t('无限额度')}
-        </Tag>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Badge
+            variant='secondary'
+            className='bg-white/10 text-white hover:bg-white/20 rounded-full cursor-help'
+          >
+            {t('无限使用量')}
+          </Badge>
+        </PopoverTrigger>
+        <PopoverContent className='w-auto p-3 bg-black/90 border-white/10 text-white text-xs'>
+          <div className='space-y-1'>
+            <p>
+              <span className='text-white/50'>{t('已用使用量')}:</span>{' '}
+              {renderQuota(used)}
+            </p>
+          </div>
+        </PopoverContent>
       </Popover>
     );
   }
   const percent = total > 0 ? (remain / total) * 100 : 0;
-  const popoverContent = (
-    <div className='text-xs p-2'>
-      <Paragraph copyable={{ content: renderQuota(used) }}>
-        {t('已用额度')}: {renderQuota(used)}
-      </Paragraph>
-      <Paragraph copyable={{ content: renderQuota(remain) }}>
-        {t('剩余额度')}: {renderQuota(remain)} ({percent.toFixed(0)}%)
-      </Paragraph>
-      <Paragraph copyable={{ content: renderQuota(total) }}>
-        {t('总额度')}: {renderQuota(total)}
-      </Paragraph>
-    </div>
-  );
   return (
-    <Popover content={popoverContent} position='top'>
-      <Tag color='white' shape='circle'>
-        <div className='flex flex-col items-end'>
-          <span className='text-xs leading-none'>{`${renderQuota(remain)} / ${renderQuota(total)}`}</span>
-          <Progress
-            percent={percent}
-            stroke={getProgressColor(percent)}
-            aria-label='quota usage'
-            format={() => `${percent.toFixed(0)}%`}
-            style={{ width: '100%', marginTop: '1px', marginBottom: 0 }}
-          />
+    <Popover>
+      <PopoverTrigger asChild>
+        <div className='flex flex-col items-end cursor-help group p-1 rounded hover:bg-white/5 transition-colors w-[150px]'>
+          <span className='text-xs leading-none mb-1 group-hover:text-white/90 text-white/70'>
+            {`${renderQuota(remain)} / ${renderQuota(total)}`}
+          </span>
+          <div className='w-full h-1.5 bg-white/10 rounded-full overflow-hidden'>
+            <div
+              className={`h-full ${getProgressColor(percent)}`}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
         </div>
-      </Tag>
+      </PopoverTrigger>
+      <PopoverContent className='w-auto p-3 bg-black/90 border-white/10 text-white text-xs'>
+        <div className='space-y-1'>
+          <p>
+            <span className='text-white/50'>{t('已用使用量')}:</span>{' '}
+            {renderQuota(used)}
+          </p>
+          <p>
+            <span className='text-white/50'>{t('剩余可用量')}:</span>{' '}
+            {renderQuota(remain)} ({percent.toFixed(0)}%)
+          </p>
+          <p>
+            <span className='text-white/50'>{t('总使用量')}:</span>{' '}
+            {renderQuota(total)}
+          </p>
+        </div>
+      </PopoverContent>
     </Popover>
   );
 };
@@ -353,14 +393,12 @@ const renderOperations = (
   }
 
   return (
-    <Space wrap>
-      <SplitButtonGroup
-        className='overflow-hidden'
-        aria-label={t('项目操作按钮组')}
-      >
+    <div className='flex flex-wrap items-center gap-2'>
+      <div className='flex -space-x-px border border-white/10 rounded-md overflow-hidden shrink-0'>
         <Button
-          size='small'
-          type='tertiary'
+          variant='secondary'
+          size='sm'
+          className='h-7 px-2 rounded-none border-r border-white/10 bg-white/5 hover:bg-white/10 text-white/80'
           onClick={() => {
             if (chatsArray.length === 0) {
               showError(t('请联系管理员配置聊天链接'));
@@ -372,19 +410,35 @@ const renderOperations = (
         >
           {t('聊天')}
         </Button>
-        <Dropdown trigger='click' position='bottomRight' menu={chatsArray}>
-          <Button
-            type='tertiary'
-            icon={<IconTreeTriangleDown />}
-            size='small'
-          ></Button>
-        </Dropdown>
-      </SplitButtonGroup>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant='secondary'
+              size='icon'
+              className='h-7 w-6 rounded-none bg-white/5 hover:bg-white/10 text-white/80'
+            >
+              <IconTreeTriangleDown className='h-3 w-3' />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className='bg-black/90 border-white/10 text-white'>
+            {chatsArray.map((chat) => (
+              <DropdownMenuItem
+                key={chat.key}
+                onClick={chat.onClick}
+                className='hover:bg-white/10 cursor-pointer'
+              >
+                {chat.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {record.status === 1 ? (
         <Button
-          type='danger'
-          size='small'
+          variant='destructive'
+          size='sm'
+          className='h-7 px-3 bg-red-500/20 text-red-400 hover:bg-red-500/30'
           onClick={async () => {
             await manageToken(record.id, 'disable', record);
             await refresh();
@@ -394,7 +448,9 @@ const renderOperations = (
         </Button>
       ) : (
         <Button
-          size='small'
+          variant='secondary'
+          size='sm'
+          className='h-7 px-3 bg-green-500/20 text-green-400 hover:bg-green-500/30'
           onClick={async () => {
             await manageToken(record.id, 'enable', record);
             await refresh();
@@ -405,8 +461,9 @@ const renderOperations = (
       )}
 
       <Button
-        type='tertiary'
-        size='small'
+        variant='secondary'
+        size='sm'
+        className='h-7 px-3 bg-white/5 hover:bg-white/10 text-white'
         onClick={() => {
           setEditingToken(record);
           setShowEdit(true);
@@ -415,25 +472,42 @@ const renderOperations = (
         {t('编辑')}
       </Button>
 
-      <Button
-        type='danger'
-        size='small'
-        onClick={() => {
-          Modal.confirm({
-            title: t('确定是否要删除此令牌？'),
-            content: t('此修改将不可逆'),
-            onOk: () => {
-              (async () => {
-                await manageToken(record.id, 'delete', record);
-                await refresh();
-              })();
-            },
-          });
-        }}
-      >
-        {t('删除')}
-      </Button>
-    </Space>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            variant='destructive'
+            size='sm'
+            className='h-7 px-3 bg-red-500/20 text-red-400 hover:bg-red-500/30'
+          >
+            {t('删除')}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent className='bg-black border-white/10 text-white'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('确定是否要删除此令牌？')}</AlertDialogTitle>
+            <AlertDialogDescription className='text-white/60'>
+              {t('此修改将不可逆')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className='bg-white/5 hover:bg-white/10 border-0'>
+              {t('取消')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className='bg-red-500 hover:bg-red-600 text-white'
+              onClick={() => {
+                (async () => {
+                  await manageToken(record.id, 'delete', record);
+                  await refresh();
+                })();
+              }}
+            >
+              {t('确认删除')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 };
 
@@ -452,33 +526,32 @@ export const getTokensColumns = ({
 }) => {
   return [
     {
-      title: t('名称'),
-      dataIndex: 'name',
+      accessorKey: 'name',
+      header: t('名称'),
+      cell: ({ row }) => <div>{row.original.name}</div>,
     },
     {
-      title: t('状态'),
-      dataIndex: 'status',
-      key: 'status',
-      render: (text, record) => renderStatus(text, record, t),
+      accessorKey: 'status',
+      header: t('状态'),
+      cell: ({ row }) => renderStatus(row.original.status, row.original, t),
     },
     {
-      title: t('剩余额度/总额度'),
-      key: 'quota_usage',
-      render: (text, record) => renderQuotaUsage(text, record, t),
+      id: 'quota_usage',
+      header: t('可用量/总使用量'),
+      cell: ({ row }) => renderQuotaUsage(null, row.original, t),
     },
     {
-      title: t('分组'),
-      dataIndex: 'group',
-      key: 'group',
-      render: (text, record) => renderGroupColumn(text, record, t),
+      accessorKey: 'group',
+      header: t('分组'),
+      cell: ({ row }) => renderGroupColumn(row.original.group, row.original, t),
     },
     {
-      title: t('密钥'),
-      key: 'token_key',
-      render: (text, record) =>
+      id: 'token_key',
+      header: t('密钥'),
+      cell: ({ row }) =>
         renderTokenKey(
-          text,
-          record,
+          null,
+          row.original,
           showKeys,
           resolvedTokenKeys,
           loadingTokenKeys,
@@ -487,41 +560,43 @@ export const getTokensColumns = ({
         ),
     },
     {
-      title: t('可用模型'),
-      dataIndex: 'model_limits',
-      render: (text, record) => renderModelLimits(text, record, t),
+      accessorKey: 'model_limits',
+      header: t('可用模型'),
+      cell: ({ row }) =>
+        renderModelLimits(row.original.model_limits, row.original, t),
     },
     {
-      title: t('IP限制'),
-      dataIndex: 'allow_ips',
-      render: (text) => renderAllowIps(text, t),
+      accessorKey: 'allow_ips',
+      header: t('IP限制'),
+      cell: ({ row }) => renderAllowIps(row.original.allow_ips, t),
     },
     {
-      title: t('创建时间'),
-      dataIndex: 'created_time',
-      render: (text, record, index) => {
-        return <div>{renderTimestamp(text)}</div>;
-      },
+      accessorKey: 'created_time',
+      header: t('创建时间'),
+      cell: ({ row }) => (
+        <div>{renderTimestamp(row.original.created_time)}</div>
+      ),
     },
     {
-      title: t('过期时间'),
-      dataIndex: 'expired_time',
-      render: (text, record, index) => {
+      accessorKey: 'expired_time',
+      header: t('过期时间'),
+      cell: ({ row }) => {
         return (
           <div>
-            {record.expired_time === -1 ? t('永不过期') : renderTimestamp(text)}
+            {row.original.expired_time === -1
+              ? t('永不过期')
+              : renderTimestamp(row.original.expired_time)}
           </div>
         );
       },
     },
     {
-      title: '',
-      dataIndex: 'operate',
-      fixed: 'right',
-      render: (text, record, index) =>
+      id: 'operate',
+      header: '',
+      cell: ({ row }) =>
         renderOperations(
-          text,
-          record,
+          null,
+          row.original,
           onOpenLink,
           setEditingToken,
           setShowEdit,

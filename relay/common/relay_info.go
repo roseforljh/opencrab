@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	relayconstant "github.com/QuantumNous/opencrab/relay/constant"
-	"github.com/QuantumNous/opencrab/setting/model_setting"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	relayconstant "github.com/roseforljh/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/setting/model_setting"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -118,38 +118,14 @@ type RelayInfo struct {
 	RelayFormat            types.RelayFormat
 	SendResponseCount      int
 	ReceivedResponseCount  int
-	FinalPreConsumedQuota  int // 最终预消耗的配额
-	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
-	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
-	// 必须在提交前锁定全额。
-	ForcePreConsume bool
-	// Billing 是计费会话，封装了预扣费/结算/退款的统一生命周期。
-	// 免费模型时为 nil。
-	Billing BillingSettler
-	// BillingSource indicates whether this request is billed from wallet quota or subscription.
-	// "" or "wallet" => wallet; "subscription" => subscription
-	BillingSource string
-	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
-	SubscriptionId int
-	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
-	SubscriptionPreConsumed int64
-	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).
-	SubscriptionPostDelta int64
-	// SubscriptionPlanId / SubscriptionPlanTitle are used for logging/UI display.
-	SubscriptionPlanId    int
-	SubscriptionPlanTitle string
-	// RequestId is used for idempotent pre-consume/refund
-	RequestId string
-	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
-	SubscriptionAmountTotal               int64
-	SubscriptionAmountUsedAfterPreConsume int64
-	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
-	IsChannelTest                         bool // channel test request
-	RetryIndex                            int
-	LastError                             *types.NewAPIError
-	RuntimeHeadersOverride                map[string]interface{}
-	UseRuntimeHeadersOverride             bool
-	ParamOverrideAudit                    []string
+	RequestId              string
+	IsClaudeBetaQuery      bool // /v1/messages?beta=true
+	IsChannelTest          bool // channel test request
+	RetryIndex             int
+	LastError              *types.OpenCrabError
+	RuntimeHeadersOverride map[string]interface{}
+	UseRuntimeHeadersOverride bool
+	ParamOverrideAudit     []string
 
 	PriceData types.PriceData
 
@@ -242,7 +218,6 @@ func (info *RelayInfo) ToString() string {
 	fmt.Fprintf(b, "ShouldIncludeUsage: %t, ", info.ShouldIncludeUsage)
 	fmt.Fprintf(b, "DisablePing: %t, ", info.DisablePing)
 	fmt.Fprintf(b, "SendResponseCount: %d, ", info.SendResponseCount)
-	fmt.Fprintf(b, "FinalPreConsumedQuota: %d, ", info.FinalPreConsumedQuota)
 
 	// User & token info (mask secrets)
 	fmt.Fprintf(b, "User{ Id: %d, Email: %q, Group: %q, UsingGroup: %q, Quota: %d }, ",

@@ -3,8 +3,8 @@
 import (
 	"strconv"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/model"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/model"
 
 	"github.com/gin-gonic/gin"
 )

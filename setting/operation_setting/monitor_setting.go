@@ -4,7 +4,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/QuantumNous/opencrab/setting/config"
+	"github.com/roseforljh/opencrab/setting/config"
 )
 
 type MonitorSetting struct {

@@ -1,6 +1,6 @@
 ﻿package console_setting
 
-import "github.com/QuantumNous/opencrab/setting/config"
+import "github.com/roseforljh/opencrab/setting/config"
 
 type ConsoleSetting struct {
 	ApiInfo              string `json:"api_info"`              // 控制台 API 信息 (JSON 数组字符串)

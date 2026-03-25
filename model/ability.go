@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"

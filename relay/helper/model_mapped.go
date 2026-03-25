@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/relay/common"
-	relayconstant "github.com/QuantumNous/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/relay/common"
+	relayconstant "github.com/roseforljh/opencrab/relay/constant"
 	"github.com/gin-gonic/gin"
 )
 

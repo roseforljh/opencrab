@@ -3,9 +3,9 @@
 import (
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/service"
-	"github.com/QuantumNous/opencrab/setting"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/service"
+	"github.com/roseforljh/opencrab/setting"
 
 	"github.com/gin-gonic/gin"
 )

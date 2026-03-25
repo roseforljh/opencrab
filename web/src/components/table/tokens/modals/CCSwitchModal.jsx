@@ -1,33 +1,22 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import React, { useState, useEffect, useMemo } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
-  Modal,
-  RadioGroup,
-  Radio,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Select,
-  Input,
-  Toast,
-  Typography,
-} from '@douyinfe/semi-ui';
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useTranslation } from 'react-i18next';
-import { selectFilter } from '../../../../helpers';
+import { showError } from '../../../../helpers';
 
 const APP_CONFIGS = {
   claude: {
@@ -113,7 +102,7 @@ export default function CCSwitchModal({
 
   const handleSubmit = () => {
     if (!models.model) {
-      Toast.warning(t('请选择主模型'));
+      showError(t('请选择主模型'));
       return;
     }
     const url = buildCCSwitchURL(app, name, models, 'sk-' + tokenKey);
@@ -131,64 +120,73 @@ export default function CCSwitchModal({
   );
 
   return (
-    <Modal
-      title={t('填入 CC Switch')}
-      visible={visible}
-      onCancel={onClose}
-      onOk={handleSubmit}
-      okText={t('打开 CC Switch')}
-      cancelText={t('取消')}
-      maskClosable={false}
-      width={480}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <div style={fieldLabelStyle}>{t('应用')}</div>
-          <RadioGroup
-            type='button'
-            value={app}
-            onChange={(e) => handleAppChange(e.target.value)}
-            style={{ width: '100%' }}
-          >
-            {Object.entries(APP_CONFIGS).map(([key, cfg]) => (
-              <Radio key={key} value={key}>
-                {cfg.label}
-              </Radio>
-            ))}
-          </RadioGroup>
-        </div>
-
-        <div>
-          <div style={fieldLabelStyle}>{t('名称')}</div>
-          <Input
-            value={name}
-            onChange={setName}
-            placeholder={currentConfig.defaultName}
-          />
-        </div>
-
-        {currentConfig.modelFields.map((field) => (
-          <div key={field.key}>
-            <div style={fieldLabelStyle}>
-              {t(field.label)}
-              {field.key === 'model' && (
-                <Typography.Text type='danger'> *</Typography.Text>
-              )}
+    <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className='max-w-[480px] border-white/10 bg-black text-white'>
+        <DialogHeader>
+          <DialogTitle>{t('填入 CC Switch')}</DialogTitle>
+        </DialogHeader>
+        <div className='flex flex-col gap-4'>
+          <div>
+            <div style={fieldLabelStyle}>{t('应用')}</div>
+            <div className='flex flex-wrap gap-2'>
+              {Object.entries(APP_CONFIGS).map(([key, cfg]) => (
+                <Button
+                  key={key}
+                  type='button'
+                  variant={app === key ? 'default' : 'secondary'}
+                  className='rounded-xl'
+                  onClick={() => handleAppChange(key)}
+                >
+                  {cfg.label}
+                </Button>
+              ))}
             </div>
-            <Select
-              placeholder={t('请选择模型')}
-              optionList={modelOptions}
-              value={models[field.key] || undefined}
-              onChange={(val) => handleModelChange(field.key, val)}
-              filter={selectFilter}
-              style={{ width: '100%' }}
-              showClear
-              searchable
-              emptyContent={t('暂无数据')}
+          </div>
+
+          <div>
+            <div style={fieldLabelStyle}>{t('名称')}</div>
+            <Input
+              value={name}
+              onChange={setName}
+              placeholder={currentConfig.defaultName}
             />
           </div>
-        ))}
-      </div>
-    </Modal>
+
+          {currentConfig.modelFields.map((field) => (
+            <div key={field.key}>
+              <div style={fieldLabelStyle}>
+                {t(field.label)}
+                {field.key === 'model' && (
+                  <span className='text-red-400'> *</span>
+                )}
+              </div>
+              <Select
+                value={models[field.key] || ''}
+                onValueChange={(val) => handleModelChange(field.key, val)}
+              >
+                <SelectTrigger className='w-full border-white/10 bg-white/6 text-white'>
+                  <SelectValue placeholder={t('请选择模型')} />
+                </SelectTrigger>
+                <SelectContent className='border-white/10 bg-[#0b1220] text-white'>
+                  {(modelOptions || []).map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button type='button' variant='secondary' onClick={onClose}>
+            {t('取消')}
+          </Button>
+          <Button type='button' onClick={handleSubmit}>
+            {t('打开 CC Switch')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

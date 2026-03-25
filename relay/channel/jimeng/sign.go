@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/logger"
+	"github.com/roseforljh/opencrab/logger"
 	"github.com/gin-gonic/gin"
 )
 

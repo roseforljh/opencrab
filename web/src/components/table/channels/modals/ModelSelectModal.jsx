@@ -1,38 +1,20 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Info, ChevronDown } from 'lucide-react';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import {
-  Modal,
-  Checkbox,
-  Spin,
-  Input,
-  Typography,
-  Empty,
-  Tabs,
-  Collapse,
-  Tooltip,
-} from '@douyinfe/semi-ui';
-import { IconSearch, IconInfoCircle } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { getModelCategories } from '../../../../helpers/render';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 
 const ModelSelectModal = ({
   visible,
@@ -59,6 +41,7 @@ const ModelSelectModal = ({
   const [checkedList, setCheckedList] = useState(normalizedSelected);
   const [keyword, setKeyword] = useState('');
   const [activeTab, setActiveTab] = useState('new');
+  const [openSections, setOpenSections] = useState({});
 
   const isMobile = useIsMobile();
   const normalizeModelName = (model) =>
@@ -117,6 +100,7 @@ const ModelSelectModal = ({
   useEffect(() => {
     if (visible) {
       setCheckedList(normalizedSelected);
+      setOpenSections({});
     }
   }, [visible, normalizedSelected]);
 
@@ -236,127 +220,165 @@ const ModelSelectModal = ({
     const categoryEntries = Object.entries(modelsByCategory);
     if (categoryEntries.length === 0) return null;
 
-    // 生成所有面板的key，确保都展开
-    const allActiveKeys = categoryEntries.map(
-      (_, index) => `${categoryKeyPrefix}_${index}`,
-    );
-
     return (
-      <Collapse
-        key={`${categoryKeyPrefix}_${categoryEntries.length}`}
-        defaultActiveKey={[]}
-      >
-        {categoryEntries.map(([key, categoryData], index) => (
-          <Collapse.Panel
-            key={`${categoryKeyPrefix}_${index}`}
-            itemKey={`${categoryKeyPrefix}_${index}`}
-            header={`${categoryData.label} (${categoryData.models.length})`}
-            extra={
-              <Checkbox
-                checked={isCategoryAllSelected(categoryData.models)}
-                indeterminate={isCategoryIndeterminate(categoryData.models)}
-                onChange={(e) => {
-                  e.stopPropagation(); // 防止触发面板折叠
-                  handleCategorySelectAll(
-                    categoryData.models,
-                    e.target.checked,
-                  );
-                }}
-                onClick={(e) => e.stopPropagation()} // 防止点击checkbox时折叠面板
-              />
-            }
-          >
-            <div className='flex items-center gap-2 mb-3'>
-              {categoryData.icon}
-              <Typography.Text type='secondary' size='small'>
-                {t('已选择 {{selected}} / {{total}}', {
-                  selected: categoryData.models.filter((model) =>
-                    checkedList.includes(model),
-                  ).length,
-                  total: categoryData.models.length,
-                })}
-              </Typography.Text>
-            </div>
-            <div className='grid grid-cols-2 gap-x-4'>
-              {categoryData.models.map((model) => (
-                <Checkbox key={model} value={model} className='my-1'>
-                  <span className='flex items-center gap-2'>
-                    <span>{model}</span>
-                    {redirectOnlySet.has(normalizeModelName(model)) && (
-                      <Tooltip
-                        position='top'
-                        content={t('来自模型重定向，尚未加入模型列表')}
+      <div className='space-y-3'>
+        {categoryEntries.map(([key, categoryData], index) => {
+          const sectionKey = `${categoryKeyPrefix}_${index}`;
+          const isOpen = Boolean(openSections[sectionKey]);
+          const selectedCount = categoryData.models.filter((model) =>
+            checkedList.includes(model),
+          ).length;
+
+          return (
+            <div
+              key={sectionKey}
+              className='rounded-xl border border-white/10 bg-white/5'
+            >
+              <button
+                type='button'
+                className='flex w-full items-center justify-between gap-3 px-4 py-3 text-left'
+                onClick={() =>
+                  setOpenSections((prev) => ({
+                    ...prev,
+                    [sectionKey]: !prev[sectionKey],
+                  }))
+                }
+              >
+                <div className='flex items-center gap-3'>
+                  <Checkbox
+                    checked={isCategoryAllSelected(categoryData.models)}
+                    indeterminate={isCategoryIndeterminate(categoryData.models)}
+                    onCheckedChange={(checked) =>
+                      handleCategorySelectAll(
+                        categoryData.models,
+                        Boolean(checked),
+                      )
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={t('选择 {{name}} 分类', {
+                      name: categoryData.label,
+                    })}
+                  />
+                  <div className='flex items-center gap-2'>
+                    {categoryData.icon}
+                    <div>
+                      <div className='font-medium text-white'>
+                        {categoryData.label} ({categoryData.models.length})
+                      </div>
+                      <div className='text-xs text-white/45'>
+                        {t('已选择 {{selected}} / {{total}}', {
+                          selected: selectedCount,
+                          total: categoryData.models.length,
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              {isOpen && (
+                <div className='grid grid-cols-1 gap-2 px-4 pb-4 sm:grid-cols-2'>
+                  {categoryData.models.map((model) => {
+                    const checked = checkedList.includes(model);
+                    return (
+                      <label
+                        key={model}
+                        className='my-1 flex items-center gap-2 text-sm text-white/85'
                       >
-                        <IconInfoCircle
-                          size='small'
-                          className='text-amber-500 cursor-help'
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(nextChecked) => {
+                            setCheckedList((prev) => {
+                              if (nextChecked) {
+                                return prev.includes(model)
+                                  ? prev
+                                  : [...prev, model];
+                              }
+                              return prev.filter((item) => item !== model);
+                            });
+                          }}
                         />
-                      </Tooltip>
-                    )}
-                  </span>
-                </Checkbox>
-              ))}
+                        <span className='flex items-center gap-2'>
+                          <span>{model}</span>
+                          {redirectOnlySet.has(normalizeModelName(model)) && (
+                            <span
+                              className='inline-flex items-center text-amber-400'
+                              title={t('来自模型重定向，尚未加入模型列表')}
+                            >
+                              <Info className='h-4 w-4' />
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </Collapse.Panel>
-        ))}
-      </Collapse>
+          );
+        })}
+      </div>
     );
   };
 
   return (
-    <Modal
-      header={
-        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 py-4'>
-          <Typography.Title heading={5} className='m-0'>
-            {t('选择模型')}
-          </Typography.Title>
-          <div className='flex-shrink-0'>
-            <Tabs
-              type='slash'
-              size='small'
-              tabList={tabList}
-              activeKey={activeTab}
-              onChange={(key) => setActiveTab(key)}
-            />
+    <Dialog open={visible} onOpenChange={(open) => !open && onCancel?.()}>
+      <DialogContent
+        className={
+          isMobile
+            ? 'max-w-[95vw] border-white/10 bg-black text-white'
+            : 'max-w-[960px] border-white/10 bg-black text-white'
+        }
+      >
+        <DialogHeader>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+            <DialogTitle>{t('选择模型')}</DialogTitle>
+            <div className='flex flex-wrap gap-2'>
+              {tabList.map((tab) => (
+                <Button
+                  key={tab.itemKey}
+                  type='button'
+                  variant={activeTab === tab.itemKey ? 'default' : 'secondary'}
+                  size='sm'
+                  onClick={() => setActiveTab(tab.itemKey)}
+                >
+                  {tab.tab}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
-      }
-      visible={visible}
-      onOk={handleOk}
-      onCancel={onCancel}
-      okText={t('确定')}
-      cancelText={t('取消')}
-      size={isMobile ? 'full-width' : 'large'}
-      closeOnEsc
-      maskClosable
-      centered
-    >
-      <Input
-        prefix={<IconSearch size={14} />}
-        placeholder={t('搜索模型')}
-        value={keyword}
-        onChange={(v) => setKeyword(v)}
-        showClear
-      />
+        </DialogHeader>
 
-      <Spin spinning={!models || models.length === 0}>
-        <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}>
-          {filteredModels.length === 0 ? (
-            <Empty
-              image={
-                <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
-                  ⌕
-                </div>
-              }
-              title={t('暂无匹配模型')}
-              description={t('请尝试供应商分类或缩短关键词后再试。')}
-              style={{ padding: 30 }}
-            />
+        <div className='relative'>
+          <Search className='pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/40' />
+          <Input
+            placeholder={t('搜索模型')}
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            className='border-white/10 bg-white/6 pl-9 text-white'
+          />
+        </div>
+
+        <div className='max-h-[400px] overflow-y-auto pr-2'>
+          {!models || models.length === 0 ? (
+            <div className='flex items-center justify-center py-12 text-sm text-white/50'>
+              {t('加载中...')}
+            </div>
+          ) : filteredModels.length === 0 ? (
+            <div className='flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-black/30 p-6 text-center'>
+              <div className='mb-3 flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
+                ⌕
+              </div>
+              <div className='font-medium'>{t('暂无匹配模型')}</div>
+              <div className='mt-1 text-sm text-white/45'>
+                {t('请尝试供应商分类或缩短关键词后再试。')}
+              </div>
+            </div>
           ) : (
-            <Checkbox.Group
-              value={checkedList}
-              onChange={(vals) => setCheckedList(vals)}
-            >
+            <>
               {activeTab === 'new' && newModels.length > 0 && (
                 <div>{renderModelsByCategory(newModelsByCategory, 'new')}</div>
               )}
@@ -365,20 +387,13 @@ const ModelSelectModal = ({
                   {renderModelsByCategory(existingModelsByCategory, 'existing')}
                 </div>
               )}
-            </Checkbox.Group>
+            </>
           )}
         </div>
-      </Spin>
 
-      <Typography.Text
-        type='secondary'
-        size='small'
-        className='block text-right mt-4'
-      >
-        <div className='flex items-center justify-end gap-2'>
+        <div className='flex items-center justify-between gap-3 text-sm text-white/60'>
           {(() => {
-            const currentModels =
-              activeTab === 'new' ? newModels : existingModels;
+            const currentModels = activeTab === 'new' ? newModels : existingModels;
             const currentSelected = currentModels.filter((model) =>
               checkedList.includes(model),
             ).length;
@@ -396,19 +411,37 @@ const ModelSelectModal = ({
                     total: currentModels.length,
                   })}
                 </span>
-                <Checkbox
-                  checked={isAllSelected}
-                  indeterminate={isIndeterminate}
-                  onChange={(e) => {
-                    handleCategorySelectAll(currentModels, e.target.checked);
-                  }}
-                />
+                <div className='flex items-center gap-2'>
+                  <Badge
+                    variant='secondary'
+                    className='border-white/10 bg-white/10 text-white/70'
+                  >
+                    {t('总计 {{count}}', { count: checkedList.length })}
+                  </Badge>
+                  <Checkbox
+                    checked={isAllSelected}
+                    indeterminate={isIndeterminate}
+                    onCheckedChange={(checked) =>
+                      handleCategorySelectAll(currentModels, Boolean(checked))
+                    }
+                    aria-label={t('全选当前结果')}
+                  />
+                </div>
               </>
             );
           })()}
         </div>
-      </Typography.Text>
-    </Modal>
+
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button type='button' variant='secondary' onClick={onCancel}>
+            {t('取消')}
+          </Button>
+          <Button type='button' onClick={handleOk}>
+            {t('确定')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

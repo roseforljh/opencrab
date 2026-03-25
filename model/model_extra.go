@@ -1,9 +1,14 @@
 package model
 
-func GetModelEnableGroups(modelName string) []string {
-	// 确保缓存最新
-	GetPricing()
+import "sync"
 
+var (
+	modelEnableGroupsLock sync.RWMutex
+	modelEnableGroups     = make(map[string][]string)
+	modelQuotaTypeMap     = make(map[string]int)
+)
+
+func GetModelEnableGroups(modelName string) []string {
 	if modelName == "" {
 		return make([]string, 0)
 	}
@@ -19,8 +24,6 @@ func GetModelEnableGroups(modelName string) []string {
 
 // GetModelQuotaTypes 返回指定模型的计费类型集合（来自缓存）
 func GetModelQuotaTypes(modelName string) []int {
-	GetPricing()
-
 	modelEnableGroupsLock.RLock()
 	quota, ok := modelQuotaTypeMap[modelName]
 	modelEnableGroupsLock.RUnlock()

@@ -1,8 +1,8 @@
 ﻿package service
 
 import (
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
-	"github.com/QuantumNous/opencrab/setting/system_setting"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/setting/system_setting"
 )
 
 func GetCallbackAddress() string {

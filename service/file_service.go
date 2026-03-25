@@ -12,10 +12,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/image/webp"

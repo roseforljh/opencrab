@@ -1,24 +1,13 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React from 'react';
-import { Modal, Input, Typography } from '@douyinfe/semi-ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 const BatchTagModal = ({
   showBatchSetTag,
@@ -30,33 +19,43 @@ const BatchTagModal = ({
   t,
 }) => {
   return (
-    <Modal
-      title={t('批量设置标签')}
-      visible={showBatchSetTag}
-      onOk={batchSetChannelTag}
-      onCancel={() => setShowBatchSetTag(false)}
-      maskClosable={false}
-      centered={true}
-      size='small'
-      className='!rounded-lg'
+    <Dialog
+      open={showBatchSetTag}
+      onOpenChange={(open) => !open && setShowBatchSetTag(false)}
     >
-      <div className='mb-5'>
-        <Typography.Text>{t('请输入要设置的标签名称')}</Typography.Text>
-      </div>
-      <Input
-        placeholder={t('请输入标签名称')}
-        value={batchSetTagValue}
-        onChange={(v) => setBatchSetTagValue(v)}
-      />
-      <div className='mt-4'>
-        <Typography.Text type='secondary'>
+      <DialogContent className='max-w-[420px] border-white/10 bg-black text-white'>
+        <DialogHeader>
+          <DialogTitle>{t('批量设置标签')}</DialogTitle>
+        </DialogHeader>
+        <div className='mb-5 text-sm text-white/70'>
+          {t('请输入要设置的标签名称')}
+        </div>
+        <Input
+          placeholder={t('请输入标签名称')}
+          value={batchSetTagValue}
+          onChange={(e) => setBatchSetTagValue(e.target.value)}
+          className='border-white/10 bg-white/6 text-white'
+        />
+        <div className='mt-4 text-sm text-white/60'>
           {t('已选择 ${count} 个渠道').replace(
             '${count}',
             selectedChannels.length,
           )}
-        </Typography.Text>
-      </div>
-    </Modal>
+        </div>
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button
+            type='button'
+            variant='secondary'
+            onClick={() => setShowBatchSetTag(false)}
+          >
+            {t('取消')}
+          </Button>
+          <Button type='button' onClick={batchSetChannelTag}>
+            {t('确定')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

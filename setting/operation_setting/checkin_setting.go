@@ -1,6 +1,6 @@
 ﻿package operation_setting
 
-import "github.com/QuantumNous/opencrab/setting/config"
+import "github.com/roseforljh/opencrab/setting/config"
 
 // CheckinSetting 签到功能配置
 type CheckinSetting struct {

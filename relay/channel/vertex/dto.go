@@ -3,7 +3,7 @@
 import (
 	"encoding/json"
 
-	"github.com/QuantumNous/opencrab/dto"
+	"github.com/roseforljh/opencrab/dto"
 )
 
 type VertexAIClaudeRequest struct {

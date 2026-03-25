@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/setting/config"
+	"github.com/roseforljh/opencrab/setting/config"
 )
 
 //var claudeHeadersSettings = map[string][]string{}

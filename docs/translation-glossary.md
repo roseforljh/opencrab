@@ -22,10 +22,10 @@ This document provides standard translation references for key terminology in th
 | 补全 | Completion | 模型输出内容 | Model output content |
 | 输入 | Input/Prompt | 发送给模型的内容 | Content sent to the model |
 | 输出 | Output/Completion | 模型返回的内容 | Content returned by the model |
-| 模型倍率 | Model Ratio | 不同模型的计费倍率 | Billing ratio for different models |
-| 补全倍率 | Completion Ratio | 输出内容的额外计费倍率 | Additional billing ratio for output content |
+| 模型倍率 | Model Ratio | 不同模型的计费倍率 | Usage ratio for different models |
+| 补全倍率 | Completion Ratio | 输出内容的额外计费倍率 | Additional usage ratio for output content |
 | 固定价格 | Price per call | 按次计费的价格 | Fixed price per call |
-| 按量计费 | Pay-as-you-go | 根据使用量计费 | Billing based on usage |
+| 按量计费 | Pay-as-you-go | 根据使用量计费 | Usage-based charging |
 | 按次计费 | Pay-per-view | 每次调用固定价格 | Fixed price per invocation |
 
 ## 用户管理 (User Management)
@@ -61,7 +61,7 @@ This document provides standard translation references for key terminology in th
 | 两步验证 | Two-Factor Authentication | 为账户提供额外安全保护的验证方式 | Additional security verification method for accounts |
 | 2FA | Two-Factor Authentication | 两步验证的缩写 | Abbreviation for Two-Factor Authentication |
 
-## 计费相关 (Billing Related)
+## 计费相关 (Quota / Usage Related)
 
 | 中文 | English | 说明 | Description |
 |------|---------|------|-------------|

@@ -1,49 +1,21 @@
-/*
-Copyright (C) 2025 QuantumNous
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
-import React, { useEffect, useMemo, useState } from 'react';
-import { Layout, TabPane, Tabs } from '@douyinfe/semi-ui';
+import React, { useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Shapes, Cog, Shield } from 'lucide-react';
+import { Shapes, Shield } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
-import { isRoot } from '../../helpers';
 import OperationSetting from '../../components/settings/OperationSetting';
 import RateLimitSetting from '../../components/settings/RateLimitSetting';
 import ModelSetting from '../../components/settings/ModelSetting';
-import DashboardSetting from '../../components/settings/DashboardSetting';
-import ChatsSetting from '../../components/settings/ChatsSetting';
-import DrawingSetting from '../../components/settings/DrawingSetting';
-import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
 
 const Setting = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [tabActiveKey, setTabActiveKey] = useState('routing');
 
-  const panes = useMemo(() => {
-    if (!isRoot()) {
-      return [];
-    }
-
-    return [
+  const panes = useMemo(
+    () => [
       {
         tab: (
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -54,7 +26,6 @@ const Setting = () => {
         content: (
           <div className='space-y-4'>
             <ModelSetting />
-            <ModelDeploymentSetting />
             <RateLimitSetting />
           </div>
         ),
@@ -64,7 +35,7 @@ const Setting = () => {
         tab: (
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <Shield size={18} />
-            {t('安全与登录')}
+            {t('系统与安全')}
           </span>
         ),
         content: (
@@ -74,55 +45,43 @@ const Setting = () => {
         ),
         itemKey: 'security',
       },
-      {
-        tab: (
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <Cog size={18} />
-            {t('高级')}
-          </span>
-        ),
-        content: (
-          <div className='space-y-4'>
-            <DashboardSetting />
-            <ChatsSetting />
-            <DrawingSetting />
-          </div>
-        ),
-        itemKey: 'advanced',
-      },
-    ];
-  }, [t]);
-  const onChangeTab = (key) => {
-    setTabActiveKey(key);
-    navigate(`?tab=${key}`);
-  };
-  useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const tab = searchParams.get('tab');
-    if (tab) {
-      setTabActiveKey(tab);
-    } else {
-      onChangeTab('routing');
-    }
-  }, [location.search]);
+    ],
+    [t],
+  );
+
+  const searchParams = new URLSearchParams(location.search);
+  const tabActiveKey = searchParams.get('tab') || 'routing';
+
   return (
-    <div className='mt-[60px] px-2'>
-      <Layout>
-        <Layout.Content>
-          <Tabs
-            type='card'
-            collapsible
-            activeKey={tabActiveKey}
-            onChange={(key) => onChangeTab(key)}
-          >
+    <div className='px-2'>
+      <div className='w-full'>
+        <Tabs
+          value={tabActiveKey}
+          onValueChange={(key) => navigate(`?tab=${key}`)}
+          className='w-full'
+        >
+          <TabsList className='bg-white/5 border border-white/10 mb-4 h-auto p-1'>
             {panes.map((pane) => (
-              <TabPane itemKey={pane.itemKey} tab={pane.tab} key={pane.itemKey}>
-                {tabActiveKey === pane.itemKey && pane.content}
-              </TabPane>
+              <TabsTrigger
+                key={pane.itemKey}
+                value={pane.itemKey}
+                className='data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/60 py-2 px-4'
+              >
+                {pane.tab}
+              </TabsTrigger>
             ))}
-          </Tabs>
-        </Layout.Content>
-      </Layout>
+          </TabsList>
+          {panes.map((pane) => (
+            <TabsContent
+              key={pane.itemKey}
+              value={pane.itemKey}
+              className='m-0 focus-visible:outline-none'
+            >
+              {pane.content}
+            </TabsContent>
+          ))}
+        </Tabs>
+      </div>
     </div>
   );
 };

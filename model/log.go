@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/types"
 
 	"github.com/gin-gonic/gin"
 
@@ -199,7 +199,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 }
 
-type RecordTaskBillingLogParams struct {
+type RecordTaskUsageLogParams struct {
 	UserId    int
 	LogType   int
 	Content   string
@@ -211,7 +211,7 @@ type RecordTaskBillingLogParams struct {
 	Other     map[string]interface{}
 }
 
-func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
+func RecordTaskUsageLog(params RecordTaskUsageLogParams) {
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
@@ -238,7 +238,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 	err := LOG_DB.Create(log).Error
 	if err != nil {
-		common.SysLog("failed to record task billing log: " + err.Error())
+		common.SysLog("failed to record task usage log: " + err.Error())
 	}
 }
 

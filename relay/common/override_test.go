@@ -6,11 +6,11 @@ import (
 	"reflect"
 	"testing"
 
-	common2 "github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/types"
+	common2 "github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/types"
 
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/setting/model_setting"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/setting/model_setting"
 	"github.com/samber/lo"
 )
 

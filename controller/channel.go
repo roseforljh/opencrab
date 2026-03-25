@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/model"
-	relaychannel "github.com/QuantumNous/opencrab/relay/channel"
-	"github.com/QuantumNous/opencrab/relay/channel/gemini"
-	"github.com/QuantumNous/opencrab/relay/channel/ollama"
-	"github.com/QuantumNous/opencrab/service"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/model"
+	relaychannel "github.com/roseforljh/opencrab/relay/channel"
+	"github.com/roseforljh/opencrab/relay/channel/gemini"
+	"github.com/roseforljh/opencrab/relay/channel/ollama"
+	"github.com/roseforljh/opencrab/service"
 
 	"github.com/gin-gonic/gin"
 )

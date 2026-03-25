@@ -3,7 +3,7 @@
 import (
 	"testing"
 
-	"github.com/QuantumNous/opencrab/constant"
+	"github.com/roseforljh/opencrab/constant"
 )
 
 func TestValidateRedirectURL(t *testing.T) {

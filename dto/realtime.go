@@ -1,6 +1,6 @@
 ﻿package dto
 
-import "github.com/QuantumNous/opencrab/types"
+import "github.com/roseforljh/opencrab/types"
 
 const (
 	RealtimeEventTypeError              = "error"

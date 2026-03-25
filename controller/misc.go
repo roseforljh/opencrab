@@ -3,14 +3,14 @@
 import (
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/middleware"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/setting"
-	"github.com/QuantumNous/opencrab/setting/console_setting"
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
-	"github.com/QuantumNous/opencrab/setting/system_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/middleware"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/setting"
+	"github.com/roseforljh/opencrab/setting/console_setting"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -51,7 +51,6 @@ func GetStatus(c *gin.Context) {
 		"server_address":                system_setting.ServerAddress,
 		"turnstile_check":               common.TurnstileCheckEnabled,
 		"turnstile_site_key":            common.TurnstileSiteKey,
-		"top_up_link":                   common.TopUpLink,
 		"docs_link":                     operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":                common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
@@ -149,23 +148,9 @@ func GetPrivacyPolicy(c *gin.Context) {
 }
 
 func GetMidjourney(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    common.OptionMap["Midjourney"],
-	})
-	return
-}
-
-func GetHomePageContent(c *gin.Context) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    common.OptionMap["HomePageContent"],
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"success": false,
+		"message": "midjourney has been removed from personal edition",
 	})
 	return
 }

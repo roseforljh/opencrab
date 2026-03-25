@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/setting"
-	"github.com/QuantumNous/opencrab/setting/console_setting"
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/setting"
+	"github.com/roseforljh/opencrab/setting/console_setting"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 )

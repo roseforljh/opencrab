@@ -1,6 +1,6 @@
 ﻿package operation_setting
 
-import "github.com/QuantumNous/opencrab/setting/config"
+import "github.com/roseforljh/opencrab/setting/config"
 
 // TokenSetting 令牌相关配置
 type TokenSetting struct {

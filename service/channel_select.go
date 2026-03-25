@@ -3,11 +3,11 @@
 import (
 	"errors"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/setting"
 	"github.com/gin-gonic/gin"
 )
 

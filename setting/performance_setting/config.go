@@ -1,8 +1,8 @@
 ﻿package performance_setting
 
 import (
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/setting/config"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/setting/config"
 )
 
 // PerformanceSetting 性能设置配置

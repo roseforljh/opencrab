@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -11,52 +11,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/logger"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/logger"
+	"github.com/roseforljh/opencrab/types"
 )
-
-func MidjourneyErrorWrapper(code int, desc string) *dto.MidjourneyResponse {
-	return &dto.MidjourneyResponse{
-		Code:        code,
-		Description: desc,
-	}
-}
-
-func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int) *dto.MidjourneyResponseWithStatusCode {
-	return &dto.MidjourneyResponseWithStatusCode{
-		StatusCode: statusCode,
-		Response:   *MidjourneyErrorWrapper(code, desc),
-	}
-}
-
-//// OpenAIErrorWrapper wraps an error into an OpenAIErrorWithStatusCode
-//func OpenAIErrorWrapper(err error, code string, statusCode int) *dto.OpenAIErrorWithStatusCode {
-//	text := err.Error()
-//	lowerText := strings.ToLower(text)
-//	if !strings.HasPrefix(lowerText, "get file base64 from url") && !strings.HasPrefix(lowerText, "mime type is not supported") {
-//		if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
-//			common.SysLog(fmt.Sprintf("error: %s", text))
-//			text = "请求上游地址失败"
-//		}
-//	}
-//	openAIError := dto.OpenAIError{
-//		Message: text,
-//		Type:    "new_api_error",
-//		Code:    code,
-//	}
-//	return &dto.OpenAIErrorWithStatusCode{
-//		Error:      openAIError,
-//		StatusCode: statusCode,
-//	}
-//}
-//
-//func OpenAIErrorWrapperLocal(err error, code string, statusCode int) *dto.OpenAIErrorWithStatusCode {
-//	openaiErr := OpenAIErrorWrapper(err, code, statusCode)
-//	openaiErr.LocalError = true
-//	return openaiErr
-//}
 
 func ClaudeErrorWrapper(err error, code string, statusCode int) *dto.ClaudeErrorWithStatusCode {
 	text := err.Error()
@@ -69,7 +28,7 @@ func ClaudeErrorWrapper(err error, code string, statusCode int) *dto.ClaudeError
 	}
 	claudeError := types.ClaudeError{
 		Message: text,
-		Type:    "new_api_error",
+		Type:    "opencrab_error",
 	}
 	return &dto.ClaudeErrorWithStatusCode{
 		Error:      claudeError,
@@ -83,8 +42,8 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 	return claudeErr
 }
 
-func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
-	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (openCrabErr *types.OpenCrabError) {
+	openCrabErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -102,34 +61,33 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
 		if showBodyWhenFail {
-			newApiErr.Err = buildErrWithBody("")
+			openCrabErr.Err = buildErrWithBody("")
 		} else {
 			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, string(responseBody)))
-			newApiErr.Err = fmt.Errorf("bad response status code %d", resp.StatusCode)
+			openCrabErr.Err = fmt.Errorf("bad response status code %d", resp.StatusCode)
 		}
 		return
 	}
 
 	if common.GetJsonType(errResponse.Error) == "object" {
-		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
-			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
+			openCrabErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
 			if showBodyWhenFail {
-				newApiErr.Err = buildErrWithBody(newApiErr.Error())
+				openCrabErr.Err = buildErrWithBody(openCrabErr.Error())
 			}
 			return
 		}
 	}
-	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	openCrabErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	if showBodyWhenFail {
-		newApiErr.Err = buildErrWithBody(newApiErr.Error())
+		openCrabErr.Err = buildErrWithBody(openCrabErr.Error())
 	}
 	return
 }
 
-func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) {
-	if newApiErr == nil {
+func ResetStatusCode(openCrabErr *types.OpenCrabError, statusCodeMappingStr string) {
+	if openCrabErr == nil {
 		return
 	}
 	if statusCodeMappingStr == "" || statusCodeMappingStr == "{}" {
@@ -140,16 +98,16 @@ func ResetStatusCode(newApiErr *types.NewAPIError, statusCodeMappingStr string) 
 	if err != nil {
 		return
 	}
-	if newApiErr.StatusCode == http.StatusOK {
+	if openCrabErr.StatusCode == http.StatusOK {
 		return
 	}
-	codeStr := strconv.Itoa(newApiErr.StatusCode)
+	codeStr := strconv.Itoa(openCrabErr.StatusCode)
 	if value, ok := statusCodeMapping[codeStr]; ok {
 		intCode, ok := parseStatusCodeMappingValue(value)
 		if !ok {
 			return
 		}
-		newApiErr.StatusCode = intCode
+		openCrabErr.StatusCode = intCode
 	}
 }
 
@@ -193,10 +151,8 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 	lowerText := strings.ToLower(text)
 	if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
 		common.SysLog(fmt.Sprintf("error: %s", text))
-		//text = "请求上游地址失败"
 		text = common.MaskSensitiveInfo(text)
 	}
-	//避免暴露内部错误
 	taskError := &dto.TaskError{
 		Code:       code,
 		Message:    text,
@@ -207,8 +163,7 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 	return taskError
 }
 
-// TaskErrorFromAPIError 将 PreConsumeBilling 返回的 NewAPIError 转换为 TaskError。
-func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
+func TaskErrorFromAPIError(apiErr *types.OpenCrabError) *dto.TaskError {
 	if apiErr == nil {
 		return nil
 	}

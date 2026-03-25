@@ -1,6 +1,6 @@
 ﻿package palm
 
-import "github.com/QuantumNous/opencrab/dto"
+import "github.com/roseforljh/opencrab/dto"
 
 type PaLMChatMessage struct {
 	Author  string `json:"author"`

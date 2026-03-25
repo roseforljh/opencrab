@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	relayconstant "github.com/QuantumNous/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	relayconstant "github.com/roseforljh/opencrab/relay/constant"
 	"github.com/gin-gonic/gin"
 )
 

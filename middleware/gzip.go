@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/constant"
+	"github.com/roseforljh/opencrab/constant"
 	"github.com/andybalholm/brotli"
 	"github.com/gin-gonic/gin"
 )

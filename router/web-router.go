@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/controller"
-	"github.com/QuantumNous/opencrab/middleware"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/controller"
+	"github.com/roseforljh/opencrab/middleware"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"

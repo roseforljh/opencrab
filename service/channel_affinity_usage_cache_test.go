@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

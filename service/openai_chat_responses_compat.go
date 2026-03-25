@@ -1,8 +1,8 @@
 ﻿package service
 
 import (
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/service/openaicompat"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/service/openaicompat"
 )
 
 func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*dto.OpenAIResponsesRequest, error) {

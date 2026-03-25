@@ -3,8 +3,8 @@
 import (
 	"testing"
 
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/model"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/model"
 	"github.com/stretchr/testify/require"
 )
 

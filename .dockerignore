@@ -1,10 +1,24 @@
-.github
 .git
-*.md
+.github
 .vscode
 .gitignore
-Makefile
+.gitattributes
+*.md
 docs
 .eslintcache
 .gocache
-/web/node_modules
+
+# local runtime data
+logs
+data
+
+# frontend artifacts and dependencies
+web/node_modules
+web/dist
+
+# misc
+.env
+.env.*
+electron
+OpenCrab.png
+build-check.log

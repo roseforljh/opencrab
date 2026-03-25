@@ -1,31 +1,5 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React from 'react';
-import {
-  Button,
-  Space,
-  Tag,
-  Typography,
-  Modal,
-  Tooltip,
-} from '@douyinfe/semi-ui';
 import {
   timestamp2string,
   getLobeHubIcon,
@@ -35,8 +9,24 @@ import {
   renderLimitedItems,
   renderDescription,
 } from '../../common/ui/RenderUtils';
-
-const { Text } = Typography;
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Render timestamp
 function renderTimestamp(timestamp) {
@@ -59,13 +49,13 @@ const renderVendorTag = (vendorId, vendorMap, t) => {
   if (!vendorId || !vendorMap[vendorId]) return '-';
   const v = vendorMap[vendorId];
   return (
-    <Tag
-      color='white'
-      shape='circle'
-      prefixIcon={getLobeHubIcon(v.icon || 'Layers', 14)}
+    <Badge
+      variant='outline'
+      className='rounded-full gap-1 border-white/20 bg-white/5 text-white/80 font-normal'
     >
+      {getLobeHubIcon(v.icon || 'Layers', 14)}
       {v.name}
-    </Tag>
+    </Badge>
   );
 };
 
@@ -75,9 +65,9 @@ const renderGroups = (groups) => {
   return renderLimitedItems({
     items: groups,
     renderItem: (g, idx) => (
-      <Tag key={idx} size='small' shape='circle' color={stringToColor(g)}>
+      <Badge key={idx} variant='secondary' className='rounded-full font-normal'>
         {g}
-      </Tag>
+      </Badge>
     ),
   });
 };
@@ -89,9 +79,9 @@ const renderTags = (text) => {
   return renderLimitedItems({
     items: tagsArr,
     renderItem: (tag, idx) => (
-      <Tag key={idx} size='small' shape='circle' color={stringToColor(tag)}>
+      <Badge key={idx} variant='secondary' className='rounded-full font-normal'>
         {tag}
-      </Tag>
+      </Badge>
     ),
   });
 };
@@ -106,9 +96,13 @@ const renderEndpoints = (value) => {
       return renderLimitedItems({
         items: keys,
         renderItem: (key, idx) => (
-          <Tag key={idx} size='small' shape='circle' color={stringToColor(key)}>
+          <Badge
+            key={idx}
+            variant='secondary'
+            className='rounded-full font-normal'
+          >
             {key}
-          </Tag>
+          </Badge>
         ),
         maxDisplay: 3,
       });
@@ -118,9 +112,13 @@ const renderEndpoints = (value) => {
       return renderLimitedItems({
         items: parsed,
         renderItem: (ep, idx) => (
-          <Tag key={idx} color='white' size='small' shape='circle'>
+          <Badge
+            key={idx}
+            variant='outline'
+            className='rounded-full border-white/20 text-white/80 font-normal'
+          >
             {ep}
-          </Tag>
+          </Badge>
         ),
         maxDisplay: 3,
       });
@@ -139,22 +137,34 @@ const renderQuotaTypes = (arr, t) => {
     renderItem: (qt, idx) => {
       if (qt === 1) {
         return (
-          <Tag key={`${qt}-${idx}`} color='teal' size='small' shape='circle'>
+          <Badge
+            key={`${qt}-${idx}`}
+            variant='secondary'
+            className='rounded-full bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 font-normal'
+          >
             {t('按次计费')}
-          </Tag>
+          </Badge>
         );
       }
       if (qt === 0) {
         return (
-          <Tag key={`${qt}-${idx}`} color='violet' size='small' shape='circle'>
+          <Badge
+            key={`${qt}-${idx}`}
+            variant='secondary'
+            className='rounded-full bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 font-normal'
+          >
             {t('按量计费')}
-          </Tag>
+          </Badge>
         );
       }
       return (
-        <Tag key={`${qt}-${idx}`} color='white' size='small' shape='circle'>
+        <Badge
+          key={`${qt}-${idx}`}
+          variant='outline'
+          className='rounded-full border-white/20 text-white/80 font-normal'
+        >
           {qt}
-        </Tag>
+        </Badge>
       );
     },
     maxDisplay: 3,
@@ -167,9 +177,13 @@ const renderBoundChannels = (channels) => {
   return renderLimitedItems({
     items: channels,
     renderItem: (c, idx) => (
-      <Tag key={idx} color='white' size='small' shape='circle'>
+      <Badge
+        key={idx}
+        variant='outline'
+        className='rounded-full border-white/20 text-white/80 font-normal'
+      >
         {c.name}({c.type})
-      </Tag>
+      </Badge>
     ),
   });
 };
@@ -185,18 +199,21 @@ const renderOperations = (
   t,
 ) => {
   return (
-    <Space wrap>
+    <div className='flex flex-wrap items-center gap-2'>
       {record.status === 1 ? (
         <Button
-          type='danger'
-          size='small'
+          variant='destructive'
+          size='sm'
+          className='h-7 px-3 bg-red-500/20 text-red-400 hover:bg-red-500/30'
           onClick={() => manageModel(record.id, 'disable', record)}
         >
           {t('禁用')}
         </Button>
       ) : (
         <Button
-          size='small'
+          variant='secondary'
+          size='sm'
+          className='h-7 px-3 bg-green-500/20 text-green-400 hover:bg-green-500/30'
           onClick={() => manageModel(record.id, 'enable', record)}
         >
           {t('启用')}
@@ -204,8 +221,9 @@ const renderOperations = (
       )}
 
       <Button
-        type='tertiary'
-        size='small'
+        variant='secondary'
+        size='sm'
+        className='h-7 px-3 bg-white/5 hover:bg-white/10 text-white'
         onClick={() => {
           setEditingModel(record);
           setShowEdit(true);
@@ -214,35 +232,64 @@ const renderOperations = (
         {t('编辑')}
       </Button>
 
-      <Button
-        type='danger'
-        size='small'
-        onClick={() => {
-          Modal.confirm({
-            title: t('确定是否要删除此模型？'),
-            content: t('此修改将不可逆'),
-            onOk: () => {
-              (async () => {
-                await manageModel(record.id, 'delete', record);
-                await refresh();
-              })();
-            },
-          });
-        }}
-      >
-        {t('删除')}
-      </Button>
-    </Space>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            variant='destructive'
+            size='sm'
+            className='h-7 px-3 bg-red-500/20 text-red-400 hover:bg-red-500/30'
+          >
+            {t('删除')}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent className='bg-black border-white/10 text-white'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('确定是否要删除此模型？')}</AlertDialogTitle>
+            <AlertDialogDescription className='text-white/60'>
+              {t('此修改将不可逆')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className='bg-white/5 hover:bg-white/10 border-0'>
+              {t('取消')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className='bg-red-500 hover:bg-red-600 text-white'
+              onClick={() => {
+                (async () => {
+                  await manageModel(record.id, 'delete', record);
+                  await refresh();
+                })();
+              }}
+            >
+              {t('确认删除')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 };
 
 // 名称匹配类型渲染（带匹配数量 Tooltip）
 const renderNameRule = (rule, record, t) => {
   const map = {
-    0: { color: 'green', label: t('精确') },
-    1: { color: 'blue', label: t('前缀') },
-    2: { color: 'orange', label: t('包含') },
-    3: { color: 'purple', label: t('后缀') },
+    0: {
+      color: 'bg-green-500/20 text-green-400 border-green-500/30',
+      label: t('精确'),
+    },
+    1: {
+      color: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      label: t('前缀'),
+    },
+    2: {
+      color: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      label: t('包含'),
+    },
+    3: {
+      color: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      label: t('后缀'),
+    },
   };
   const cfg = map[rule];
   if (!cfg) return '-';
@@ -253,9 +300,12 @@ const renderNameRule = (rule, record, t) => {
   }
 
   const tagElement = (
-    <Tag color={cfg.color} size='small' shape='circle'>
+    <Badge
+      variant='outline'
+      className={`rounded-full font-medium ${cfg.color}`}
+    >
       {label}
-    </Tag>
+    </Badge>
   );
 
   if (
@@ -267,8 +317,13 @@ const renderNameRule = (rule, record, t) => {
   }
 
   return (
-    <Tooltip content={record.matched_models.join(', ')} showArrow>
-      {tagElement}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className='cursor-help'>{tagElement}</span>
+      </TooltipTrigger>
+      <TooltipContent className='bg-black/90 border-white/10 text-white max-w-xs break-words'>
+        <p>{record.matched_models.join(', ')}</p>
+      </TooltipContent>
     </Tooltip>
   );
 };
@@ -283,92 +338,112 @@ export const getModelsColumns = ({
 }) => {
   return [
     {
-      title: t('图标'),
-      dataIndex: 'icon',
-      width: 70,
-      align: 'center',
-      render: (text, record) => renderModelIconCol(record, vendorMap),
+      id: 'icon',
+      header: t('图标'),
+      accessorKey: 'icon',
+      cell: ({ row }) => renderModelIconCol(row.original, vendorMap),
     },
     {
-      title: t('模型名称'),
-      dataIndex: 'model_name',
-      render: (text) => (
-        <Text copyable onClick={(e) => e.stopPropagation()}>
-          {text}
-        </Text>
+      id: 'model_name',
+      header: t('模型名称'),
+      accessorKey: 'model_name',
+      cell: ({ row }) => (
+        <span
+          className='cursor-text select-all'
+          onClick={(e) => e.stopPropagation()}
+        >
+          {row.original.model_name}
+        </span>
       ),
     },
     {
-      title: t('匹配类型'),
-      dataIndex: 'name_rule',
-      render: (val, record) => renderNameRule(val, record, t),
+      id: 'name_rule',
+      header: t('匹配类型'),
+      accessorKey: 'name_rule',
+      cell: ({ row }) =>
+        renderNameRule(row.original.name_rule, row.original, t),
     },
     {
-      title: t('参与官方同步'),
-      dataIndex: 'sync_official',
-      render: (val) => (
-        <Tag size='small' shape='circle' color={val === 1 ? 'green' : 'orange'}>
-          {val === 1 ? t('是') : t('否')}
-        </Tag>
+      id: 'sync_official',
+      header: t('参与官方同步'),
+      accessorKey: 'sync_official',
+      cell: ({ row }) => {
+        const val = row.original.sync_official;
+        return (
+          <Badge
+            variant='outline'
+            className={`rounded-full font-medium ${val === 1 ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-orange-500/20 text-orange-400 border-orange-500/30'}`}
+          >
+            {val === 1 ? t('是') : t('否')}
+          </Badge>
+        );
+      },
+    },
+    {
+      id: 'description',
+      header: t('描述'),
+      accessorKey: 'description',
+      cell: ({ row }) => renderDescription(row.original.description, 200),
+    },
+    {
+      id: 'vendor_id',
+      header: t('供应商'),
+      accessorKey: 'vendor_id',
+      cell: ({ row }) => renderVendorTag(row.original.vendor_id, vendorMap, t),
+    },
+    {
+      id: 'tags',
+      header: t('标签'),
+      accessorKey: 'tags',
+      cell: ({ row }) => renderTags(row.original.tags),
+    },
+    {
+      id: 'endpoints',
+      header: t('端点'),
+      accessorKey: 'endpoints',
+      cell: ({ row }) => renderEndpoints(row.original.endpoints),
+    },
+    {
+      id: 'bound_channels',
+      header: t('已绑定渠道'),
+      accessorKey: 'bound_channels',
+      cell: ({ row }) => renderBoundChannels(row.original.bound_channels),
+    },
+    {
+      id: 'enable_groups',
+      header: t('可用分组'),
+      accessorKey: 'enable_groups',
+      cell: ({ row }) => renderGroups(row.original.enable_groups),
+    },
+    {
+      id: 'quota_types',
+      header: t('计费类型'),
+      accessorKey: 'quota_types',
+      cell: ({ row }) => renderQuotaTypes(row.original.quota_types, t),
+    },
+    {
+      id: 'created_time',
+      header: t('创建时间'),
+      accessorKey: 'created_time',
+      cell: ({ row }) => (
+        <div>{renderTimestamp(row.original.created_time)}</div>
       ),
     },
     {
-      title: t('描述'),
-      dataIndex: 'description',
-      render: (text) => renderDescription(text, 200),
+      id: 'updated_time',
+      header: t('更新时间'),
+      accessorKey: 'updated_time',
+      cell: ({ row }) => (
+        <div>{renderTimestamp(row.original.updated_time)}</div>
+      ),
     },
     {
-      title: t('供应商'),
-      dataIndex: 'vendor_id',
-      render: (vendorId, record) => renderVendorTag(vendorId, vendorMap, t),
-    },
-    {
-      title: t('标签'),
-      dataIndex: 'tags',
-      render: renderTags,
-    },
-    {
-      title: t('端点'),
-      dataIndex: 'endpoints',
-      render: renderEndpoints,
-    },
-    {
-      title: t('已绑定渠道'),
-      dataIndex: 'bound_channels',
-      render: renderBoundChannels,
-    },
-    {
-      title: t('可用分组'),
-      dataIndex: 'enable_groups',
-      render: renderGroups,
-    },
-    {
-      title: t('计费类型'),
-      dataIndex: 'quota_types',
-      render: (qts) => renderQuotaTypes(qts, t),
-    },
-    {
-      title: t('创建时间'),
-      dataIndex: 'created_time',
-      render: (text, record, index) => {
-        return <div>{renderTimestamp(text)}</div>;
-      },
-    },
-    {
-      title: t('更新时间'),
-      dataIndex: 'updated_time',
-      render: (text, record, index) => {
-        return <div>{renderTimestamp(text)}</div>;
-      },
-    },
-    {
-      title: '',
-      dataIndex: 'operate',
-      fixed: 'right',
-      render: (text, record, index) =>
+      id: 'operate',
+      header: '',
+      cell: ({ row }) =>
         renderOperations(
-          text,
-          record,
+          null,
+          row.original,
           setEditingModel,
           setShowEdit,
           manageModel,

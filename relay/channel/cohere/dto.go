@@ -1,6 +1,6 @@
 ﻿package cohere
 
-import "github.com/QuantumNous/opencrab/dto"
+import "github.com/roseforljh/opencrab/dto"
 
 type CohereRequest struct {
 	Model       string        `json:"model"`

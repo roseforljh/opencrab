@@ -1,37 +1,26 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
 import React from 'react';
-import {
-  Modal,
-  Button,
-  Input,
-  Table,
-  Tag,
-  Typography,
-  Select,
-  Switch,
-  Banner,
-} from '@douyinfe/semi-ui';
-import { IconSearch, IconInfoCircle } from '@douyinfe/semi-icons';
+import { Search, Info } from 'lucide-react';
 import { copy, showError, showInfo, showSuccess } from '../../../../helpers';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { DataTable } from '../../../ui/data-table';
 
 const ModelTestModal = ({
   showModelTestModal,
@@ -135,63 +124,74 @@ const ModelTestModal = ({
 
   const columns = [
     {
-      title: t('模型名称'),
-      dataIndex: 'model',
-      render: (text) => (
+      id: 'model',
+      header: t('模型名称'),
+      accessorKey: 'model',
+      cell: ({ row }) => (
         <div className='flex items-center'>
-          <Typography.Text strong>{text}</Typography.Text>
+          <span className='font-semibold text-white'>{row.original.model}</span>
         </div>
       ),
     },
     {
-      title: t('状态'),
-      dataIndex: 'status',
-      render: (text, record) => {
+      id: 'status',
+      header: t('状态'),
+      cell: ({ row }) => {
+        const record = row.original;
         const testResult =
           modelTestResults[`${currentTestChannel.id}-${record.model}`];
         const isTesting = testingModels.has(record.model);
 
         if (isTesting) {
           return (
-            <Tag color='blue' shape='circle'>
+            <Badge className='border-blue-500/20 bg-blue-500/15 text-blue-200'>
               {t('测试中')}
-            </Tag>
+            </Badge>
           );
         }
 
         if (!testResult) {
           return (
-            <Tag color='grey' shape='circle'>
+            <Badge className='border-white/10 bg-white/10 text-white/70'>
               {t('未开始')}
-            </Tag>
+            </Badge>
           );
         }
 
         return (
           <div className='flex items-center gap-2'>
-            <Tag color={testResult.success ? 'green' : 'red'} shape='circle'>
+            <Badge
+              className={
+                testResult.success
+                  ? 'border-green-500/20 bg-green-500/15 text-green-200'
+                  : 'border-red-500/20 bg-red-500/15 text-red-200'
+              }
+            >
               {testResult.success ? t('成功') : t('失败')}
-            </Tag>
+            </Badge>
             {testResult.success && (
-              <Typography.Text type='tertiary'>
+              <span className='text-sm text-white/45'>
                 {t('请求时长: ${time}s').replace(
                   '${time}',
                   testResult.time.toFixed(2),
                 )}
-              </Typography.Text>
+              </span>
             )}
           </div>
         );
       },
     },
     {
-      title: '',
-      dataIndex: 'operate',
-      render: (text, record) => {
+      id: 'operate',
+      header: '',
+      cell: ({ row }) => {
+        const record = row.original;
         const isTesting = testingModels.has(record.model);
         return (
           <Button
-            type='tertiary'
+            type='button'
+            variant='secondary'
+            size='sm'
             onClick={() =>
               testChannel(
                 currentTestChannel,
@@ -201,7 +201,6 @@ const ModelTestModal = ({
               )
             }
             loading={isTesting}
-            size='small'
           >
             {t('测试')}
           </Button>
@@ -221,148 +220,201 @@ const ModelTestModal = ({
   })();
 
   return (
-    <Modal
-      title={
-        hasChannel ? (
-          <div className='flex flex-col gap-2 w-full'>
-            <div className='flex items-center gap-2'>
-              <Typography.Text
-                strong
-                className='!text-[var(--semi-color-text-0)] !text-base'
-              >
+    <Dialog
+      open={showModelTestModal}
+      onOpenChange={(open) => !open && handleCloseModal?.()}
+    >
+      <DialogContent
+        className={
+          isMobile
+            ? 'max-w-[95vw] border-white/10 bg-black text-white'
+            : 'max-w-[980px] border-white/10 bg-black text-white'
+        }
+      >
+        <DialogHeader>
+          {hasChannel ? (
+            <div className='flex flex-col gap-2'>
+              <DialogTitle>
                 {currentTestChannel.name} {t('渠道的模型测试')}
-              </Typography.Text>
-              <Typography.Text type='tertiary' size='small'>
+              </DialogTitle>
+              <div className='text-sm text-white/45'>
                 {t('共')} {currentTestChannel.models.split(',').length}{' '}
                 {t('个模型')}
-              </Typography.Text>
+              </div>
             </div>
-          </div>
-        ) : null
-      }
-      visible={showModelTestModal}
-      onCancel={handleCloseModal}
-      footer={
-        hasChannel ? (
-          <div className='flex justify-end'>
-            {isBatchTesting ? (
-              <Button type='danger' onClick={handleCloseModal}>
-                {t('停止测试')}
-              </Button>
-            ) : (
-              <Button type='tertiary' onClick={handleCloseModal}>
-                {t('取消')}
-              </Button>
-            )}
-            <Button
-              onClick={batchTestModels}
-              loading={isBatchTesting}
-              disabled={isBatchTesting}
-            >
-              {isBatchTesting
-                ? t('测试中...')
-                : t('批量测试${count}个模型').replace(
-                    '${count}',
-                    filteredModels.length,
+          ) : (
+            <DialogTitle>{t('模型测试')}</DialogTitle>
+          )}
+        </DialogHeader>
+
+        {hasChannel && (
+          <div className='model-test-scroll'>
+            <div className='flex flex-col sm:flex-row sm:items-center gap-2 w-full mb-2'>
+              <div className='flex items-center gap-2 flex-1 min-w-0'>
+                <span className='shrink-0 font-medium'>{t('端点类型')}:</span>
+                <Select
+                  value={selectedEndpointType}
+                  onValueChange={setSelectedEndpointType}
+                >
+                  <SelectTrigger className='w-full min-w-0 border-white/10 bg-white/6 text-white'>
+                    <SelectValue placeholder={t('选择端点类型')} />
+                  </SelectTrigger>
+                  <SelectContent className='border-white/10 bg-black text-white'>
+                    {endpointTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className='flex items-center justify-between sm:justify-end gap-2 shrink-0'>
+                <span className='shrink-0 font-medium'>{t('流式')}:</span>
+                <Switch
+                  checked={isStreamTest}
+                  onCheckedChange={setIsStreamTest}
+                  size='small'
+                  disabled={streamToggleDisabled}
+                  aria-label={t('流式')}
+                />
+              </div>
+            </div>
+
+            <div className='mb-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-100'>
+              <div className='flex gap-2'>
+                <Info className='mt-0.5 h-4 w-4 shrink-0' />
+                <span>
+                  {t(
+                    '说明：本页测试为非流式请求；若渠道仅支持流式返回，可能出现测试失败，请以实际使用为准。',
                   )}
-            </Button>
-          </div>
-        ) : null
-      }
-      maskClosable={!isBatchTesting}
-      className='!rounded-lg'
-      size={isMobile ? 'full-width' : 'large'}
-    >
-      {hasChannel && (
-        <div className='model-test-scroll'>
-          {/* Endpoint toolbar */}
-          <div className='flex flex-col sm:flex-row sm:items-center gap-2 w-full mb-2'>
-            <div className='flex items-center gap-2 flex-1 min-w-0'>
-              <Typography.Text strong className='shrink-0'>
-                {t('端点类型')}:
-              </Typography.Text>
-              <Select
-                value={selectedEndpointType}
-                onChange={setSelectedEndpointType}
-                optionList={endpointTypeOptions}
-                className='!w-full min-w-0'
-                placeholder={t('选择端点类型')}
-              />
+                </span>
+              </div>
             </div>
-            <div className='flex items-center justify-between sm:justify-end gap-2 shrink-0'>
-              <Typography.Text strong className='shrink-0'>
-                {t('流式')}:
-              </Typography.Text>
-              <Switch
-                checked={isStreamTest}
-                onChange={setIsStreamTest}
-                size='small'
-                disabled={streamToggleDisabled}
-                aria-label={t('流式')}
-              />
+
+            <div className='flex flex-col sm:flex-row sm:items-center gap-2 w-full mb-2'>
+              <div className='relative w-full sm:flex-1'>
+                <Search className='pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/40' />
+                <Input
+                  placeholder={t('搜索模型...')}
+                  value={modelSearchKeyword}
+                  onChange={(e) => {
+                    setModelSearchKeyword(e.target.value);
+                    setModelTablePage(1);
+                  }}
+                  className='w-full border-white/10 bg-white/6 pl-9 text-white'
+                />
+              </div>
+
+              <div className='flex items-center justify-end gap-2'>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={handleCopySelected}
+                >
+                  {t('复制已选')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={handleSelectSuccess}
+                >
+                  {t('选择成功')}
+                </Button>
+              </div>
             </div>
-          </div>
 
-          <Banner
-            type='info'
-            closeIcon={null}
-            icon={<IconInfoCircle />}
-            className='!rounded-lg mb-2'
-            description={t(
-              '说明：本页测试为非流式请求；若渠道仅支持流式返回，可能出现测试失败，请以实际使用为准。',
-            )}
-          />
-
-          {/* 搜索与操作按钮 */}
-          <div className='flex flex-col sm:flex-row sm:items-center gap-2 w-full mb-2'>
-            <Input
-              placeholder={t('搜索模型...')}
-              value={modelSearchKeyword}
-              onChange={(v) => {
-                setModelSearchKeyword(v);
-                setModelTablePage(1);
-              }}
-              className='!w-full sm:!flex-1'
-              prefix={<IconSearch />}
-              showClear
+            <DataTable
+              columns={columns}
+              data={dataSource}
+              emptyMessage={t('暂无匹配模型')}
             />
-
-            <div className='flex items-center justify-end gap-2'>
-              <Button onClick={handleCopySelected}>{t('复制已选')}</Button>
-              <Button type='tertiary' onClick={handleSelectSuccess}>
-                {t('选择成功')}
-              </Button>
+            <div className='mt-3 flex items-center justify-between'>
+              <label className='flex items-center gap-2 text-sm'>
+                <input
+                  type='checkbox'
+                  checked={
+                    filteredModels.length > 0 &&
+                    filteredModels.every((model) =>
+                      selectedModelKeys.includes(model),
+                    )
+                  }
+                  onChange={(e) => {
+                    allSelectingRef.current = true;
+                    setSelectedModelKeys(
+                      e.target.checked ? filteredModels : [],
+                    );
+                  }}
+                />
+                <span>{t('全选当前结果')}</span>
+              </label>
+              <div className='flex gap-2'>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  size='sm'
+                  onClick={() =>
+                    setModelTablePage(Math.max(1, modelTablePage - 1))
+                  }
+                  disabled={modelTablePage === 1}
+                >
+                  {t('上一页')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  size='sm'
+                  onClick={() =>
+                    setModelTablePage((page) =>
+                      page * MODEL_TABLE_PAGE_SIZE < filteredModels.length
+                        ? page + 1
+                        : page,
+                    )
+                  }
+                  disabled={
+                    modelTablePage * MODEL_TABLE_PAGE_SIZE >=
+                    filteredModels.length
+                  }
+                >
+                  {t('下一页')}
+                </Button>
+              </div>
             </div>
           </div>
+        )}
 
-          <Table
-            columns={columns}
-            dataSource={dataSource}
-            rowSelection={{
-              selectedRowKeys: selectedModelKeys,
-              onChange: (keys) => {
-                if (allSelectingRef.current) {
-                  allSelectingRef.current = false;
-                  return;
-                }
-                setSelectedModelKeys(keys);
-              },
-              onSelectAll: (checked) => {
-                allSelectingRef.current = true;
-                setSelectedModelKeys(checked ? filteredModels : []);
-              },
-            }}
-            pagination={{
-              currentPage: modelTablePage,
-              pageSize: MODEL_TABLE_PAGE_SIZE,
-              total: filteredModels.length,
-              showSizeChanger: false,
-              onPageChange: (page) => setModelTablePage(page),
-            }}
-          />
-        </div>
-      )}
-    </Modal>
+        <DialogFooter className='border-white/10 bg-transparent'>
+          {isBatchTesting ? (
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={handleCloseModal}
+            >
+              {t('停止测试')}
+            </Button>
+          ) : (
+            <Button
+              type='button'
+              variant='secondary'
+              onClick={handleCloseModal}
+            >
+              {t('取消')}
+            </Button>
+          )}
+          <Button
+            type='button'
+            onClick={batchTestModels}
+            disabled={isBatchTesting}
+          >
+            {isBatchTesting
+              ? t('测试中...')
+              : t('批量测试${count}个模型').replace(
+                  '${count}',
+                  filteredModels.length,
+                )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

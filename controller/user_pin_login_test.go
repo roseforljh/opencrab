@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/opencrab/common"
-	projecti18n "github.com/QuantumNous/opencrab/i18n"
-	"github.com/QuantumNous/opencrab/model"
+	"github.com/roseforljh/opencrab/common"
+	projecti18n "github.com/roseforljh/opencrab/i18n"
+	"github.com/roseforljh/opencrab/model"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"

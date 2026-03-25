@@ -1,3 +1,6 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 /* ==================== Tailwind CSS 配置 ==================== */
 @layer tailwind-base, semi, tailwind-components, tailwind-utils;
 
@@ -985,7 +988,7 @@ body[theme-mode='dark'] {
   --semi-color-bg-3: #1a1a1a !important;
   --semi-color-bg-4: #222222 !important;
 
-  --semi-color-border: #222222 !important;
+  --semi-color-border: #333333 !important;
   --semi-color-fill-0: rgba(255, 255, 255, 0.04) !important;
   --semi-color-fill-1: rgba(255, 255, 255, 0.08) !important;
   --semi-color-fill-2: rgba(255, 255, 255, 0.12) !important;
@@ -994,10 +997,10 @@ body[theme-mode='dark'] {
   --semi-color-header-bg: rgba(0, 0, 0, 0.8) !important;
 
   /* Adjust text colors slightly for pure black background */
-  --semi-color-text-0: #ececec !important;
-  --semi-color-text-1: #b0b0b0 !important;
-  --semi-color-text-2: #808080 !important;
-  --semi-color-text-3: #505050 !important;
+  --semi-color-text-0: #ffffff !important;
+  --semi-color-text-1: #d0d5dd !important;
+  --semi-color-text-2: #98a2b3 !important;
+  --semi-color-text-3: #667085 !important;
 
   /* Card and Panel Overrides */
   background-color: #000000 !important;
@@ -1072,17 +1075,29 @@ html.dark .semi-select-selection:focus {
 
 /* Fixes for Playground / Tables */
 html.dark .semi-table-row {
-  background-color: transparent !important;
+  background-color: #000000 !important;
 }
 html.dark .semi-table-row:hover {
-  background-color: rgba(255, 255, 255, 0.04) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
 }
 html.dark .semi-table-thead > .semi-table-row > th {
-  background-color: #0a0a0a !important;
+  background-color: #000000 !important;
   border-bottom: 1px solid #222222 !important;
+  font-size: 15px !important;
+  padding: 16px !important;
 }
 html.dark .semi-table-row > td {
   border-bottom: 1px solid #222222 !important;
+  font-size: 14px !important;
+  padding: 16px !important;
+}
+
+html.dark .semi-table-wrapper {
+  background-color: #000000 !important;
+}
+
+html.dark .semi-table-container {
+  background-color: #000000 !important;
 }
 
 /* Scrollbars in Dark Theme */
@@ -1110,22 +1125,26 @@ html.dark .semi-button-primary {
   background-color: #ffffff !important;
   color: #000000 !important;
   border-color: #ffffff !important;
+  font-weight: 500 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
 }
 html.dark .semi-button-primary:hover {
-  background-color: #e5e5e5 !important;
-  border-color: #e5e5e5 !important;
+  background-color: #f2f4f7 !important;
+  border-color: #f2f4f7 !important;
 }
 html.dark .semi-button-tertiary {
   background-color: transparent !important;
-  color: #b0b0b0 !important;
+  color: #d0d5dd !important;
+  font-weight: 500 !important;
 }
 html.dark .semi-button-tertiary:hover {
   background-color: rgba(255, 255, 255, 0.08) !important;
-  color: #fff !important;
+  color: #ffffff !important;
 }
 html.dark .semi-button-light {
   background-color: rgba(255, 255, 255, 0.08) !important;
-  color: #fff !important;
+  color: #ffffff !important;
+  font-weight: 500 !important;
 }
 html.dark .semi-button-light:hover {
   background-color: rgba(255, 255, 255, 0.15) !important;
@@ -1133,15 +1152,21 @@ html.dark .semi-button-light:hover {
 
 /* Modals */
 html.dark .semi-modal {
-  background-color: #0a0a0a !important;
+  background-color: #101828 !important; /* using gray-900 from untitled UI */
   border: 1px solid #333333 !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8) !important;
+  box-shadow: 0 20px 24px -4px rgba(0, 0, 0, 0.5), 0 8px 8px -4px rgba(0, 0, 0, 0.25) !important;
+  border-radius: 12px !important;
 }
 html.dark .semi-modal-header {
-  border-bottom: 1px solid #222 !important;
+  border-bottom: 1px solid #333333 !important;
+  padding: 24px 24px 16px !important;
+}
+html.dark .semi-modal-body {
+  padding: 24px !important;
 }
 html.dark .semi-modal-footer {
-  border-top: 1px solid #222 !important;
+  border-top: 1px solid #333333 !important;
+  padding: 16px 24px !important;
 }
 
 /* Layout overrides */
@@ -1254,32 +1279,32 @@ html.dark .hover\:bg-gray-200:hover {
 /* Pagination */
 html.dark .semi-page-item {
   background-color: transparent !important;
-  color: #b0b0b0 !important;
-  border-color: #333 !important;
+  color: #d0d5dd !important;
+  border-color: #333333 !important;
 }
 html.dark .semi-page-item:hover {
   background-color: rgba(255, 255, 255, 0.08) !important;
-  color: #ececec !important;
+  color: #ffffff !important;
 }
 html.dark .semi-page-item-active {
   background-color: var(--semi-color-primary) !important;
-  color: #ffffff !important;
+  color: #000000 !important;
   border-color: var(--semi-color-primary) !important;
 }
 
 /* Tabs */
 html.dark .semi-tabs-tab {
-  color: #808080 !important;
+  color: #98a2b3 !important;
 }
 html.dark .semi-tabs-tab:hover {
-  color: #ececec !important;
+  color: #ffffff !important;
 }
 html.dark .semi-tabs-tab-active {
   color: var(--semi-color-primary) !important;
   font-weight: 600 !important;
 }
 html.dark .semi-tabs-bar-line {
-  border-bottom: 1px solid #222 !important;
+  border-bottom: 1px solid #333333 !important;
 }
 
 /* Steps */
@@ -1454,12 +1479,70 @@ html.dark ::selection {
 
 /* Semi UI Overrides for pure gray/white global theme */
 html.dark {
-  --semi-color-primary: #e5e5e5 !important;
-  --semi-color-primary-hover: #ffffff !important;
-  --semi-color-primary-active: #cccccc !important;
+  --semi-color-primary: #ffffff !important;
+  --semi-color-primary-hover: #f2f4f7 !important;
+  --semi-color-primary-active: #e4e7ec !important;
   --semi-color-primary-light-default: rgba(255, 255, 255, 0.08) !important;
   --semi-color-primary-light-hover: rgba(255, 255, 255, 0.15) !important;
   --semi-color-primary-light-active: rgba(255, 255, 255, 0.2) !important;
+
+  /* Untitled UI Dark Mode specific colors */
+  --untitled-gray-900: #101828;
+  --untitled-gray-800: #1d2939;
+  --untitled-gray-700: #344054;
+  --untitled-gray-600: #475467;
+  --untitled-gray-500: #667085;
+  --untitled-gray-400: #98a2b3;
+  --untitled-gray-300: #d0d5dd;
+  --untitled-gray-200: #eaecf0;
+  --untitled-gray-100: #f2f4f7;
+  --untitled-gray-50: #f9fafb;
+}
+
+/* Base Semi elements typography override to feel more like Untitled UI */
+html.dark .semi-typography-primary {
+  color: #ffffff !important;
+}
+html.dark .semi-typography-secondary {
+  color: #d0d5dd !important;
+}
+html.dark .semi-typography-tertiary {
+  color: #98a2b3 !important;
+}
+
+/* Semi Form & Label Overrides */
+html.dark .semi-form-field-label {
+  color: #eaecf0 !important;
+  font-weight: 500 !important;
+}
+html.dark .semi-form-field-extra {
+  color: #98a2b3 !important;
+}
+
+/* Inputs styling to match Untitled UI */
+html.dark .semi-input,
+html.dark .semi-input-textarea,
+html.dark .semi-select-selection {
+  background-color: #000000 !important;
+  border-color: #333333 !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+html.dark .semi-input:hover,
+html.dark .semi-input-textarea:hover,
+html.dark .semi-select-selection:hover {
+  border-color: #444444 !important;
+}
+
+html.dark .semi-input:focus,
+html.dark .semi-input-textarea:focus,
+html.dark .semi-select-selection:focus,
+html.dark .semi-input-wrapper:focus-within {
+  background-color: #000000 !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Fix focus rings */
@@ -1518,19 +1601,19 @@ html.dark .border-gray-300 {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 48px 48px;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
   background-position: center center;
-  opacity: 0.9;
+  opacity: 0.8;
 }
 
 .login-container::before {
   display: none !important;
 }
 
-/* Floating Dots (Stars/Particles/Snowflakes) */
-.stars-container {
+/* Floating Dots */
+.floating-dots-container {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -1538,41 +1621,70 @@ html.dark .border-gray-300 {
   overflow: hidden;
 }
 
-.star {
+.floating-dot {
   position: absolute;
-  border-radius: 50%;
-  background-color: white;
-  opacity: 0.8;
-  animation: fall linear infinite;
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.35) 55%, transparent 100%);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  animation: floatingDotMotion ease-in-out infinite alternate;
+  will-change: transform, opacity;
 }
 
-@keyframes fall {
+@keyframes floatingDotMotion {
   0% {
-    transform: translateY(-10vh) translateX(0) scale(1) rotate(0deg);
+    transform: translate3d(0, 0, 0) scale(0.9);
     opacity: 0;
   }
   10% {
-    opacity: 0.8;
+    opacity: 0.18;
   }
   50% {
-    transform: translateY(50vh) translateX(20px) scale(0.8) rotate(180deg);
+    transform: translate3d(calc(var(--float-x) * 0.55), calc(var(--float-y) * 0.55), 0) scale(1.08);
+    opacity: 0.55;
   }
   90% {
-    opacity: 0.8;
+    opacity: 0.24;
   }
   100% {
-    transform: translateY(110vh) translateX(-20px) scale(0.5) rotate(360deg);
+    transform: translate3d(var(--float-x), var(--float-y), 0) scale(0.96);
     opacity: 0;
   }
 }
 
+.login-enter-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.08) 0%, rgba(0, 0, 0, 0) 52%);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
 
+.login-enter-overlay.is-active {
+  opacity: 1;
+}
 
 .login-card-wrapper {
   position: relative;
   z-index: 3;
   width: 100%;
+}
+
+.login-content-stage {
+  width: 100%;
+  max-width: 28rem;
+  transition: transform 0.28s ease, opacity 0.28s ease, filter 0.28s ease;
+}
+
+.login-content-stage.is-navigating {
+  transform: translateY(-6px) scale(0.985);
+  opacity: 0.92;
+  filter: blur(1px);
+}
+
+.login-panel-shell {
+  transform: translateY(-22px);
 }
 
 /* Glassmorphism Card (Light Mode) */
@@ -1623,18 +1735,17 @@ html.dark .login-container {
 
 html.dark .login-grid-overlay {
   background-image: linear-gradient(
-      rgba(255, 255, 255, 0.08) 1px,
+      rgba(255, 255, 255, 0.05) 1px,
       transparent 1px
     ),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px) !important;
-  opacity: 1 !important;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px) !important;
+  background-size: 32px 32px !important;
+  opacity: 0.8 !important;
 }
 
 html.dark .login-container::before {
   display: none !important;
 }
-
-
 
 html.dark .login-card {
   background: rgba(8, 8, 8, 0.82) !important;
@@ -1795,4 +1906,89 @@ button:active,
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.2),
     0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+@layer base {
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+  }
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  html {
+    font-family: 'Geist Variable', Lato, Arial, sans-serif;
+  }
 }

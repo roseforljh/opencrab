@@ -1,25 +1,7 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useMemo } from 'react';
 import { Empty } from '@douyinfe/semi-ui';
-import CardTable from '../../common/ui/CardTable';
+import { DataTable } from '../../ui/data-table';
 import { getChannelsColumns } from './ChannelsColumnDefs';
 
 const ChannelsTable = (channelsData) => {
@@ -123,52 +105,30 @@ const ChannelsTable = (channelsData) => {
 
   const tableColumns = useMemo(() => {
     return compactMode
-      ? visibleColumnsList.map(({ fixed, ...rest }) => rest)
+      ? visibleColumnsList
       : visibleColumnsList;
   }, [compactMode, visibleColumnsList]);
 
   return (
-    <CardTable
-      columns={tableColumns}
-      dataSource={channels}
-      scroll={compactMode ? undefined : { x: 'max-content' }}
-      pagination={{
-        currentPage: activePage,
-        pageSize: pageSize,
-        total: channelCount,
-        pageSizeOpts: [10, 20, 50, 100],
-        showSizeChanger: true,
-        onPageSizeChange: handlePageSizeChange,
-        onPageChange: handlePageChange,
-      }}
-      hidePagination={true}
-      expandAllRows={false}
-      onRow={handleRow}
-      rowSelection={
-        enableBatchDelete
-          ? {
-              onChange: (selectedRowKeys, selectedRows) => {
-                setSelectedChannels(selectedRows);
-              },
+    <div className='flex flex-col gap-4'>
+      <DataTable
+        columns={tableColumns}
+        data={channels}
+        loading={loading || searching}
+        emptyMessage={
+          <Empty
+            image={
+              <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
+                ⌕
+              </div>
             }
-          : null
-      }
-      empty={
-        <Empty
-          image={
-            <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
-              ⌕
-            </div>
-          }
-          title={t('暂无命中渠道')}
-          description={t('可以尝试地址关键字、模型关键字，或切换筛选状态后再试。')}
-          style={{ padding: 30 }}
-        />
-      }
-      className='rounded-xl overflow-hidden'
-      size='middle'
-      loading={loading || searching}
-    />
+            title={t('暂无命中渠道')}
+            description={t('可以尝试地址关键字、模型关键字，或切换筛选状态后再试。')}
+            style={{ padding: 30 }}
+          />
+        }
+      />
+    </div>
   );
 };
 

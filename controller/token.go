@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/i18n"
-	"github.com/QuantumNous/opencrab/model"
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/i18n"
+	"github.com/roseforljh/opencrab/model"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 )

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/dto"
-	"github.com/QuantumNous/opencrab/setting"
+	"github.com/roseforljh/opencrab/dto"
+	"github.com/roseforljh/opencrab/setting"
 )
 
 func CheckSensitiveMessages(messages []dto.Message) ([]string, error) {

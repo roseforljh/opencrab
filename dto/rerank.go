@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/gin-gonic/gin"
 )
 

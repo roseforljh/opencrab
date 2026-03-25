@@ -3,7 +3,7 @@
 import (
 	"encoding/json"
 
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/types"
 )
 
 type OpenAIResponsesCompactionResponse struct {

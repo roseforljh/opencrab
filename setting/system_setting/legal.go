@@ -1,6 +1,6 @@
 ﻿package system_setting
 
-import "github.com/QuantumNous/opencrab/setting/config"
+import "github.com/roseforljh/opencrab/setting/config"
 
 type LegalSettings struct {
 	UserAgreement string `json:"user_agreement"`

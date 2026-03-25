@@ -1,24 +1,6 @@
-/*
-Copyright (C) 2025 QuantumNous
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
-import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   compareObjects,
   API,
@@ -27,8 +9,12 @@ import {
   showWarning,
   parseHttpStatusCodeRules,
 } from '../../../helpers';
-import { useTranslation } from 'react-i18next';
 import HttpStatusCodeRulesInput from '../../../components/settings/HttpStatusCodeRulesInput';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function SettingsMonitoring(props) {
   const { t } = useTranslation();
@@ -45,7 +31,6 @@ export default function SettingsMonitoring(props) {
     'monitor_setting.auto_test_channel_enabled': false,
     'monitor_setting.auto_test_channel_minutes': 10,
   });
-  const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
   const parsedAutoDisableStatusCodes = parseHttpStatusCodeRules(
     inputs.AutomaticDisableStatusCodes || '',
@@ -118,173 +103,229 @@ export default function SettingsMonitoring(props) {
     }
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
-    refForm.current.setValues(currentInputs);
   }, [props.options]);
 
   return (
-    <>
-      <Spin spinning={loading}>
-        <Form
-          values={inputs}
-          getFormApi={(formAPI) => (refForm.current = formAPI)}
-          style={{ marginBottom: 15 }}
-        >
-          <Form.Section text={t('监控设置')}>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'monitor_setting.auto_test_channel_enabled'}
-                  label={t('定时测试所有通道')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) =>
+    <div className='space-y-6'>
+      <div className='flex flex-col space-y-4'>
+        <h3 className='text-lg font-medium leading-none text-white'>
+          {t('监控设置')}
+        </h3>
+
+        <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6'>
+          <div className='space-y-3 pt-1'>
+            <div className='flex flex-col space-y-2'>
+              <Label
+                className='text-white/80'
+                htmlFor='auto_test_channel_enabled'
+              >
+                {t('定时测试所有通道')}
+              </Label>
+              <div className='flex items-center h-9'>
+                <Switch
+                  id='auto_test_channel_enabled'
+                  checked={inputs['monitor_setting.auto_test_channel_enabled']}
+                  onCheckedChange={(value) =>
                     setInputs({
                       ...inputs,
                       'monitor_setting.auto_test_channel_enabled': value,
                     })
                   }
+                  className='data-[state=checked]:bg-white data-[state=unchecked]:bg-white/20'
                 />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.InputNumber
-                  label={t('自动测试所有通道间隔时间')}
-                  step={1}
-                  min={1}
-                  suffix={t('分钟')}
-                  extraText={t('每隔多少分钟测试一次所有通道')}
-                  placeholder={''}
-                  field={'monitor_setting.auto_test_channel_minutes'}
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      'monitor_setting.auto_test_channel_minutes':
-                        parseInt(value),
-                    })
-                  }
-                />
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.InputNumber
-                  label={t('测试所有渠道的最长响应时间')}
-                  step={1}
-                  min={0}
-                  suffix={t('秒')}
-                  extraText={t(
-                    '当运行通道全部测试时，超过此时间将自动禁用通道',
-                  )}
-                  placeholder={''}
-                  field={'ChannelDisableThreshold'}
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      ChannelDisableThreshold: String(value),
-                    })
-                  }
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.InputNumber
-                  label={t('额度提醒阈值')}
-                  step={1}
-                  min={0}
-                  suffix={'Token'}
-                  extraText={t('低于此额度时将发送邮件提醒用户')}
-                  placeholder={''}
-                  field={'QuotaRemindThreshold'}
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      QuotaRemindThreshold: String(value),
-                    })
-                  }
-                />
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'AutomaticDisableChannelEnabled'}
-                  label={t('失败时自动禁用通道')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) => {
+              </div>
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <Label
+              className='text-white/80'
+              htmlFor='auto_test_channel_minutes'
+            >
+              {t('自动测试所有通道间隔时间(分钟)')}
+            </Label>
+            <Input
+              id='auto_test_channel_minutes'
+              type='number'
+              min={1}
+              value={inputs['monitor_setting.auto_test_channel_minutes']}
+              placeholder={t('每隔多少分钟测试一次所有通道')}
+              onChange={(e) =>
+                setInputs({
+                  ...inputs,
+                  'monitor_setting.auto_test_channel_minutes':
+                    parseInt(e.target.value) || 10,
+                })
+              }
+              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+            />
+            <div className='text-xs text-white/50'>
+              {t('每隔多少分钟测试一次所有通道')}
+            </div>
+          </div>
+        </div>
+
+        <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 pt-4'>
+          <div className='space-y-2'>
+            <Label className='text-white/80' htmlFor='ChannelDisableThreshold'>
+              {t('测试所有渠道的最长响应时间(秒)')}
+            </Label>
+            <Input
+              id='ChannelDisableThreshold'
+              type='number'
+              min={0}
+              value={inputs['ChannelDisableThreshold']}
+              onChange={(e) =>
+                setInputs({
+                  ...inputs,
+                  ChannelDisableThreshold: e.target.value,
+                })
+              }
+              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+            />
+            <div className='text-xs text-white/50'>
+              {t('当运行通道全部测试时，超过此时间将自动禁用通道')}
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <Label className='text-white/80' htmlFor='QuotaRemindThreshold'>
+              {t('额度提醒阈值(Token)')}
+            </Label>
+            <Input
+              id='QuotaRemindThreshold'
+              type='number'
+              min={0}
+              value={inputs['QuotaRemindThreshold']}
+              onChange={(e) =>
+                setInputs({ ...inputs, QuotaRemindThreshold: e.target.value })
+              }
+              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+            />
+            <div className='text-xs text-white/50'>
+              {t('低于此额度时将发送邮件提醒用户')}
+            </div>
+          </div>
+        </div>
+
+        <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 pt-4'>
+          <div className='space-y-3 pt-1'>
+            <div className='flex flex-col space-y-2'>
+              <Label
+                className='text-white/80'
+                htmlFor='AutomaticDisableChannelEnabled'
+              >
+                {t('失败时自动禁用通道')}
+              </Label>
+              <div className='flex items-center h-9'>
+                <Switch
+                  id='AutomaticDisableChannelEnabled'
+                  checked={inputs['AutomaticDisableChannelEnabled']}
+                  onCheckedChange={(value) =>
                     setInputs({
                       ...inputs,
                       AutomaticDisableChannelEnabled: value,
-                    });
-                  }}
+                    })
+                  }
+                  className='data-[state=checked]:bg-white data-[state=unchecked]:bg-white/20'
                 />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'AutomaticEnableChannelEnabled'}
-                  label={t('成功时自动启用通道')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) =>
+              </div>
+            </div>
+          </div>
+
+          <div className='space-y-3 pt-1'>
+            <div className='flex flex-col space-y-2'>
+              <Label
+                className='text-white/80'
+                htmlFor='AutomaticEnableChannelEnabled'
+              >
+                {t('成功时自动启用通道')}
+              </Label>
+              <div className='flex items-center h-9'>
+                <Switch
+                  id='AutomaticEnableChannelEnabled'
+                  checked={inputs['AutomaticEnableChannelEnabled']}
+                  onCheckedChange={(value) =>
                     setInputs({
                       ...inputs,
                       AutomaticEnableChannelEnabled: value,
                     })
                   }
+                  className='data-[state=checked]:bg-white data-[state=unchecked]:bg-white/20'
                 />
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col xs={24} sm={16}>
-                <HttpStatusCodeRulesInput
-                  label={t('自动禁用状态码')}
-                  placeholder={t('例如：401, 403, 429, 500-599')}
-                  extraText={t(
-                    '支持填写单个状态码或范围（含首尾），使用逗号分隔',
-                  )}
-                  field={'AutomaticDisableStatusCodes'}
-                  onChange={(value) =>
-                    setInputs({ ...inputs, AutomaticDisableStatusCodes: value })
-                  }
-                  parsed={parsedAutoDisableStatusCodes}
-                  invalidText={t('自动禁用状态码格式不正确')}
-                />
-                <HttpStatusCodeRulesInput
-                  label={t('自动重试状态码')}
-                  placeholder={t('例如：401, 403, 429, 500-599')}
-                  extraText={t(
-                    '支持填写单个状态码或范围（含首尾），使用逗号分隔；504 和 524 始终不重试，不受此处配置影响',
-                  )}
-                  field={'AutomaticRetryStatusCodes'}
-                  onChange={(value) =>
-                    setInputs({ ...inputs, AutomaticRetryStatusCodes: value })
-                  }
-                  parsed={parsedAutoRetryStatusCodes}
-                  invalidText={t('自动重试状态码格式不正确')}
-                />
-                <Form.TextArea
-                  label={t('自动禁用关键词')}
-                  placeholder={t('一行一个，不区分大小写')}
-                  extraText={t(
-                    '当上游通道返回错误中包含这些关键词时（不区分大小写），自动禁用通道',
-                  )}
-                  field={'AutomaticDisableKeywords'}
-                  autosize={{ minRows: 6, maxRows: 12 }}
-                  onChange={(value) =>
-                    setInputs({ ...inputs, AutomaticDisableKeywords: value })
-                  }
-                />
-              </Col>
-            </Row>
-            <Row>
-              <Button size='default' onClick={onSubmit}>
-                {t('保存监控设置')}
-              </Button>
-            </Row>
-          </Form.Section>
-        </Form>
-      </Spin>
-    </>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-6 pt-4'>
+          <div className='space-y-6'>
+            <HttpStatusCodeRulesInput
+              label={t('自动禁用状态码')}
+              placeholder={t('例如：401, 403, 429, 500-599')}
+              extraText={t('支持填写单个状态码或范围（含首尾），使用逗号分隔')}
+              field={'AutomaticDisableStatusCodes'}
+              value={inputs['AutomaticDisableStatusCodes']}
+              onChange={(value) =>
+                setInputs({ ...inputs, AutomaticDisableStatusCodes: value })
+              }
+              parsed={parsedAutoDisableStatusCodes}
+              invalidText={t('自动禁用状态码格式不正确')}
+            />
+
+            <HttpStatusCodeRulesInput
+              label={t('自动重试状态码')}
+              placeholder={t('例如：401, 403, 429, 500-599')}
+              extraText={t(
+                '支持填写单个状态码或范围（含首尾），使用逗号分隔；504 和 524 始终不重试，不受此处配置影响',
+              )}
+              field={'AutomaticRetryStatusCodes'}
+              value={inputs['AutomaticRetryStatusCodes']}
+              onChange={(value) =>
+                setInputs({ ...inputs, AutomaticRetryStatusCodes: value })
+              }
+              parsed={parsedAutoRetryStatusCodes}
+              invalidText={t('自动重试状态码格式不正确')}
+            />
+
+            <div className='space-y-2'>
+              <Label
+                className='text-white/80'
+                htmlFor='AutomaticDisableKeywords'
+              >
+                {t('自动禁用关键词')}
+              </Label>
+              <Textarea
+                id='AutomaticDisableKeywords'
+                value={inputs['AutomaticDisableKeywords']}
+                placeholder={t('一行一个，不区分大小写')}
+                onChange={(e) =>
+                  setInputs({
+                    ...inputs,
+                    AutomaticDisableKeywords: e.target.value,
+                  })
+                }
+                className='min-h-[120px] bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20 resize-y'
+              />
+              <div className='text-xs text-white/50'>
+                {t(
+                  '当上游通道返回错误中包含这些关键词时（不区分大小写），自动禁用通道',
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className='pt-4'>
+          <Button
+            onClick={onSubmit}
+            disabled={loading}
+            className='bg-white text-black hover:bg-white/90'
+          >
+            {t('保存监控设置')}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

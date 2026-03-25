@@ -1,47 +1,32 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Button,
-  Card,
-  Col,
-  Collapse,
-  Input,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Switch,
-  Tag,
-  TextArea,
-  Typography,
-} from '@douyinfe/semi-ui';
-import { IconDelete, IconMenu, IconPlus } from '@douyinfe/semi-icons';
+import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { copy, showError, showSuccess, verifyJSON } from '../../../../helpers';
 import {
   CLAUDE_CLI_HEADER_PASSTHROUGH_TEMPLATE,
   CODEX_CLI_HEADER_PASSTHROUGH_TEMPLATE,
 } from '../../../../constants/channel-affinity-template.constants';
-
-const { Text } = Typography;
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 
 const OPERATION_MODE_OPTIONS = [
   { label: '设置字段', value: 'set' },
@@ -1932,133 +1917,149 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
 
   return (
     <>
-      <Modal
-        title={t('参数覆盖')}
-        visible={visible}
-        width={1120}
-        bodyStyle={{ maxHeight: '76vh', overflowY: 'auto', paddingTop: 10 }}
-        onCancel={onCancel}
-        onOk={handleSave}
-        okText={t('保存')}
-        cancelText={t('取消')}
-      >
-        <Space vertical align='start' spacing={14} style={{ width: '100%' }}>
-          <Card
-            className='!rounded-xl !border-0 w-full'
-            bodyStyle={{
-              padding: 12,
-              background: 'var(--semi-color-fill-0)',
-            }}
-          >
+      <Dialog open={visible} onOpenChange={(open) => !open && onCancel?.()}>
+        <DialogContent className='max-h-[76vh] max-w-[1120px] overflow-y-auto border-white/10 bg-black text-white'>
+          <DialogHeader>
+            <DialogTitle>{t('参数覆盖')}</DialogTitle>
+          </DialogHeader>
+
+          <div className='w-full space-y-4'>
+            <Card className='w-full border-white/10 bg-white/5 py-0'>
+              <CardContent className='p-3'>
             <div className='flex items-start justify-between gap-3'>
-              <Space wrap spacing={8}>
-                <Tag color='grey'>{t('编辑方式')}</Tag>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Badge className='border-white/10 bg-white/10 text-white/70'>
+                  {t('编辑方式')}
+                </Badge>
                 <Button
-                  type={editMode === 'visual' ? 'primary' : 'tertiary'}
+                  type='button'
+                  variant={editMode === 'visual' ? 'default' : 'secondary'}
                   onClick={switchToVisualMode}
                 >
                   {t('可视化')}
                 </Button>
                 <Button
-                  type={editMode === 'json' ? 'primary' : 'tertiary'}
+                  type='button'
+                  variant={editMode === 'json' ? 'default' : 'secondary'}
                   onClick={switchToJsonMode}
                 >
                   {t('JSON 文本')}
                 </Button>
-                <Tag color='grey'>{t('模板')}</Tag>
+                <Badge className='border-white/10 bg-white/10 text-white/70'>
+                  {t('模板')}
+                </Badge>
                 <Select
                   value={templateGroupKey}
-                  optionList={TEMPLATE_GROUP_OPTIONS}
-                  onChange={(nextValue) =>
+                  onValueChange={(nextValue) =>
                     setTemplateGroupKey(nextValue || 'basic')
                   }
-                  style={{ width: 120 }}
-                />
+                >
+                  <SelectTrigger className='w-[120px] border-white/10 bg-white/5 text-white'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className='border-white/10 bg-black text-white'>
+                    {TEMPLATE_GROUP_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Select
                   value={templatePresetKey}
-                  optionList={templatePresetOptions}
-                  onChange={(nextValue) =>
+                  onValueChange={(nextValue) =>
                     setTemplatePresetKey(nextValue || 'operations_default')
                   }
-                  style={{ width: 260 }}
-                />
-                <Button onClick={fillTemplateFromLibrary}>
+                >
+                  <SelectTrigger className='w-[260px] border-white/10 bg-white/5 text-white'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className='border-white/10 bg-black text-white'>
+                    {templatePresetOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type='button' onClick={fillTemplateFromLibrary}>
                   {t('填充模板')}
                 </Button>
-                <Button type='tertiary' onClick={appendTemplateFromLibrary}>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={appendTemplateFromLibrary}
+                >
                   {t('追加模板')}
                 </Button>
-                <Button type='tertiary' onClick={resetEditorState}>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={resetEditorState}
+                >
                   {t('重置')}
                 </Button>
-              </Space>
+              </div>
             </div>
-          </Card>
+              </CardContent>
+            </Card>
 
           {editMode === 'visual' ? (
             <div style={{ width: '100%' }}>
               {visualMode === 'legacy' ? (
-                <Card
-                  className='!rounded-2xl !border-0'
-                  bodyStyle={{
-                    padding: 14,
-                    background: 'var(--semi-color-fill-0)',
-                  }}
-                >
-                  <Text className='mb-2 block'>{t('旧格式（JSON 对象）')}</Text>
-                  <TextArea
+                <Card className='border-white/10 bg-white/5 py-0'>
+                  <CardContent className='p-4'>
+                  <div className='mb-2 block text-sm font-medium'>
+                    {t('旧格式（JSON 对象）')}
+                  </div>
+                  <Textarea
                     value={legacyValue}
-                    autosize={{ minRows: 10, maxRows: 20 }}
                     placeholder={JSON.stringify(LEGACY_TEMPLATE, null, 2)}
-                    onChange={(nextValue) => setLegacyValue(nextValue)}
-                    showClear
+                    onChange={(e) => setLegacyValue(e.target.value)}
+                    className='min-h-[260px] border-white/10 bg-white/5 font-mono text-sm text-white'
                   />
-                  <Text type='tertiary' size='small' className='mt-2 block'>
+                  <p className='mt-2 text-sm text-white/60'>
                     {t('这里直接编辑 JSON 对象。适合简单覆盖参数的场景。')}
-                  </Text>
+                  </p>
+                  </CardContent>
                 </Card>
               ) : (
                 <div>
                   <div className='flex items-center justify-between mb-3'>
-                    <Space>
-                      <Text>{t('新格式（规则 + 条件）')}</Text>
-                      <Tag color='cyan'>{`${t('规则')}: ${operationCount}`}</Tag>
-                    </Space>
-                    <Button icon={<IconPlus />} onClick={addOperation}>
+                    <div className='flex items-center gap-2'>
+                      <span>{t('新格式（规则 + 条件）')}</span>
+                      <Badge className='border-cyan-500/20 bg-cyan-500/15 text-cyan-200'>
+                        {`${t('规则')}: ${operationCount}`}
+                      </Badge>
+                    </div>
+                    <Button type='button' onClick={addOperation}>
+                      <Plus className='mr-2 h-4 w-4' />
                       {t('新增规则')}
                     </Button>
                   </div>
 
-                  <Row gutter={12}>
-                    <Col xs={24} md={8}>
-                      <Card
-                        className='!rounded-2xl !border-0 h-full'
-                        bodyStyle={{
-                          padding: 12,
-                          background: 'var(--semi-color-fill-0)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 10,
-                          minHeight: 520,
-                        }}
-                      >
+                  <div className='grid gap-3 md:grid-cols-[320px_minmax(0,1fr)]'>
+                    <div>
+                      <Card className='h-full border-white/10 bg-white/5 py-0'>
+                        <CardContent className='flex min-h-[520px] flex-col gap-3 p-3'>
                         <div className='flex items-center justify-between'>
-                          <Text strong>{t('规则导航')}</Text>
-                          <Tag color='grey'>{`${operationCount}/${operations.length}`}</Tag>
+                          <div className='font-medium'>{t('规则导航')}</div>
+                          <Badge className='border-white/10 bg-white/10 text-white/70'>
+                            {`${operationCount}/${operations.length}`}
+                          </Badge>
                         </div>
 
                         {topOperationModes.length > 0 ? (
-                          <Space wrap spacing={6}>
+                          <div className='flex flex-wrap gap-1.5'>
                             {topOperationModes.map(([mode, count]) => (
-                              <Tag
+                              <Badge
                                 key={`mode_stat_${mode}`}
-                                size='small'
-                                color={getOperationModeTagColor(mode)}
+                                className='border-white/10 bg-white/10 text-white/70'
                               >
                                 {`${OPERATION_MODE_LABEL_MAP[mode] || mode} · ${count}`}
-                              </Tag>
+                              </Badge>
                             ))}
-                          </Space>
+                          </div>
                         ) : null}
 
                         <Input
@@ -2066,10 +2067,8 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                           placeholder={t(
                             '搜索规则（描述 / 类型 / 路径 / 来源 / 目标）',
                           )}
-                          onChange={(nextValue) =>
-                            setOperationSearch(nextValue || '')
-                          }
-                          showClear
+                          onChange={(e) => setOperationSearch(e.target.value || '')}
+                          className='border-white/10 bg-white/5 text-white'
                         />
 
                         <div
@@ -2077,9 +2076,9 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                           style={{ flex: 1, minHeight: 320, paddingRight: 2 }}
                         >
                           {filteredOperations.length === 0 ? (
-                            <Text type='tertiary' size='small'>
+                            <p className='text-sm text-white/60'>
                               {t('没有匹配的规则')}
-                            </Text>
+                            </p>
                           ) : (
                             <div
                               style={{
@@ -2164,27 +2163,21 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             marginTop: 1,
                                           }}
                                         >
-                                          <IconMenu />
+                                          <GripVertical className='h-4 w-4' />
                                         </div>
                                         <div className='min-w-0'>
-                                          <Text strong>{`#${index + 1}`}</Text>
-                                          <Text
-                                            type='tertiary'
-                                            size='small'
-                                            className='block mt-1'
-                                          >
+                                          <div className='font-medium'>{`#${index + 1}`}</div>
+                                          <div className='mt-1 block text-sm text-white/60'>
                                             {getOperationSummary(
                                               operation,
                                               index,
                                             )}
-                                          </Text>
+                                          </div>
                                           {String(
                                             operation.description || '',
                                           ).trim() ? (
-                                            <Text
-                                              type='tertiary'
-                                              size='small'
-                                              className='block mt-1'
+                                            <div
+                                              className='mt-1 block text-sm text-white/60'
                                               style={{
                                                 lineHeight: 1.5,
                                                 wordBreak: 'break-word',
@@ -2195,40 +2188,36 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                               }}
                                             >
                                               {operation.description}
-                                            </Text>
+                                            </div>
                                           ) : null}
                                         </div>
                                       </div>
-                                      <Tag size='small' color='grey'>
+                                      <Badge className='border-white/10 bg-white/10 text-white/70'>
                                         {(operation.conditions || []).length}
-                                      </Tag>
+                                      </Badge>
                                     </div>
-                                    <Space spacing={6} style={{ marginTop: 8 }}>
-                                      <Tag
-                                        size='small'
-                                        color={getOperationModeTagColor(
-                                          operation.mode || 'set',
-                                        )}
-                                      >
+                                    <div className='mt-2 flex items-center gap-2'>
+                                      <Badge className='border-white/10 bg-white/10 text-white/70'>
                                         {OPERATION_MODE_LABEL_MAP[
                                           operation.mode || 'set'
                                         ] ||
                                           operation.mode ||
                                           'set'}
-                                      </Tag>
-                                      <Text type='tertiary' size='small'>
+                                      </Badge>
+                                      <span className='text-sm text-white/60'>
                                         {t('条件数')}
-                                      </Text>
-                                    </Space>
+                                      </span>
+                                    </div>
                                   </div>
                                 );
                               })}
                             </div>
                           )}
                         </div>
+                        </CardContent>
                       </Card>
-                    </Col>
-                    <Col xs={24} md={16}>
+                    </div>
+                    <div>
                       {selectedOperation ? (
                         (() => {
                           const mode = selectedOperation.mode || 'set';
@@ -2243,27 +2232,25 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                               ? parseSyncTargetSpec(selectedOperation.to)
                               : null;
                           return (
-                            <Card
-                              className='!rounded-2xl !border-0'
-                              bodyStyle={{
-                                padding: 14,
-                                background: 'var(--semi-color-fill-0)',
-                              }}
-                            >
+                            <Card className='border-white/10 bg-white/5 py-0'>
+                              <CardContent className='p-4'>
                               <div className='flex items-center justify-between mb-3'>
-                                <Space>
-                                  <Tag color='blue'>{`#${selectedOperationIndex + 1}`}</Tag>
-                                  <Text strong>
+                                <div className='flex items-center gap-2'>
+                                  <Badge className='border-blue-500/20 bg-blue-500/15 text-blue-200'>
+                                    {`#${selectedOperationIndex + 1}`}
+                                  </Badge>
+                                  <div className='font-medium'>
                                     {getOperationSummary(
                                       selectedOperation,
                                       selectedOperationIndex,
                                     )}
-                                  </Text>
-                                </Space>
-                                <Space>
+                                  </div>
+                                </div>
+                                <div className='flex items-center gap-2'>
                                   <Button
-                                    size='small'
-                                    type='tertiary'
+                                    type='button'
+                                    size='sm'
+                                    variant='secondary'
                                     onClick={() =>
                                       duplicateOperation(selectedOperation.id)
                                     }
@@ -2271,85 +2258,92 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                     {t('复制')}
                                   </Button>
                                   <Button
-                                    size='small'
-                                    type='danger'
-                                    theme='borderless'
-                                    icon={<IconDelete />}
+                                    type='button'
+                                    size='icon'
+                                    variant='ghost'
+                                    className='text-red-300 hover:bg-red-500/10 hover:text-red-200'
                                     aria-label={t('删除规则')}
                                     onClick={() =>
                                       removeOperation(selectedOperation.id)
                                     }
-                                  />
-                                </Space>
+                                  >
+                                    <Trash2 className='h-4 w-4' />
+                                  </Button>
+                                </div>
                               </div>
 
-                              <Row gutter={12}>
-                                <Col xs={24} md={8}>
-                                  <Text type='tertiary' size='small'>
+                              <div className='grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]'>
+                                <div>
+                                  <div className='mb-1 text-sm text-white/60'>
                                     {t('操作类型')}
-                                  </Text>
+                                  </div>
                                   <Select
                                     value={mode}
-                                    optionList={OPERATION_MODE_OPTIONS}
-                                    onChange={(nextMode) =>
+                                    onValueChange={(nextMode) =>
                                       updateOperation(selectedOperation.id, {
                                         mode: nextMode,
                                       })
                                     }
-                                    style={{ width: '100%' }}
-                                  />
-                                </Col>
+                                  >
+                                    <SelectTrigger className='w-full border-white/10 bg-white/5 text-white'>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className='border-white/10 bg-black text-white'>
+                                      {OPERATION_MODE_OPTIONS.map((option) => (
+                                        <SelectItem
+                                          key={option.value}
+                                          value={option.value}
+                                        >
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                                 {meta.path || meta.pathOptional ? (
-                                  <Col xs={24} md={16}>
-                                    <Text type='tertiary' size='small'>
+                                  <div>
+                                    <div className='mb-1 text-sm text-white/60'>
                                       {meta.pathOptional
                                         ? t('目标路径（可选）')
                                         : t(getModePathLabel(mode))}
-                                    </Text>
+                                    </div>
                                     <Input
                                       value={selectedOperation.path}
                                       placeholder={getModePathPlaceholder(mode)}
-                                      onChange={(nextValue) =>
+                                      onChange={(e) =>
                                         updateOperation(selectedOperation.id, {
-                                          path: nextValue,
+                                          path: e.target.value,
                                         })
                                       }
+                                      className='border-white/10 bg-white/5 text-white'
                                     />
-                                  </Col>
+                                  </div>
                                 ) : null}
-                              </Row>
+                              </div>
 
-                              <Text
-                                type='tertiary'
-                                size='small'
-                                className='mt-1 block'
-                              >
+                              <div className='mt-1 block text-sm text-white/60'>
                                 {MODE_DESCRIPTIONS[mode] || ''}
-                              </Text>
+                              </div>
                               <div className='mt-2'>
-                                <Text type='tertiary' size='small'>
+                                <div className='mb-1 text-sm text-white/60'>
                                   {t('规则描述（可选）')}
-                                </Text>
+                                </div>
                                 <Input
                                   value={selectedOperation.description || ''}
                                   placeholder={t(
                                     '例如：清理工具参数，避免上游校验错误',
                                   )}
-                                  onChange={(nextValue) =>
+                                  onChange={(e) =>
                                     updateOperation(selectedOperation.id, {
-                                      description: nextValue || '',
+                                      description: e.target.value || '',
                                     })
                                   }
                                   maxLength={180}
-                                  showClear
+                                  className='border-white/10 bg-white/5 text-white'
                                 />
-                                <Text
-                                  type='tertiary'
-                                  size='small'
-                                  className='mt-1 block'
-                                >
+                                <div className='mt-1 block text-sm text-white/60'>
                                   {`${String(selectedOperation.description || '').length}/180`}
-                                </Text>
+                                </div>
                               </div>
 
                               {meta.value ? (
@@ -2363,17 +2357,18 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                     }}
                                   >
                                     <div className='flex items-center justify-between mb-2'>
-                                      <Text strong>{t('自定义错误响应')}</Text>
-                                      <Space spacing={6} align='center'>
-                                        <Text type='tertiary' size='small'>
+                                      <div className='font-medium'>{t('自定义错误响应')}</div>
+                                      <div className='flex items-center gap-2'>
+                                        <span className='text-sm text-white/60'>
                                           {t('模式')}
-                                        </Text>
+                                        </span>
                                         <Button
-                                          size='small'
-                                          type={
+                                          type='button'
+                                          size='sm'
+                                          variant={
                                             returnErrorDraft.simpleMode
-                                              ? 'primary'
-                                              : 'tertiary'
+                                              ? 'default'
+                                              : 'secondary'
                                           }
                                           onClick={() =>
                                             updateReturnErrorDraft(
@@ -2385,11 +2380,12 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                           {t('简洁')}
                                         </Button>
                                         <Button
-                                          size='small'
-                                          type={
+                                          type='button'
+                                          size='sm'
+                                          variant={
                                             returnErrorDraft.simpleMode
-                                              ? 'tertiary'
-                                              : 'primary'
+                                              ? 'secondary'
+                                              : 'default'
                                           }
                                           onClick={() =>
                                             updateReturnErrorDraft(
@@ -2400,105 +2396,102 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                         >
                                           {t('高级')}
                                         </Button>
-                                      </Space>
+                                      </div>
                                     </div>
 
-                                    <Text type='tertiary' size='small'>
+                                    <div className='mb-1 text-sm text-white/60'>
                                       {t('错误消息（必填）')}
-                                    </Text>
-                                    <TextArea
+                                    </div>
+                                    <Textarea
                                       value={returnErrorDraft.message}
-                                      autosize={{ minRows: 2, maxRows: 4 }}
                                       placeholder={t(
                                         '例如：该请求不满足准入策略',
                                       )}
-                                      onChange={(nextValue) =>
+                                      onChange={(e) =>
                                         updateReturnErrorDraft(
                                           selectedOperation.id,
-                                          { message: nextValue },
+                                          { message: e.target.value },
                                         )
                                       }
+                                      className='min-h-[88px] border-white/10 bg-white/5 text-white'
                                     />
 
                                     {returnErrorDraft.simpleMode ? (
-                                      <Text
-                                        type='tertiary'
-                                        size='small'
-                                        className='mt-2 block'
-                                      >
+                                      <div className='mt-2 block text-sm text-white/60'>
                                         {t(
                                           '简洁模式仅返回 message；状态码和错误类型将使用系统默认值。',
                                         )}
-                                      </Text>
+                                      </div>
                                     ) : (
                                       <>
-                                        <Row
-                                          gutter={12}
-                                          style={{ marginTop: 10 }}
-                                        >
-                                          <Col xs={24} md={8}>
-                                            <Text type='tertiary' size='small'>
+                                        <div className='mt-2 grid gap-3 md:grid-cols-3'>
+                                          <div>
+                                            <div className='mb-1 text-sm text-white/60'>
                                               {t('状态码')}
-                                            </Text>
+                                            </div>
                                             <Input
                                               value={String(
                                                 returnErrorDraft.statusCode ??
                                                   '',
                                               )}
                                               placeholder='400'
-                                              onChange={(nextValue) =>
+                                              onChange={(e) =>
                                                 updateReturnErrorDraft(
                                                   selectedOperation.id,
                                                   {
                                                     statusCode:
-                                                      parseInt(nextValue, 10) ||
+                                                      parseInt(e.target.value, 10) ||
                                                       400,
                                                   },
                                                 )
                                               }
+                                              className='border-white/10 bg-white/5 text-white'
                                             />
-                                          </Col>
-                                          <Col xs={24} md={8}>
-                                            <Text type='tertiary' size='small'>
+                                          </div>
+                                          <div>
+                                            <div className='mb-1 text-sm text-white/60'>
                                               {t('错误代码（可选）')}
-                                            </Text>
+                                            </div>
                                             <Input
                                               value={returnErrorDraft.code}
                                               placeholder='forced_bad_request'
-                                              onChange={(nextValue) =>
+                                              onChange={(e) =>
                                                 updateReturnErrorDraft(
                                                   selectedOperation.id,
-                                                  { code: nextValue },
+                                                  { code: e.target.value },
                                                 )
                                               }
+                                              className='border-white/10 bg-white/5 text-white'
                                             />
-                                          </Col>
-                                          <Col xs={24} md={8}>
-                                            <Text type='tertiary' size='small'>
+                                          </div>
+                                          <div>
+                                            <div className='mb-1 text-sm text-white/60'>
                                               {t('错误类型（可选）')}
-                                            </Text>
+                                            </div>
                                             <Input
                                               value={returnErrorDraft.type}
                                               placeholder='invalid_request_error'
-                                              onChange={(nextValue) =>
+                                              onChange={(e) =>
                                                 updateReturnErrorDraft(
                                                   selectedOperation.id,
-                                                  { type: nextValue },
+                                                  { type: e.target.value },
                                                 )
                                               }
+                                              className='border-white/10 bg-white/5 text-white'
                                             />
-                                          </Col>
-                                        </Row>
+                                          </div>
+                                        </div>
                                         <div className='mt-2 flex items-center gap-2'>
-                                          <Text type='tertiary' size='small'>
+                                          <span className='text-sm text-white/60'>
                                             {t('重试建议')}
-                                          </Text>
+                                          </span>
                                           <Button
-                                            size='small'
-                                            type={
+                                            type='button'
+                                            size='sm'
+                                            variant={
                                               returnErrorDraft.skipRetry
-                                                ? 'primary'
-                                                : 'tertiary'
+                                                ? 'default'
+                                                : 'secondary'
                                             }
                                             onClick={() =>
                                               updateReturnErrorDraft(
@@ -2510,11 +2503,12 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             {t('停止重试')}
                                           </Button>
                                           <Button
-                                            size='small'
-                                            type={
+                                            type='button'
+                                            size='sm'
+                                            variant={
                                               returnErrorDraft.skipRetry
-                                                ? 'tertiary'
-                                                : 'primary'
+                                                ? 'secondary'
+                                                : 'default'
                                             }
                                             onClick={() =>
                                               updateReturnErrorDraft(
@@ -2526,11 +2520,9 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             {t('允许重试')}
                                           </Button>
                                         </div>
-                                        <Space wrap style={{ marginTop: 8 }}>
-                                          <Tag
-                                            size='small'
-                                            color='grey'
-                                            className='cursor-pointer'
+                                        <div className='mt-2 flex flex-wrap gap-2'>
+                                          <Badge
+                                            className='cursor-pointer border-white/10 bg-white/10 text-white/70'
                                             onClick={() =>
                                               updateReturnErrorDraft(
                                                 selectedOperation.id,
@@ -2543,11 +2535,9 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             }
                                           >
                                             {t('参数错误')}
-                                          </Tag>
-                                          <Tag
-                                            size='small'
-                                            color='grey'
-                                            className='cursor-pointer'
+                                          </Badge>
+                                          <Badge
+                                            className='cursor-pointer border-white/10 bg-white/10 text-white/70'
                                             onClick={() =>
                                               updateReturnErrorDraft(
                                                 selectedOperation.id,
@@ -2560,11 +2550,9 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             }
                                           >
                                             {t('未授权')}
-                                          </Tag>
-                                          <Tag
-                                            size='small'
-                                            color='grey'
-                                            className='cursor-pointer'
+                                          </Badge>
+                                          <Badge
+                                            className='cursor-pointer border-white/10 bg-white/10 text-white/70'
                                             onClick={() =>
                                               updateReturnErrorDraft(
                                                 selectedOperation.id,
@@ -2577,8 +2565,8 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             }
                                           >
                                             {t('限流')}
-                                          </Tag>
-                                        </Space>
+                                          </Badge>
+                                        </div>
                                       </>
                                     )}
                                   </div>
@@ -2593,17 +2581,18 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                     }}
                                   >
                                     <div className='flex items-center justify-between mb-2'>
-                                      <Text strong>{t('对象清理规则')}</Text>
-                                      <Space spacing={6} align='center'>
-                                        <Text type='tertiary' size='small'>
+                                      <div className='font-medium'>{t('对象清理规则')}</div>
+                                      <div className='flex items-center gap-2'>
+                                        <span className='text-sm text-white/60'>
                                           {t('模式')}
-                                        </Text>
+                                        </span>
                                         <Button
-                                          size='small'
-                                          type={
+                                          type='button'
+                                          size='sm'
+                                          variant={
                                             pruneObjectsDraft.simpleMode
-                                              ? 'primary'
-                                              : 'tertiary'
+                                              ? 'default'
+                                              : 'secondary'
                                           }
                                           onClick={() =>
                                             updatePruneObjectsDraft(
@@ -2615,11 +2604,12 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                           {t('简洁')}
                                         </Button>
                                         <Button
-                                          size='small'
-                                          type={
+                                          type='button'
+                                          size='sm'
+                                          variant={
                                             pruneObjectsDraft.simpleMode
-                                              ? 'tertiary'
-                                              : 'primary'
+                                              ? 'secondary'
+                                              : 'default'
                                           }
                                           onClick={() =>
                                             updatePruneObjectsDraft(
@@ -2630,79 +2620,72 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                         >
                                           {t('高级')}
                                         </Button>
-                                      </Space>
+                                      </div>
                                     </div>
 
-                                    <Text type='tertiary' size='small'>
+                                    <div className='mb-1 text-sm text-white/60'>
                                       {t('类型（常用）')}
-                                    </Text>
+                                    </div>
                                     <Input
                                       value={pruneObjectsDraft.typeText}
                                       placeholder='redacted_thinking'
-                                      onChange={(nextValue) =>
+                                      onChange={(e) =>
                                         updatePruneObjectsDraft(
                                           selectedOperation.id,
-                                          { typeText: nextValue },
+                                          { typeText: e.target.value },
                                         )
                                       }
+                                      className='border-white/10 bg-white/5 text-white'
                                     />
 
                                     {pruneObjectsDraft.simpleMode ? (
-                                      <Text
-                                        type='tertiary'
-                                        size='small'
-                                        className='mt-2 block'
-                                      >
+                                      <p className='mt-2 block text-sm text-white/60'>
                                         {t(
                                           '简洁模式：按 type 全量清理对象，例如 redacted_thinking。',
                                         )}
-                                      </Text>
+                                      </p>
                                     ) : (
                                       <>
-                                        <Row
-                                          gutter={12}
-                                          style={{ marginTop: 10 }}
-                                        >
-                                          <Col xs={24} md={12}>
-                                            <Text type='tertiary' size='small'>
+                                        <div className='mt-2 grid gap-3 md:grid-cols-2'>
+                                          <div>
+                                            <p className='mb-1 text-sm text-white/60'>
                                               {t('逻辑')}
-                                            </Text>
+                                            </p>
                                             <Select
                                               value={pruneObjectsDraft.logic}
-                                              optionList={[
-                                                {
-                                                  label: t('全部满足（AND）'),
-                                                  value: 'AND',
-                                                },
-                                                {
-                                                  label: t('任一满足（OR）'),
-                                                  value: 'OR',
-                                                },
-                                              ]}
-                                              style={{ width: '100%' }}
-                                              onChange={(nextValue) =>
+                                              onValueChange={(nextValue) =>
                                                 updatePruneObjectsDraft(
                                                   selectedOperation.id,
                                                   { logic: nextValue || 'AND' },
                                                 )
                                               }
-                                            />
-                                          </Col>
-                                          <Col xs={24} md={12}>
-                                            <Text type='tertiary' size='small'>
-                                              {t('递归策略')}
-                                            </Text>
-                                            <Space
-                                              spacing={6}
-                                              style={{ marginTop: 2 }}
                                             >
+                                              <SelectTrigger className='w-full border-white/10 bg-white/5 text-white'>
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent className='border-white/10 bg-black text-white'>
+                                                <SelectItem value='AND'>
+                                                  {t('全部满足（AND）')}
+                                                </SelectItem>
+                                                <SelectItem value='OR'>
+                                                  {t('任一满足（OR）')}
+                                                </SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                          <div>
+                                            <p className='mb-1 text-sm text-white/60'>
+                                              {t('递归策略')}
+                                            </p>
+                                            <div className='mt-1 flex flex-wrap gap-2'>
                                               <Button
-                                                size='small'
-                                                type={
+                                                size='sm'
+                                                variant={
                                                   pruneObjectsDraft.recursive
-                                                    ? 'primary'
-                                                    : 'tertiary'
+                                                    ? 'default'
+                                                    : 'secondary'
                                                 }
+                                                type='button'
                                                 onClick={() =>
                                                   updatePruneObjectsDraft(
                                                     selectedOperation.id,
@@ -2713,12 +2696,13 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                                 {t('递归')}
                                               </Button>
                                               <Button
-                                                size='small'
-                                                type={
+                                                size='sm'
+                                                variant={
                                                   pruneObjectsDraft.recursive
-                                                    ? 'tertiary'
-                                                    : 'primary'
+                                                    ? 'secondary'
+                                                    : 'default'
                                                 }
+                                                type='button'
                                                 onClick={() =>
                                                   updatePruneObjectsDraft(
                                                     selectedOperation.id,
@@ -2728,38 +2712,35 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                               >
                                                 {t('仅当前层')}
                                               </Button>
-                                            </Space>
-                                          </Col>
-                                        </Row>
+                                            </div>
+                                          </div>
+                                        </div>
 
-                                        <div
-                                          className='mt-2 rounded-lg p-2'
-                                          style={{
-                                            background:
-                                              'var(--semi-color-fill-0)',
-                                          }}
-                                        >
-                                          <div className='flex items-center justify-between mb-2'>
-                                            <Text strong>{t('附加条件')}</Text>
+                                        <div className='mt-2 rounded-lg border border-white/10 bg-white/5 p-3'>
+                                          <div className='mb-2 flex items-center justify-between'>
+                                            <div className='font-medium'>
+                                              {t('附加条件')}
+                                            </div>
                                             <Button
-                                              size='small'
-                                              icon={<IconPlus />}
+                                              size='sm'
+                                              type='button'
                                               onClick={() =>
                                                 addPruneRule(
                                                   selectedOperation.id,
                                                 )
                                               }
                                             >
+                                              <Plus className='mr-1 h-4 w-4' />
                                               {t('新增条件')}
                                             </Button>
                                           </div>
                                           {(pruneObjectsDraft.rules || [])
                                             .length === 0 ? (
-                                            <Text type='tertiary' size='small'>
+                                            <p className='text-sm text-white/60'>
                                               {t(
                                                 '未添加附加条件时，仅使用上方 type 进行清理。',
                                               )}
-                                            </Text>
+                                            </p>
                                           ) : (
                                             <div className='flex flex-col gap-2'>
                                               {(
@@ -2767,23 +2748,16 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                               ).map((rule, ruleIndex) => (
                                                 <div
                                                   key={rule.id}
-                                                  className='rounded-lg p-2'
-                                                  style={{
-                                                    border:
-                                                      '1px solid var(--semi-color-border)',
-                                                    background:
-                                                      'var(--semi-color-bg-0)',
-                                                  }}
+                                                  className='rounded-lg border border-white/10 bg-black/20 p-3'
                                                 >
-                                                  <div className='flex items-center justify-between mb-2'>
-                                                    <Tag size='small'>
+                                                  <div className='mb-2 flex items-center justify-between'>
+                                                    <Badge variant='secondary'>
                                                       {`R${ruleIndex + 1}`}
-                                                    </Tag>
+                                                    </Badge>
                                                     <Button
-                                                      size='small'
-                                                      type='danger'
-                                                      theme='borderless'
-                                                      icon={<IconDelete />}
+                                                      size='sm'
+                                                      type='button'
+                                                      variant='destructive'
                                                       onClick={() =>
                                                         removePruneRule(
                                                           selectedOperation.id,
@@ -2791,87 +2765,101 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                                         )
                                                       }
                                                     >
+                                                      <Trash2 className='mr-1 h-4 w-4' />
                                                       {t('删除条件')}
                                                     </Button>
                                                   </div>
-                                                  <Row gutter={8}>
-                                                    <Col xs={24} md={9}>
-                                                      <Text
-                                                        type='tertiary'
-                                                        size='small'
-                                                      >
+                                                  <div className='grid gap-2 md:grid-cols-[1.3fr_1fr_1.1fr]'>
+                                                    <div>
+                                                      <p className='mb-1 text-sm text-white/60'>
                                                         {t('字段路径')}
-                                                      </Text>
+                                                      </p>
                                                       <Input
                                                         value={rule.path}
                                                         placeholder='type'
-                                                        onChange={(nextValue) =>
+                                                        onChange={(e) =>
                                                           updatePruneRule(
                                                             selectedOperation.id,
                                                             rule.id,
-                                                            { path: nextValue },
+                                                            {
+                                                              path:
+                                                                e.target.value,
+                                                            },
                                                           )
                                                         }
+                                                        className='border-white/10 bg-white/5 text-white'
                                                       />
-                                                    </Col>
-                                                    <Col xs={24} md={7}>
-                                                      <Text
-                                                        type='tertiary'
-                                                        size='small'
-                                                      >
+                                                    </div>
+                                                    <div>
+                                                      <p className='mb-1 text-sm text-white/60'>
                                                         {t('匹配方式')}
-                                                      </Text>
+                                                      </p>
                                                       <Select
                                                         value={rule.mode}
-                                                        optionList={
-                                                          CONDITION_MODE_OPTIONS
-                                                        }
-                                                        style={{
-                                                          width: '100%',
-                                                        }}
-                                                        onChange={(nextValue) =>
+                                                        onValueChange={(
+                                                          nextValue,
+                                                        ) =>
                                                           updatePruneRule(
                                                             selectedOperation.id,
                                                             rule.id,
-                                                            { mode: nextValue },
+                                                            {
+                                                              mode:
+                                                                nextValue ||
+                                                                'full',
+                                                            },
                                                           )
                                                         }
-                                                      />
-                                                    </Col>
-                                                    <Col xs={24} md={8}>
-                                                      <Text
-                                                        type='tertiary'
-                                                        size='small'
                                                       >
+                                                        <SelectTrigger className='w-full border-white/10 bg-white/5 text-white'>
+                                                          <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent className='border-white/10 bg-black text-white'>
+                                                          {CONDITION_MODE_OPTIONS.map(
+                                                            (option) => (
+                                                              <SelectItem
+                                                                key={
+                                                                  option.value
+                                                                }
+                                                                value={
+                                                                  option.value
+                                                                }
+                                                              >
+                                                                {option.label}
+                                                              </SelectItem>
+                                                            ),
+                                                          )}
+                                                        </SelectContent>
+                                                      </Select>
+                                                    </div>
+                                                    <div>
+                                                      <p className='mb-1 text-sm text-white/60'>
                                                         {t('匹配值（可选）')}
-                                                      </Text>
+                                                      </p>
                                                       <Input
                                                         value={rule.value_text}
                                                         placeholder='redacted_thinking'
-                                                        onChange={(nextValue) =>
+                                                        onChange={(e) =>
                                                           updatePruneRule(
                                                             selectedOperation.id,
                                                             rule.id,
                                                             {
                                                               value_text:
-                                                                nextValue,
+                                                                e.target.value,
                                                             },
                                                           )
                                                         }
+                                                        className='border-white/10 bg-white/5 text-white'
                                                       />
-                                                    </Col>
-                                                  </Row>
-                                                  <Space
-                                                    wrap
-                                                    spacing={8}
-                                                    style={{ marginTop: 8 }}
-                                                  >
+                                                    </div>
+                                                  </div>
+                                                  <div className='mt-2 flex flex-wrap gap-2'>
                                                     <Button
-                                                      size='small'
-                                                      type={
+                                                      size='sm'
+                                                      type='button'
+                                                      variant={
                                                         rule.invert
-                                                          ? 'primary'
-                                                          : 'tertiary'
+                                                          ? 'default'
+                                                          : 'secondary'
                                                       }
                                                       onClick={() =>
                                                         updatePruneRule(
@@ -2887,11 +2875,12 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                                       {t('条件取反')}
                                                     </Button>
                                                     <Button
-                                                      size='small'
-                                                      type={
+                                                      size='sm'
+                                                      type='button'
+                                                      variant={
                                                         rule.pass_missing_key
-                                                          ? 'primary'
-                                                          : 'tertiary'
+                                                          ? 'default'
+                                                          : 'secondary'
                                                       }
                                                       onClick={() =>
                                                         updatePruneRule(
@@ -2906,7 +2895,7 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                                     >
                                                       {t('字段缺失视为命中')}
                                                     </Button>
-                                                  </Space>
+                                                  </div>
                                                 </div>
                                               ))}
                                             </div>
@@ -2918,14 +2907,15 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                 ) : (
                                   <div className='mt-2'>
                                     <div className='flex items-center justify-between gap-2'>
-                                      <Text type='tertiary' size='small'>
+                                      <p className='text-sm text-white/60'>
                                         {t(getModeValueLabel(mode))}
-                                      </Text>
+                                      </p>
                                       {mode === 'set_header' ? (
-                                        <Space spacing={6}>
+                                        <div className='flex gap-2'>
                                           <Button
-                                            size='small'
-                                            type='tertiary'
+                                            size='sm'
+                                            type='button'
+                                            variant='secondary'
                                             onClick={() =>
                                               setHeaderValueExampleVisible(true)
                                             }
@@ -2933,39 +2923,36 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             {t('查看 JSON 示例')}
                                           </Button>
                                           <Button
-                                            size='small'
-                                            type='tertiary'
+                                            size='sm'
+                                            type='button'
+                                            variant='secondary'
                                             onClick={
                                               formatSelectedOperationValueAsJson
                                             }
                                           >
                                             {t('格式化 JSON')}
                                           </Button>
-                                        </Space>
+                                        </div>
                                       ) : null}
                                     </div>
                                     {mode === 'set_header' ? (
-                                      <Text
-                                        type='tertiary'
-                                        size='small'
-                                        className='mt-1 mb-2 block'
-                                      >
+                                      <p className='mb-2 mt-1 block text-sm text-white/60'>
                                         {t(
                                           '纯字符串会直接覆盖整条请求头，或者点击“查看 JSON 示例”按 token 规则处理。',
                                         )}
-                                      </Text>
+                                      </p>
                                     ) : null}
-                                    <TextArea
+                                    <Textarea
                                       value={selectedOperation.value_text}
-                                      autosize={{ minRows: 1, maxRows: 4 }}
                                       placeholder={getModeValuePlaceholder(
                                         mode,
                                       )}
-                                      onChange={(nextValue) =>
+                                      onChange={(e) =>
                                         updateOperation(selectedOperation.id, {
-                                          value_text: nextValue,
+                                          value_text: e.target.value,
                                         })
                                       }
+                                      className='min-h-[92px] border-white/10 bg-white/5 text-white'
                                     />
                                   </div>
                                 )
@@ -2977,40 +2964,32 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                     checked={Boolean(
                                       selectedOperation.keep_origin,
                                     )}
-                                    checkedText={t('开')}
-                                    uncheckedText={t('关')}
-                                    onChange={(nextValue) =>
+                                    onCheckedChange={(nextValue) =>
                                       updateOperation(selectedOperation.id, {
                                         keep_origin: nextValue,
                                       })
                                     }
                                   />
-                                  <Text
-                                    type='tertiary'
-                                    size='small'
-                                    className='leading-6'
-                                  >
+                                  <p className='text-sm leading-6 text-white/60'>
                                     {t('保留原值（目标已有值时不覆盖）')}
-                                  </Text>
+                                  </p>
                                 </div>
                               ) : null}
 
                               {mode === 'sync_fields' ? (
                                 <div className='mt-2'>
-                                  <Text type='tertiary' size='small'>
+                                  <p className='text-sm text-white/60'>
                                     {t('同步端点')}
-                                  </Text>
-                                  <Row gutter={12} style={{ marginTop: 6 }}>
-                                    <Col xs={24} md={12}>
-                                      <Text type='tertiary' size='small'>
+                                  </p>
+                                  <div className='mt-2 grid gap-3 md:grid-cols-2'>
+                                    <div>
+                                      <p className='mb-1 text-sm text-white/60'>
                                         {t('来源端点')}
-                                      </Text>
+                                      </p>
                                       <div className='flex gap-2'>
                                         <Select
                                           value={syncFromTarget?.type || 'json'}
-                                          optionList={SYNC_TARGET_TYPE_OPTIONS}
-                                          style={{ width: 120 }}
-                                          onChange={(nextType) =>
+                                          onValueChange={(nextType) =>
                                             updateOperation(
                                               selectedOperation.id,
                                               {
@@ -3021,35 +3000,50 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                               },
                                             )
                                           }
-                                        />
+                                        >
+                                          <SelectTrigger className='w-[120px] border-white/10 bg-white/5 text-white'>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent className='border-white/10 bg-black text-white'>
+                                            {SYNC_TARGET_TYPE_OPTIONS.map(
+                                              (option) => (
+                                                <SelectItem
+                                                  key={option.value}
+                                                  value={option.value}
+                                                >
+                                                  {option.label}
+                                                </SelectItem>
+                                              ),
+                                            )}
+                                          </SelectContent>
+                                        </Select>
                                         <Input
                                           value={syncFromTarget?.key || ''}
                                           placeholder='session_id'
-                                          onChange={(nextKey) =>
+                                          onChange={(e) =>
                                             updateOperation(
                                               selectedOperation.id,
                                               {
                                                 from: buildSyncTargetSpec(
                                                   syncFromTarget?.type ||
                                                     'json',
-                                                  nextKey,
+                                                  e.target.value,
                                                 ),
                                               },
                                             )
                                           }
+                                          className='border-white/10 bg-white/5 text-white'
                                         />
                                       </div>
-                                    </Col>
-                                    <Col xs={24} md={12}>
-                                      <Text type='tertiary' size='small'>
+                                    </div>
+                                    <div>
+                                      <p className='mb-1 text-sm text-white/60'>
                                         {t('目标端点')}
-                                      </Text>
+                                      </p>
                                       <div className='flex gap-2'>
                                         <Select
                                           value={syncToTarget?.type || 'json'}
-                                          optionList={SYNC_TARGET_TYPE_OPTIONS}
-                                          style={{ width: 120 }}
-                                          onChange={(nextType) =>
+                                          onValueChange={(nextType) =>
                                             updateOperation(
                                               selectedOperation.id,
                                               {
@@ -3060,30 +3054,46 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                               },
                                             )
                                           }
-                                        />
+                                        >
+                                          <SelectTrigger className='w-[120px] border-white/10 bg-white/5 text-white'>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent className='border-white/10 bg-black text-white'>
+                                            {SYNC_TARGET_TYPE_OPTIONS.map(
+                                              (option) => (
+                                                <SelectItem
+                                                  key={option.value}
+                                                  value={option.value}
+                                                >
+                                                  {option.label}
+                                                </SelectItem>
+                                              ),
+                                            )}
+                                          </SelectContent>
+                                        </Select>
                                         <Input
                                           value={syncToTarget?.key || ''}
                                           placeholder='prompt_cache_key'
-                                          onChange={(nextKey) =>
+                                          onChange={(e) =>
                                             updateOperation(
                                               selectedOperation.id,
                                               {
                                                 to: buildSyncTargetSpec(
                                                   syncToTarget?.type || 'json',
-                                                  nextKey,
+                                                  e.target.value,
                                                 ),
                                               },
                                             )
                                           }
+                                          className='border-white/10 bg-white/5 text-white'
                                         />
                                       </div>
-                                    </Col>
-                                  </Row>
-                                  <Space wrap style={{ marginTop: 8 }}>
-                                    <Tag
-                                      size='small'
-                                      color='cyan'
-                                      className='cursor-pointer'
+                                    </div>
+                                  </div>
+                                  <div className='mt-2 flex flex-wrap gap-2'>
+                                    <Badge
+                                      variant='secondary'
+                                      className='cursor-pointer border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
                                       onClick={() =>
                                         updateOperation(selectedOperation.id, {
                                           from: 'header:session_id',
@@ -3094,11 +3104,10 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                       {
                                         'header:session_id -> json:prompt_cache_key'
                                       }
-                                    </Tag>
-                                    <Tag
-                                      size='small'
-                                      color='cyan'
-                                      className='cursor-pointer'
+                                    </Badge>
+                                    <Badge
+                                      variant='secondary'
+                                      className='cursor-pointer border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
                                       onClick={() =>
                                         updateOperation(selectedOperation.id, {
                                           from: 'json:prompt_cache_key',
@@ -3109,52 +3118,54 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                       {
                                         'json:prompt_cache_key -> header:session_id'
                                       }
-                                    </Tag>
-                                  </Space>
+                                    </Badge>
+                                  </div>
                                 </div>
                               ) : meta.from || meta.to === false || meta.to ? (
-                                <Row gutter={12} style={{ marginTop: 8 }}>
+                                <div className='mt-2 grid gap-3 md:grid-cols-2'>
                                   {meta.from || meta.to === false ? (
-                                    <Col xs={24} md={12}>
-                                      <Text type='tertiary' size='small'>
+                                    <div>
+                                      <p className='mb-1 text-sm text-white/60'>
                                         {t(getModeFromLabel(mode))}
-                                      </Text>
+                                      </p>
                                       <Input
                                         value={selectedOperation.from}
                                         placeholder={getModeFromPlaceholder(
                                           mode,
                                         )}
-                                        onChange={(nextValue) =>
+                                        onChange={(e) =>
                                           updateOperation(
                                             selectedOperation.id,
                                             {
-                                              from: nextValue,
+                                              from: e.target.value,
                                             },
                                           )
                                         }
+                                        className='border-white/10 bg-white/5 text-white'
                                       />
-                                    </Col>
+                                    </div>
                                   ) : null}
                                   {meta.to || meta.to === false ? (
-                                    <Col xs={24} md={12}>
-                                      <Text type='tertiary' size='small'>
+                                    <div>
+                                      <p className='mb-1 text-sm text-white/60'>
                                         {t(getModeToLabel(mode))}
-                                      </Text>
+                                      </p>
                                       <Input
                                         value={selectedOperation.to}
                                         placeholder={getModeToPlaceholder(mode)}
-                                        onChange={(nextValue) =>
+                                        onChange={(e) =>
                                           updateOperation(
                                             selectedOperation.id,
                                             {
-                                              to: nextValue,
+                                              to: e.target.value,
                                             },
                                           )
                                         }
+                                        className='border-white/10 bg-white/5 text-white'
                                       />
-                                    </Col>
+                                    </div>
                                   ) : null}
-                                </Row>
+                                </div>
                               ) : null}
 
                               <div
@@ -3163,471 +3174,479 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                   background: 'rgba(127, 127, 127, 0.08)',
                                 }}
                               >
-                                <div className='flex items-center justify-between mb-2'>
-                                  <Space align='center'>
-                                    <Text>{t('条件规则')}</Text>
+                                <div className='mb-2 flex items-center justify-between'>
+                                  <div className='flex items-center gap-2'>
+                                    <div>{t('条件规则')}</div>
                                     <Select
                                       value={selectedOperation.logic || 'OR'}
-                                      optionList={[
-                                        {
-                                          label: t('满足任一条件（OR）'),
-                                          value: 'OR',
-                                        },
-                                        {
-                                          label: t('必须全部满足（AND）'),
-                                          value: 'AND',
-                                        },
-                                      ]}
-                                      size='small'
-                                      style={{ width: 180 }}
-                                      onChange={(nextValue) =>
+                                      onValueChange={(nextValue) =>
                                         updateOperation(selectedOperation.id, {
                                           logic: nextValue,
                                         })
                                       }
-                                    />
-                                  </Space>
-                                  <Space spacing={6}>
+                                    >
+                                      <SelectTrigger className='h-8 w-[180px] border-white/10 bg-white/5 text-white'>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className='border-white/10 bg-black text-white'>
+                                        <SelectItem value='OR'>
+                                          {t('满足任一条件（OR）')}
+                                        </SelectItem>
+                                        <SelectItem value='AND'>
+                                          {t('必须全部满足（AND）')}
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className='flex flex-wrap gap-2'>
                                     <Button
-                                      size='small'
-                                      type='tertiary'
+                                      size='sm'
+                                      type='button'
+                                      variant='secondary'
                                       onClick={expandAllSelectedConditions}
                                     >
                                       {t('全部展开')}
                                     </Button>
                                     <Button
-                                      size='small'
-                                      type='tertiary'
+                                      size='sm'
+                                      type='button'
+                                      variant='secondary'
                                       onClick={collapseAllSelectedConditions}
                                     >
                                       {t('全部收起')}
                                     </Button>
                                     <Button
-                                      icon={<IconPlus />}
-                                      size='small'
+                                      size='sm'
+                                      type='button'
                                       onClick={() =>
                                         addCondition(selectedOperation.id)
                                       }
                                     >
+                                      <Plus className='mr-1 h-4 w-4' />
                                       {t('新增条件')}
                                     </Button>
-                                  </Space>
+                                  </div>
                                 </div>
 
                                 {conditions.length === 0 ? (
-                                  <Text type='tertiary' size='small'>
+                                  <p className='text-sm text-white/60'>
                                     {t('没有条件时，默认总是执行该操作。')}
-                                  </Text>
+                                  </p>
                                 ) : (
-                                  <Collapse
-                                    keepDOM
-                                    activeKey={selectedConditionKeys}
-                                    onChange={(activeKeys) =>
-                                      handleConditionCollapseChange(
-                                        selectedOperation.id,
-                                        activeKeys,
-                                      )
-                                    }
-                                  >
+                                  <div className='space-y-3'>
                                     {conditions.map(
-                                      (condition, conditionIndex) => (
-                                        <Collapse.Panel
-                                          key={condition.id}
-                                          itemKey={condition.id}
-                                          header={
-                                            <Space spacing={8}>
-                                              <Tag size='small'>
-                                                {`C${conditionIndex + 1}`}
-                                              </Tag>
-                                              <Text
-                                                type='tertiary'
-                                                size='small'
-                                              >
-                                                {condition.path ||
-                                                  t('未设置路径')}
-                                              </Text>
-                                            </Space>
-                                          }
-                                        >
-                                          <div>
-                                            <div className='flex items-center justify-between mb-2'>
-                                              <Text
-                                                type='tertiary'
-                                                size='small'
-                                              >
-                                                {t('条件项设置')}
-                                              </Text>
-                                              <Button
-                                                theme='borderless'
-                                                type='danger'
-                                                icon={<IconDelete />}
-                                                size='small'
-                                                onClick={() =>
-                                                  removeCondition(
-                                                    selectedOperation.id,
-                                                    condition.id,
-                                                  )
-                                                }
-                                              >
-                                                {t('删除条件')}
-                                              </Button>
-                                            </div>
-                                            <Row gutter={12}>
-                                              <Col xs={24} md={10}>
-                                                <Text
-                                                  type='tertiary'
-                                                  size='small'
-                                                >
-                                                  {t('字段路径')}
-                                                </Text>
-                                                <Input
-                                                  value={condition.path}
-                                                  placeholder='model'
-                                                  onChange={(nextValue) =>
-                                                    updateCondition(
-                                                      selectedOperation.id,
-                                                      condition.id,
-                                                      { path: nextValue },
-                                                    )
-                                                  }
-                                                />
-                                              </Col>
-                                              <Col xs={24} md={8}>
-                                                <Text
-                                                  type='tertiary'
-                                                  size='small'
-                                                >
-                                                  {t('匹配方式')}
-                                                </Text>
-                                                <Select
-                                                  value={condition.mode}
-                                                  optionList={
-                                                    CONDITION_MODE_OPTIONS
-                                                  }
-                                                  onChange={(nextValue) =>
-                                                    updateCondition(
-                                                      selectedOperation.id,
-                                                      condition.id,
-                                                      { mode: nextValue },
-                                                    )
-                                                  }
-                                                  style={{ width: '100%' }}
-                                                />
-                                              </Col>
-                                              <Col xs={24} md={6}>
-                                                <Text
-                                                  type='tertiary'
-                                                  size='small'
-                                                >
-                                                  {t('匹配值')}
-                                                </Text>
-                                                <Input
-                                                  value={condition.value_text}
-                                                  placeholder='gpt'
-                                                  onChange={(nextValue) =>
-                                                    updateCondition(
-                                                      selectedOperation.id,
-                                                      condition.id,
-                                                      { value_text: nextValue },
-                                                    )
-                                                  }
-                                                />
-                                              </Col>
-                                            </Row>
-                                            <div className='mt-2 flex flex-wrap gap-3'>
+                                      (condition, conditionIndex) => {
+                                        const isExpanded =
+                                          selectedConditionKeys.includes(
+                                            condition.id,
+                                          );
+                                        const nextKeys = isExpanded
+                                          ? selectedConditionKeys.filter(
+                                              (key) => key !== condition.id,
+                                            )
+                                          : [
+                                              ...selectedConditionKeys,
+                                              condition.id,
+                                            ];
+
+                                        return (
+                                          <div key={condition.id}>
+                                            <button
+                                              type='button'
+                                              className='flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left'
+                                              onClick={() =>
+                                                handleConditionCollapseChange(
+                                                  selectedOperation.id,
+                                                  nextKeys,
+                                                )
+                                              }
+                                            >
                                               <div className='flex items-center gap-2'>
-                                                <Text
-                                                  type='tertiary'
-                                                  size='small'
-                                                >
-                                                  {t('条件取反')}
-                                                </Text>
-                                                <Switch
-                                                  checked={Boolean(
-                                                    condition.invert,
-                                                  )}
-                                                  checkedText={t('开')}
-                                                  uncheckedText={t('关')}
-                                                  onChange={(nextValue) =>
-                                                    updateCondition(
-                                                      selectedOperation.id,
-                                                      condition.id,
-                                                      { invert: nextValue },
-                                                    )
-                                                  }
-                                                />
+                                                <Badge variant='secondary'>
+                                                  {`C${conditionIndex + 1}`}
+                                                </Badge>
+                                                <span className='text-sm text-white/60'>
+                                                  {condition.path ||
+                                                    t('未设置路径')}
+                                                </span>
                                               </div>
-                                              <div className='flex items-center gap-2'>
-                                                <Text
-                                                  type='tertiary'
-                                                  size='small'
-                                                >
-                                                  {t('字段缺失视为命中')}
-                                                </Text>
-                                                <Switch
-                                                  checked={Boolean(
-                                                    condition.pass_missing_key,
-                                                  )}
-                                                  checkedText={t('开')}
-                                                  uncheckedText={t('关')}
-                                                  onChange={(nextValue) =>
-                                                    updateCondition(
-                                                      selectedOperation.id,
-                                                      condition.id,
-                                                      {
-                                                        pass_missing_key:
-                                                          nextValue,
-                                                      },
-                                                    )
-                                                  }
-                                                />
+                                              <span className='text-xs text-white/50'>
+                                                {isExpanded
+                                                  ? t('收起')
+                                                  : t('展开')}
+                                              </span>
+                                            </button>
+
+                                            {isExpanded ? (
+                                              <div className='mt-2 rounded-lg border border-white/10 bg-black/20 p-3'>
+                                                <div className='mb-2 flex items-center justify-between'>
+                                                  <p className='text-sm text-white/60'>
+                                                    {t('条件项设置')}
+                                                  </p>
+                                                  <Button
+                                                    variant='destructive'
+                                                    type='button'
+                                                    size='sm'
+                                                    onClick={() =>
+                                                      removeCondition(
+                                                        selectedOperation.id,
+                                                        condition.id,
+                                                      )
+                                                    }
+                                                  >
+                                                    <Trash2 className='mr-1 h-4 w-4' />
+                                                    {t('删除条件')}
+                                                  </Button>
+                                                </div>
+
+                                                <div className='grid gap-3 md:grid-cols-[1.3fr_1fr_0.9fr]'>
+                                                  <div>
+                                                    <p className='mb-1 text-sm text-white/60'>
+                                                      {t('字段路径')}
+                                                    </p>
+                                                    <Input
+                                                      value={condition.path}
+                                                      placeholder='model'
+                                                      onChange={(e) =>
+                                                        updateCondition(
+                                                          selectedOperation.id,
+                                                          condition.id,
+                                                          {
+                                                            path: e.target.value,
+                                                          },
+                                                        )
+                                                      }
+                                                      className='border-white/10 bg-white/5 text-white'
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <p className='mb-1 text-sm text-white/60'>
+                                                      {t('匹配方式')}
+                                                    </p>
+                                                    <Select
+                                                      value={condition.mode}
+                                                      onValueChange={(
+                                                        nextValue,
+                                                      ) =>
+                                                        updateCondition(
+                                                          selectedOperation.id,
+                                                          condition.id,
+                                                          {
+                                                            mode:
+                                                              nextValue ||
+                                                              'full',
+                                                          },
+                                                        )
+                                                      }
+                                                    >
+                                                      <SelectTrigger className='w-full border-white/10 bg-white/5 text-white'>
+                                                        <SelectValue />
+                                                      </SelectTrigger>
+                                                      <SelectContent className='border-white/10 bg-black text-white'>
+                                                        {CONDITION_MODE_OPTIONS.map(
+                                                          (option) => (
+                                                            <SelectItem
+                                                              key={
+                                                                option.value
+                                                              }
+                                                              value={
+                                                                option.value
+                                                              }
+                                                            >
+                                                              {option.label}
+                                                            </SelectItem>
+                                                          ),
+                                                        )}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  </div>
+                                                  <div>
+                                                    <p className='mb-1 text-sm text-white/60'>
+                                                      {t('匹配值')}
+                                                    </p>
+                                                    <Input
+                                                      value={
+                                                        condition.value_text
+                                                      }
+                                                      placeholder='gpt'
+                                                      onChange={(e) =>
+                                                        updateCondition(
+                                                          selectedOperation.id,
+                                                          condition.id,
+                                                          {
+                                                            value_text:
+                                                              e.target.value,
+                                                          },
+                                                        )
+                                                      }
+                                                      className='border-white/10 bg-white/5 text-white'
+                                                    />
+                                                  </div>
+                                                </div>
+
+                                                <div className='mt-2 flex flex-wrap gap-3'>
+                                                  <div className='flex items-center gap-2'>
+                                                    <p className='text-sm text-white/60'>
+                                                      {t('条件取反')}
+                                                    </p>
+                                                    <Switch
+                                                      checked={Boolean(
+                                                        condition.invert,
+                                                      )}
+                                                      onCheckedChange={(
+                                                        nextValue,
+                                                      ) =>
+                                                        updateCondition(
+                                                          selectedOperation.id,
+                                                          condition.id,
+                                                          {
+                                                            invert: nextValue,
+                                                          },
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                  <div className='flex items-center gap-2'>
+                                                    <p className='text-sm text-white/60'>
+                                                      {t(
+                                                        '字段缺失视为命中',
+                                                      )}
+                                                    </p>
+                                                    <Switch
+                                                      checked={Boolean(
+                                                        condition.pass_missing_key,
+                                                      )}
+                                                      onCheckedChange={(
+                                                        nextValue,
+                                                      ) =>
+                                                        updateCondition(
+                                                          selectedOperation.id,
+                                                          condition.id,
+                                                          {
+                                                            pass_missing_key:
+                                                              nextValue,
+                                                          },
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                </div>
                                               </div>
-                                            </div>
+                                            ) : null}
                                           </div>
-                                        </Collapse.Panel>
-                                      ),
+                                        );
+                                      },
                                     )}
-                                  </Collapse>
+                                  </div>
                                 )}
                               </div>
-                            </Card>
+                            </CardContent>
+                          </Card>
                           );
                         })()
                       ) : (
-                        <Card
-                          className='!rounded-2xl !border-0'
-                          bodyStyle={{
-                            padding: 14,
-                            background: 'var(--semi-color-fill-0)',
-                          }}
-                        >
-                          <Text type='tertiary'>
+                        <Card className='rounded-2xl border-white/10 bg-white/5 py-0'>
+                          <CardContent className='p-4'>
+                            <p className='text-sm text-white/60'>
                             {t('请选择一条规则进行编辑。')}
-                          </Text>
+                            </p>
+                          </CardContent>
                         </Card>
                       )}
 
                       {visualValidationError ? (
-                        <Card
-                          className='!rounded-2xl !border-0 mt-3'
-                          bodyStyle={{
-                            padding: 12,
-                            background: 'var(--semi-color-fill-0)',
-                          }}
-                        >
-                          <Space>
-                            <Tag color='red'>{t('暂存错误')}</Tag>
-                            <Text type='danger'>{visualValidationError}</Text>
-                          </Space>
+                        <Card className='mt-3 rounded-2xl border-red-500/30 bg-red-500/10 py-0'>
+                          <CardContent className='flex items-center gap-2 p-3'>
+                            <Badge variant='destructive'>{t('暂存错误')}</Badge>
+                            <p className='text-sm text-red-300'>
+                              {visualValidationError}
+                            </p>
+                          </CardContent>
                         </Card>
                       ) : null}
-                    </Col>
-                  </Row>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
           ) : (
             <div style={{ width: '100%' }}>
-              <Space style={{ marginBottom: 8 }} wrap>
-                <Button onClick={formatJson}>{t('格式化')}</Button>
-                <Tag color='grey'>{t('高级文本编辑')}</Tag>
-              </Space>
-              <TextArea
+              <div className='mb-2 flex flex-wrap items-center gap-2'>
+                <Button type='button' onClick={formatJson}>
+                  {t('格式化')}
+                </Button>
+                <Badge className='border-white/10 bg-white/10 text-white/70'>
+                  {t('高级文本编辑')}
+                </Badge>
+              </div>
+              <Textarea
                 value={jsonText}
-                autosize={{ minRows: 18, maxRows: 28 }}
-                onChange={(nextValue) => handleJsonChange(nextValue ?? '')}
+                onChange={(e) => handleJsonChange(e.target.value ?? '')}
                 placeholder={JSON.stringify(OPERATION_TEMPLATE, null, 2)}
-                showClear
+                className='min-h-[420px] border-white/10 bg-white/5 font-mono text-sm text-white'
               />
-              <Text type='tertiary' size='small' className='mt-2 block'>
+              <p className='mt-2 block text-sm text-white/60'>
                 {t('直接编辑 JSON 文本，保存时会校验格式。')}
-              </Text>
+              </p>
               {jsonError ? (
-                <Text className='text-red-500 text-xs mt-2'>{jsonError}</Text>
+                <p className='mt-2 text-xs text-red-500'>{jsonError}</p>
               ) : null}
             </div>
           )}
-        </Space>
-      </Modal>
-
-      <Modal
-        title={t('anthropic-beta JSON 示例')}
-        visible={headerValueExampleVisible}
-        width={760}
-        footer={null}
-        onCancel={() => setHeaderValueExampleVisible(false)}
-        bodyStyle={{ padding: 16, paddingBottom: 24 }}
-      >
-        <Space vertical align='start' spacing={12} style={{ width: '100%' }}>
-          <Text type='tertiary' size='small'>
-            {t('下面是带注释的示例，仅用于参考；实际保存时请删除注释。')}
-          </Text>
-          <TextArea
-            value={HEADER_VALUE_JSONC_EXAMPLE}
-            readOnly
-            autosize={{ minRows: 16, maxRows: 20 }}
-            style={{ marginBottom: 8 }}
-          />
-        </Space>
-      </Modal>
-
-      <Modal
-        title={null}
-        visible={fieldGuideVisible}
-        width={860}
-        footer={null}
-        onCancel={() => setFieldGuideVisible(false)}
-        bodyStyle={{
-          maxHeight: '72vh',
-          overflowY: 'auto',
-          padding: 16,
-          background: 'var(--semi-color-bg-0)',
-        }}
-      >
-        <Space vertical spacing={12} style={{ width: '100%' }}>
-          <div className='flex items-start justify-between gap-3'>
-            <div>
-              <Text strong style={{ fontSize: 22, lineHeight: '30px' }}>
-                {t('字段速查')}
-              </Text>
-              <Text
-                type='tertiary'
-                size='small'
-                className='block mt-1'
-                style={{ maxWidth: 560 }}
-              >
-                {t(
-                  '先搜索，再一键复制字段名或填入当前规则。字段名为系统内部路径，可直接用于路径 / 来源 / 目标。',
-                )}
-              </Text>
-            </div>
-            <Tag color='blue'>{`${fieldGuideFieldCount} ${t('个字段')}`}</Tag>
           </div>
 
-          <Card
-            className='!rounded-xl !border-0'
-            bodyStyle={{
-              padding: 12,
-              background: 'var(--semi-color-fill-0)',
-            }}
-          >
-            <div className='flex items-center gap-2'>
-              <Input
-                value={fieldGuideKeyword}
-                onChange={(nextValue) => setFieldGuideKeyword(nextValue || '')}
-                placeholder={t('搜索字段名 / 中文说明')}
-                showClear
-                style={{ flex: 1 }}
-              />
-              <Select
-                value={fieldGuideTarget}
-                optionList={FIELD_GUIDE_TARGET_OPTIONS}
-                onChange={(nextValue) =>
-                  setFieldGuideTarget(nextValue || 'path')
-                }
-                style={{ width: 170 }}
-              />
-            </div>
-          </Card>
+          <DialogFooter className='border-white/10 bg-transparent'>
+            <Button type='button' variant='secondary' onClick={onCancel}>
+              {t('取消')}
+            </Button>
+            <Button type='button' onClick={handleSave}>
+              {t('保存')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          {filteredFieldGuideSections.length === 0 ? (
-            <Card
-              className='!rounded-xl !border-0'
-              bodyStyle={{
-                padding: 20,
-                background: 'var(--semi-color-fill-0)',
-              }}
-            >
-              <Text type='tertiary'>{t('没有匹配的字段')}</Text>
-            </Card>
-          ) : (
-            <div className='flex flex-col gap-2'>
-              {filteredFieldGuideSections.map((section) => (
-                <Card
-                  key={section.title}
-                  className='!rounded-xl !border-0'
-                  bodyStyle={{
-                    padding: 14,
-                    background: 'var(--semi-color-fill-0)',
-                  }}
-                >
-                  <div className='flex items-center justify-between mb-1'>
-                    <Text strong style={{ fontSize: 18 }}>
-                      {section.title}
-                    </Text>
-                    <Tag color='grey'>{`${section.fields.length} ${t('项')}`}</Tag>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      marginTop: 6,
-                    }}
+      <Dialog
+        open={headerValueExampleVisible}
+        onOpenChange={(open) => setHeaderValueExampleVisible(open)}
+      >
+        <DialogContent className='max-w-[760px] border-white/10 bg-black text-white'>
+          <DialogHeader>
+            <DialogTitle>{t('anthropic-beta JSON 示例')}</DialogTitle>
+          </DialogHeader>
+          <div className='space-y-3 pb-2'>
+            <p className='text-sm text-white/60'>
+              {t('下面是带注释的示例，仅用于参考；实际保存时请删除注释。')}
+            </p>
+            <Textarea
+              value={HEADER_VALUE_JSONC_EXAMPLE}
+              readOnly
+              className='min-h-[320px] border-white/10 bg-white/5 font-mono text-sm text-white'
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={fieldGuideVisible} onOpenChange={setFieldGuideVisible}>
+        <DialogContent className='max-h-[72vh] max-w-[860px] overflow-y-auto border-white/10 bg-black text-white'>
+          <DialogHeader>
+            <div className='flex items-start justify-between gap-3'>
+              <div>
+                <DialogTitle className='text-[22px] leading-[30px]'>
+                  {t('字段速查')}
+                </DialogTitle>
+                <p className='mt-1 max-w-[560px] text-sm text-white/60'>
+                  {t(
+                    '先搜索，再一键复制字段名或填入当前规则。字段名为系统内部路径，可直接用于路径 / 来源 / 目标。',
+                  )}
+                </p>
+              </div>
+              <Badge className='border-blue-500/20 bg-blue-500/15 text-blue-200'>
+                {`${fieldGuideFieldCount} ${t('个字段')}`}
+              </Badge>
+            </div>
+          </DialogHeader>
+
+          <div className='space-y-3'>
+            <Card className='border-white/10 bg-white/5 py-0'>
+              <CardContent className='p-3'>
+                <div className='flex items-center gap-2'>
+                  <Input
+                    value={fieldGuideKeyword}
+                    onChange={(e) => setFieldGuideKeyword(e.target.value || '')}
+                    placeholder={t('搜索字段名 / 中文说明')}
+                    className='flex-1 border-white/10 bg-white/5 text-white'
+                  />
+                  <Select
+                    value={fieldGuideTarget}
+                    onValueChange={(nextValue) =>
+                      setFieldGuideTarget(nextValue || 'path')
+                    }
                   >
-                    {section.fields.map((field, index) => (
-                      <div
-                        key={field.key}
-                        className='flex items-start justify-between gap-3'
-                        style={{
-                          paddingTop: 10,
-                          paddingBottom: 10,
-                          borderTop:
-                            index === 0
-                              ? 'none'
-                              : '1px solid var(--semi-color-border)',
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <Text strong>{field.label}</Text>
-                          <Text
-                            type='secondary'
-                            size='small'
-                            className='block mt-1 font-mono'
+                    <SelectTrigger className='w-[170px] border-white/10 bg-white/5 text-white'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className='border-white/10 bg-black text-white'>
+                      {FIELD_GUIDE_TARGET_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {filteredFieldGuideSections.length === 0 ? (
+              <Card className='border-white/10 bg-white/5 py-0'>
+                <CardContent className='p-5'>
+                  <p className='text-sm text-white/60'>{t('没有匹配的字段')}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className='flex flex-col gap-2'>
+                {filteredFieldGuideSections.map((section) => (
+                  <Card
+                    key={section.title}
+                    className='border-white/10 bg-white/5 py-0'
+                  >
+                    <CardContent className='p-4'>
+                      <div className='mb-1 flex items-center justify-between'>
+                        <div className='text-lg font-semibold'>
+                          {section.title}
+                        </div>
+                        <Badge className='border-white/10 bg-white/10 text-white/70'>
+                          {`${section.fields.length} ${t('项')}`}
+                        </Badge>
+                      </div>
+                      <div className='mt-2 flex flex-col'>
+                        {section.fields.map((field, index) => (
+                          <div
+                            key={field.key}
+                            className='flex items-start justify-between gap-3 py-2.5'
                             style={{
-                              background: 'var(--semi-color-bg-1)',
-                              border: '1px solid var(--semi-color-border)',
-                              borderRadius: 8,
-                              padding: '4px 8px',
-                              width: 'fit-content',
+                              borderTop:
+                                index === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
                             }}
                           >
-                            {field.key}
-                          </Text>
-                          <Text
-                            type='tertiary'
-                            size='small'
-                            className='block mt-1'
-                            style={{ lineHeight: '18px' }}
-                          >
-                            {field.tip}
-                          </Text>
-                        </div>
-                        <Space spacing={6} align='center'>
-                          <Button
-                            size='small'
-                            type='tertiary'
-                            onClick={() => copyBuiltinField(field.key)}
-                          >
-                            {t('复制')}
-                          </Button>
-                          <Button
-                            size='small'
-                            onClick={() =>
-                              applyBuiltinField(field.key, fieldGuideTarget)
-                            }
-                          >
-                            {fieldGuideActionLabel}
-                          </Button>
-                        </Space>
+                            <div className='min-w-0 flex-1'>
+                              <div className='font-medium'>{field.label}</div>
+                              <div className='mt-1 inline-block rounded-lg border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-white/80'>
+                                {field.key}
+                              </div>
+                              <div className='mt-1 text-sm leading-[18px] text-white/60'>
+                                {field.tip}
+                              </div>
+                            </div>
+                            <div className='flex items-center gap-2'>
+                              <Button
+                                size='sm'
+                                variant='secondary'
+                                onClick={() => copyBuiltinField(field.key)}
+                              >
+                                {t('复制')}
+                              </Button>
+                              <Button
+                                size='sm'
+                                onClick={() =>
+                                  applyBuiltinField(field.key, fieldGuideTarget)
+                                }
+                              >
+                                {fieldGuideActionLabel}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </Space>
-      </Modal>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

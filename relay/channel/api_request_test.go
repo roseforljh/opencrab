@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

@@ -3,7 +3,7 @@
 import (
 	"time"
 
-	"github.com/QuantumNous/opencrab/dto"
+	"github.com/roseforljh/opencrab/dto"
 )
 
 type ZhipuMessage struct {

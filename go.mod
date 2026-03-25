@@ -1,4 +1,4 @@
-module github.com/QuantumNous/opencrab
+module github.com/roseforljh/opencrab
 
 // +heroku goVersion go1.18
 go 1.25.1

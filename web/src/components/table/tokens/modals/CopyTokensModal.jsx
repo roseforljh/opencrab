@@ -1,24 +1,14 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React from 'react';
-import { Modal, Button, Space } from '@douyinfe/semi-ui';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const CopyTokensModal = ({ visible, onCancel, batchCopyTokens, t }) => {
   // Handle copy with name and key format
@@ -34,22 +24,22 @@ const CopyTokensModal = ({ visible, onCancel, batchCopyTokens, t }) => {
   };
 
   return (
-    <Modal
-      title={t('复制令牌')}
-      icon={null}
-      visible={visible}
-      onCancel={onCancel}
-      footer={
-        <Space>
-          <Button type='tertiary' onClick={handleCopyWithName}>
+    <Dialog open={visible} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className='border-white/10 bg-black text-white'>
+        <DialogHeader>
+          <DialogTitle>{t('复制令牌')}</DialogTitle>
+          <DialogDescription className='text-white/60'>
+            {t('请选择你的复制方式')}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button variant='secondary' onClick={handleCopyWithName}>
             {t('名称+密钥')}
           </Button>
           <Button onClick={handleCopyKeyOnly}>{t('仅密钥')}</Button>
-        </Space>
-      }
-    >
-      {t('请选择你的复制方式')}
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

@@ -1,27 +1,10 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React from 'react';
-import { Form, Tag, Typography } from '@douyinfe/semi-ui';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function HttpStatusCodeRulesInput(props) {
-  const { Text } = Typography;
   const {
     label,
     field,
@@ -30,41 +13,38 @@ export default function HttpStatusCodeRulesInput(props) {
     onChange,
     parsed,
     invalidText,
+    value,
   } = props;
 
   return (
-    <>
-      <Form.Input
-        label={label}
+    <div className="space-y-2">
+      <Label htmlFor={field} className="text-white/80">{label}</Label>
+      <Input
+        id={field}
+        value={value}
         placeholder={placeholder}
-        extraText={extraText}
-        field={field}
-        onChange={onChange}
+        onChange={(e) => onChange(e.target.value)}
+        className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
       />
+      {extraText && <div className="text-xs text-white/50">{extraText}</div>}
+      
       {parsed?.ok && parsed.tokens?.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 8,
-            marginTop: 8,
-          }}
-        >
+        <div className="flex flex-wrap gap-2 mt-2">
           {parsed.tokens.map((token) => (
-            <Tag key={token} size='small'>
+            <Badge key={token} variant="secondary" className="bg-white/10 text-white/80 hover:bg-white/20">
               {token}
-            </Tag>
+            </Badge>
           ))}
         </div>
       )}
       {!parsed?.ok && (
-        <Text type='danger' style={{ display: 'block', marginTop: 8 }}>
+        <div className="text-sm text-red-500 mt-2 block">
           {invalidText}
           {parsed?.invalidTokens && parsed.invalidTokens.length > 0
             ? `: ${parsed.invalidTokens.join(', ')}`
             : ''}
-        </Text>
+        </div>
       )}
-    </>
+    </div>
   );
 }

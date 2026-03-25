@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/opencrab/common"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/common"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"

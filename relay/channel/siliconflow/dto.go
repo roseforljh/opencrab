@@ -1,6 +1,6 @@
 ﻿package siliconflow
 
-import "github.com/QuantumNous/opencrab/dto"
+import "github.com/roseforljh/opencrab/dto"
 
 type SFTokens struct {
 	InputTokens  int `json:"input_tokens"`

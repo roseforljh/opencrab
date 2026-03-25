@@ -1,7 +1,7 @@
 ﻿package ali
 
 import (
-	"github.com/QuantumNous/opencrab/dto"
+	"github.com/roseforljh/opencrab/dto"
 	"github.com/samber/lo"
 )
 

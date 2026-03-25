@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/setting/system_setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/setting/system_setting"
 )
 
 // WorkerRequest Worker请求的数据结构

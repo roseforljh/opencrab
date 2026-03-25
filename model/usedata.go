@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 	"gorm.io/gorm"
 )
 

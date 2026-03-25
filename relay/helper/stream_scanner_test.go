@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/opencrab/constant"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/setting/operation_setting"
+	"github.com/roseforljh/opencrab/constant"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

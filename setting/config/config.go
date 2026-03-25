@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 )
 
 // ConfigManager 统一管理所有配置

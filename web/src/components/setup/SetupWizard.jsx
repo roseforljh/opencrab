@@ -1,28 +1,21 @@
-/*
-Copyright (C) 2025 QuantumNous
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
-import React, { useEffect, useState, useRef } from 'react';
-import { Card, Form, Button } from '@douyinfe/semi-ui';
-import { API, showError, showNotice } from '../../helpers';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { Card } from '@douyinfe/semi-ui';
+import { Button } from '@/components/ui/button';
+import Title from '@douyinfe/semi-ui/lib/es/typography/title';
+import Text from '@douyinfe/semi-ui/lib/es/typography/text';
+import {
+  API,
+  showError,
+  showNotice,
+  getLogo,
+  getSystemName,
+} from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
 import AdminStep from './components/steps/AdminStep';
+
+const FLOATING_DOTS_COUNT = 250;
 
 const SetupWizard = () => {
   const { t } = useTranslation();
@@ -32,6 +25,25 @@ const SetupWizard = () => {
     root_init: false,
   });
   const formRef = useRef(null);
+
+  const logo = getLogo();
+  const systemName = getSystemName();
+
+  const floatingDots = useMemo(
+    () =>
+      Array.from({ length: FLOATING_DOTS_COUNT }, (_, i) => ({
+        id: i,
+        top: `${Math.random() * 100}%`,
+        left: `${Math.random() * 100}%`,
+        size: `${Math.random() * 3.5 + 1.5}px`,
+        opacity: (Math.random() * 0.6 + 0.3).toFixed(2),
+        duration: `${Math.random() * 8 + 6}s`,
+        delay: `${Math.random() * 4}s`,
+        driftX: `${Math.random() * 200 - 100}px`,
+        driftY: `${Math.random() * 150 - 75}px`,
+      })),
+    [],
+  );
 
   const [formData, setFormData] = useState({
     pin: '',
@@ -61,12 +73,7 @@ const SetupWizard = () => {
   };
 
   const onSubmit = () => {
-    if (!formRef.current) {
-      showError(t('表单引用错误，请刷新页面重试'));
-      return;
-    }
-
-    const values = formRef.current.getValues();
+    const values = formData;
 
     if (!values.pin || values.pin.length < 4) {
       showError(t('PIN 长度至少为4位'));
@@ -104,43 +111,104 @@ const SetupWizard = () => {
   };
 
   return (
-    <div className='min-h-screen flex items-center justify-center px-4'>
-      <div className='w-full max-w-xl'>
-        <Card className='!rounded-2xl shadow-sm border-0'>
-          <div className='mb-4'>
-            <div className='text-xl font-semibold'>{t('系统初始化')}</div>
-            <div className='text-xs text-gray-600'>
-              {t('设置 PIN 后开始使用系统')}
+    <div
+      className='relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-12 sm:px-6 lg:px-8'
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#000000',
+        backgroundImage:
+          'linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)',
+        backgroundSize: '32px 32px',
+        backgroundPosition: 'center center',
+      }}
+    >
+      <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0)_0%,rgba(0,0,0,0.8)_100%)]'></div>
+      <div className='login-enter-overlay is-active'></div>
+      <div className='login-grid-overlay'></div>
+      <div className='floating-dots-container'>
+        {floatingDots.map((dot) => (
+          <div
+            key={dot.id}
+            className='floating-dot'
+            style={{
+              top: dot.top,
+              left: dot.left,
+              width: dot.size,
+              height: dot.size,
+              opacity: dot.opacity,
+              animationDuration: dot.duration,
+              animationDelay: dot.delay,
+              '--float-x': dot.driftX,
+              '--float-y': dot.driftY,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className='relative z-10 flex w-full items-center justify-center px-2 login-card-wrapper'>
+        <div className='login-content-stage w-full max-w-sm'>
+          <div className='flex flex-col items-center'>
+            <div className='w-full login-panel-shell'>
+              <div className='mb-8 flex items-center justify-center gap-3'>
+                <div className='rounded-2xl border border-white/10 bg-white/10 p-1.5 shadow-[0_16px_48px_rgba(34,124,255,0.2)]'>
+                  <img
+                    src={logo}
+                    alt='Logo'
+                    className='h-11 w-11 rounded-xl object-cover'
+                  />
+                </div>
+                <div>
+                  <Title heading={3} className='!mb-0 !text-white'>
+                    {systemName}
+                  </Title>
+                  <Text className='!text-white/55'>
+                    {t('系统首次部署初始化')}
+                  </Text>
+                </div>
+              </div>
+
+              <Card className='login-card !overflow-hidden !rounded-[28px] !border !border-white/10 !bg-white/6 !backdrop-blur-xl !shadow-[0_30px_100px_rgba(0,0,0,0.4)]'>
+                <div className='px-3 pt-8 pb-2 text-center'>
+                  <Title heading={3} className='login-title !mb-2 !text-white'>
+                    {t('初始化设置')}
+                  </Title>
+                  <Text className='!text-white/60'>
+                    {t('设置初始管理 PIN 以继续')}
+                  </Text>
+                </div>
+
+                <div className='login-input-container px-4 py-8'>
+                  <form
+                    className='space-y-4'
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      onSubmit();
+                    }}
+                  >
+                    <AdminStep
+                      setupStatus={setupStatus}
+                      formData={formData}
+                      setFormData={setFormData}
+                      formRef={formRef}
+                      t={t}
+                    />
+                    {!setupStatus.root_init && (
+                      <div className='pt-3'>
+                        <Button
+                          className='login-btn !h-12 !w-full !rounded-2xl !border-0 !bg-white !text-black !shadow-md hover:!bg-gray-200'
+                          type='submit'
+                          disabled={loading}
+                        >
+                          {t('保存并进入系统')}
+                        </Button>
+                      </div>
+                    )}
+                  </form>
+                </div>
+              </Card>
             </div>
           </div>
-
-          <Form
-            getFormApi={(formApi) => {
-              formRef.current = formApi;
-            }}
-            initValues={formData}
-          >
-            <AdminStep
-              setupStatus={setupStatus}
-              formData={formData}
-              setFormData={setFormData}
-              formRef={formRef}
-              t={t}
-            />
-            {!setupStatus.root_init && (
-              <div className='flex justify-end pt-4'>
-                <Button
-                  type='primary'
-                  onClick={onSubmit}
-                  loading={loading}
-                  className='!rounded-lg'
-                >
-                  {t('初始化系统')}
-                </Button>
-              </div>
-            )}
-          </Form>
-        </Card>
+        </div>
       </div>
     </div>
   );

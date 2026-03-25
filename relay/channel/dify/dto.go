@@ -1,7 +1,7 @@
 ﻿package dify
 
 import (
-	"github.com/QuantumNous/opencrab/dto"
+	"github.com/roseforljh/opencrab/dto"
 )
 
 type DifyChatRequest struct {

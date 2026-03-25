@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/constant"
+	"github.com/roseforljh/opencrab/constant"
 )
 
 // ValidateRedirectURL validates that a redirect URL is safe to use.

@@ -1,6 +1,6 @@
 ﻿package common
 
-import "github.com/QuantumNous/opencrab/constant"
+import "github.com/roseforljh/opencrab/constant"
 
 func ChannelType2APIType(channelType int) (int, bool) {
 	apiType := -1

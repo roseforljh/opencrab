@@ -3,7 +3,7 @@
 import (
 	"strings"
 
-	"github.com/QuantumNous/opencrab/setting/config"
+	"github.com/roseforljh/opencrab/setting/config"
 )
 
 // QwenSettings defines Qwen model configuration. 注意bool要以enabled结尾才可以生效编辑

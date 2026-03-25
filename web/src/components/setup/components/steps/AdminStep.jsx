@@ -1,25 +1,9 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React from 'react';
-import { Banner, Form } from '@douyinfe/semi-ui';
+import { Banner } from '@douyinfe/semi-ui';
 import { IconKey } from '@douyinfe/semi-icons';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const AdminStep = ({ setupStatus, formData, setFormData, formRef, t }) => {
   return setupStatus.root_init ? (
@@ -30,50 +14,49 @@ const AdminStep = ({ setupStatus, formData, setFormData, formRef, t }) => {
       className='!rounded-lg mb-4'
     />
   ) : (
-    <>
-      <Form.Input
-        field='pin'
-        label={t('PIN')}
-        placeholder={t('请输入 4-12 位 PIN')}
-        prefix={<IconKey />}
-        showClear
-        mode='password'
-        rules={[
-          { required: true, message: t('请输入 PIN') },
-          { min: 4, message: t('PIN 长度至少为4位') },
-        ]}
-        initValue={formData.pin || ''}
-        onChange={(value) => {
-          setFormData({ ...formData, pin: value });
-        }}
-      />
-      <Form.Input
-        field='confirmPin'
-        label={t('确认 PIN')}
-        placeholder={t('请再次输入 PIN')}
-        prefix={<IconKey />}
-        showClear
-        mode='password'
-        rules={[
-          { required: true, message: t('请确认 PIN') },
-          {
-            validator: (rule, value) => {
-              if (value && formRef.current) {
-                const pin = formRef.current.getValue('pin');
-                if (value !== pin) {
-                  return Promise.reject(t('两次输入的 PIN 不一致'));
-                }
-              }
-              return Promise.resolve();
-            },
-          },
-        ]}
-        initValue={formData.confirmPin || ''}
-        onChange={(value) => {
-          setFormData({ ...formData, confirmPin: value });
-        }}
-      />
-    </>
+    <div className='space-y-4'>
+      <div className='space-y-2'>
+        <Label htmlFor='pin'>{t('PIN')}</Label>
+        <div className='relative'>
+          <div className='absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground'>
+            <IconKey />
+          </div>
+          <Input
+            id='pin'
+            name='pin'
+            type='password'
+            placeholder={t('请输入 4-12 位 PIN')}
+            className='pl-10'
+            required
+            minLength={4}
+            value={formData.pin || ''}
+            onChange={(e) => {
+              setFormData({ ...formData, pin: e.target.value });
+            }}
+          />
+        </div>
+      </div>
+      <div className='space-y-2'>
+        <Label htmlFor='confirmPin'>{t('确认 PIN')}</Label>
+        <div className='relative'>
+          <div className='absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground'>
+            <IconKey />
+          </div>
+          <Input
+            id='confirmPin'
+            name='confirmPin'
+            type='password'
+            placeholder={t('请再次输入 PIN')}
+            className='pl-10'
+            required
+            value={formData.confirmPin || ''}
+            onChange={(e) => {
+              setFormData({ ...formData, confirmPin: e.target.value });
+            }}
+          />
+        </div>
+      </div>
+    </div>
   );
 };
 

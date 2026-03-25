@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/logger"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/logger"
 
 	"github.com/gin-gonic/gin"
 )

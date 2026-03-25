@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/dto"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/dto"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -58,8 +58,8 @@ func TestGeminiChatHandlerCompletionTokensExcludeToolUsePromptTokens(t *testing.
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiChatHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, openCrabError := GeminiChatHandler(c, info, resp)
+	require.Nil(t, openCrabError)
 	require.NotNil(t, usage)
 	require.Equal(t, 18480, usage.PromptTokens)
 	require.Equal(t, 2209, usage.CompletionTokens)
@@ -113,10 +113,10 @@ func TestGeminiStreamHandlerCompletionTokensExcludeToolUsePromptTokens(t *testin
 		Body: io.NopCloser(bytes.NewReader(streamBody)),
 	}
 
-	usage, newAPIError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
+	usage, openCrabError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
 		return true
 	})
-	require.Nil(t, newAPIError)
+	require.Nil(t, openCrabError)
 	require.NotNil(t, usage)
 	require.Equal(t, 18480, usage.PromptTokens)
 	require.Equal(t, 2209, usage.CompletionTokens)
@@ -165,8 +165,8 @@ func TestGeminiTextGenerationHandlerPromptTokensIncludeToolUsePromptTokens(t *te
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiTextGenerationHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, openCrabError := GeminiTextGenerationHandler(c, info, resp)
+	require.Nil(t, openCrabError)
 	require.NotNil(t, usage)
 	require.Equal(t, 18480, usage.PromptTokens)
 	require.Equal(t, 2209, usage.CompletionTokens)
@@ -217,8 +217,8 @@ func TestGeminiChatHandlerUsesEstimatedPromptTokensWhenUsagePromptMissing(t *tes
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiChatHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, openCrabError := GeminiChatHandler(c, info, resp)
+	require.Nil(t, openCrabError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.Equal(t, 100, usage.CompletionTokens)
@@ -272,10 +272,10 @@ func TestGeminiStreamHandlerUsesEstimatedPromptTokensWhenUsagePromptMissing(t *t
 		Body: io.NopCloser(bytes.NewReader(streamBody)),
 	}
 
-	usage, newAPIError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
+	usage, openCrabError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
 		return true
 	})
-	require.Nil(t, newAPIError)
+	require.Nil(t, openCrabError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.Equal(t, 100, usage.CompletionTokens)
@@ -324,8 +324,8 @@ func TestGeminiTextGenerationHandlerUsesEstimatedPromptTokensWhenUsagePromptMiss
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiTextGenerationHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, openCrabError := GeminiTextGenerationHandler(c, info, resp)
+	require.Nil(t, openCrabError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.Equal(t, 100, usage.CompletionTokens)

@@ -1,8 +1,8 @@
 ﻿package middleware
 
 import (
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/service"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/service"
 	"github.com/gin-gonic/gin"
 )
 

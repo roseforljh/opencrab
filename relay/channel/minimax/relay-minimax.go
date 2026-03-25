@@ -3,10 +3,10 @@
 import (
 	"fmt"
 
-	channelconstant "github.com/QuantumNous/opencrab/constant"
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/relay/constant"
-	"github.com/QuantumNous/opencrab/types"
+	channelconstant "github.com/roseforljh/opencrab/constant"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/relay/constant"
+	"github.com/roseforljh/opencrab/types"
 )
 
 func GetRequestURL(info *relaycommon.RelayInfo) (string, error) {

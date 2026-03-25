@@ -3,7 +3,7 @@
 import (
 	"testing"
 
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,11 +47,11 @@ func TestResetStatusCode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			newAPIError := &types.NewAPIError{
+			openCrabError := &types.OpenCrabError{
 				StatusCode: tc.statusCode,
 			}
-			ResetStatusCode(newAPIError, tc.statusCodeConfig)
-			require.Equal(t, tc.expectedCode, newAPIError.StatusCode)
+			ResetStatusCode(openCrabError, tc.statusCodeConfig)
+			require.Equal(t, tc.expectedCode, openCrabError.StatusCode)
 		})
 	}
 }

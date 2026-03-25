@@ -1,39 +1,25 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import {
-  Modal,
-  Table,
-  Checkbox,
-  Typography,
-  Empty,
-  Tag,
-  Popover,
-  Input,
-} from '@douyinfe/semi-ui';
-import { MousePointerClick } from 'lucide-react';
+import { MousePointerClick, Search } from 'lucide-react';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
-import { IconSearch } from '@douyinfe/semi-icons';
-
-const { Text } = Typography;
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Badge } from '@/components/ui/badge';
+import { DataTable } from '../../../ui/data-table';
 
 const FIELD_LABELS = {
   description: '描述',
@@ -156,10 +142,14 @@ const UpstreamConflictModal = ({
   const columns = useMemo(() => {
     const base = [
       {
-        title: t('模型'),
-        dataIndex: 'model_name',
-        fixed: 'left',
-        render: (text) => <Text strong>{text}</Text>,
+        id: 'model_name',
+        header: t('模型'),
+        accessorKey: 'model_name',
+        cell: ({ row }) => (
+          <span className='font-semibold text-white'>
+            {row.original.model_name}
+          </span>
+        ),
       },
     ];
 
@@ -170,65 +160,70 @@ const UpstreamConflictModal = ({
       const { headerChecked, headerIndeterminate, hasAny } =
         getHeaderState(fieldKey);
       if (!hasAny) return null;
-      const onHeaderChange = (e) =>
-        applyHeaderChange(fieldKey, e?.target?.checked);
-
       return {
-        title: (
+        id: fieldKey,
+        header: (
           <div className='flex items-center gap-2'>
             <Checkbox
               checked={headerChecked}
-              indeterminate={headerIndeterminate}
-              onChange={onHeaderChange}
+              indeterminate={headerIndeterminate ? true : undefined}
+              onCheckedChange={(checked) =>
+                applyHeaderChange(fieldKey, Boolean(checked))
+              }
             />
-            <Text>{label}</Text>
+            <span>{label}</span>
           </div>
         ),
-        dataIndex: fieldKey,
-        render: (_, record) => {
+        cell: ({ row }) => {
+          const record = row.original;
           const f = (record.fields || []).find((x) => x.field === fieldKey);
-          if (!f) return <Text type='tertiary'>-</Text>;
+          if (!f) return <span className='text-white/45'>-</span>;
           const checked = selections[record.model_name]?.has(fieldKey) || false;
           return (
-            <Checkbox
-              checked={checked}
-              onChange={(e) =>
-                toggleField(record.model_name, fieldKey, e?.target?.checked)
-              }
-            >
-              <Popover
-                trigger='hover'
-                position='top'
-                content={
-                  <div className='p-2 max-w-[520px]'>
-                    <div className='mb-2'>
-                      <Text type='tertiary' size='small'>
+            <div className='flex items-center gap-2'>
+              <Checkbox
+                checked={checked}
+                onCheckedChange={(value) =>
+                  toggleField(record.model_name, fieldKey, Boolean(value))
+                }
+              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type='button'>
+                    <Badge
+                      variant='secondary'
+                      className='gap-1 border-white/10 bg-white/10 text-white hover:bg-white/15'
+                    >
+                      <MousePointerClick size={14} />
+                      {t('点击查看差异')}
+                    </Badge>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side='top'
+                  className='max-w-[520px] border-white/10 bg-black text-white'
+                >
+                  <div className='space-y-3'>
+                    <div>
+                      <div className='mb-1 text-xs text-white/60'>
                         {t('本地')}
-                      </Text>
-                      <pre className='whitespace-pre-wrap m-0'>
+                      </div>
+                      <pre className='m-0 whitespace-pre-wrap text-xs text-white/80'>
                         {formatValue(f.local)}
                       </pre>
                     </div>
                     <div>
-                      <Text type='tertiary' size='small'>
+                      <div className='mb-1 text-xs text-white/60'>
                         {t('官方')}
-                      </Text>
-                      <pre className='whitespace-pre-wrap m-0'>
+                      </div>
+                      <pre className='m-0 whitespace-pre-wrap text-xs text-white/80'>
                         {formatValue(f.upstream)}
                       </pre>
                     </div>
                   </div>
-                }
-              >
-                <Tag
-                  color='white'
-                  size='small'
-                  prefixIcon={<MousePointerClick size={14} />}
-                >
-                  {t('点击查看差异')}
-                </Tag>
+                </PopoverContent>
               </Popover>
-            </Checkbox>
+            </div>
           );
         },
       };
@@ -238,7 +233,6 @@ const UpstreamConflictModal = ({
   }, [
     t,
     selections,
-    filteredDataSource,
     getHeaderState,
     applyHeaderChange,
     toggleField,
@@ -263,61 +257,95 @@ const UpstreamConflictModal = ({
   };
 
   return (
-    <Modal
-      title={t('选择要覆盖的冲突项')}
-      visible={visible}
-      onCancel={onClose}
-      onOk={handleOk}
-      confirmLoading={loading}
-      okText={t('应用覆盖')}
-      cancelText={t('取消')}
-      width={isMobile ? '100%' : 1000}
-    >
-      {dataSource.length === 0 ? (
-        <Empty description={t('无冲突项')} className='p-6' />
-      ) : (
-        <>
-          <div className='mb-3 text-[var(--semi-color-text-2)]'>
-            {t('仅会覆盖你勾选的字段，未勾选的字段保持本地不变。')}
-          </div>
-          {/* 搜索框 */}
-          <div className='flex items-center justify-end gap-2 w-full mb-4'>
-            <Input
-              placeholder={t('搜索模型...')}
-              value={searchKeyword}
-              onChange={(v) => {
-                setSearchKeyword(v);
-                setCurrentPage(1);
-              }}
-              className='!w-full'
-              prefix={<IconSearch />}
-              showClear
-            />
-          </div>
-          {filteredDataSource.length > 0 ? (
-            <Table
-              columns={columns}
-              dataSource={pagedDataSource}
-              pagination={{
-                currentPage: currentPage,
-                pageSize: MODEL_TABLE_PAGE_SIZE,
-                total: filteredDataSource.length,
-                showSizeChanger: false,
-                onPageChange: (page) => setCurrentPage(page),
-              }}
-              scroll={{ x: 'max-content' }}
-            />
-          ) : (
-            <Empty
-              description={
-                searchKeyword ? t('未找到匹配的模型') : t('无冲突项')
-              }
-              className='p-6'
-            />
-          )}
-        </>
-      )}
-    </Modal>
+    <Dialog open={visible} onOpenChange={(open) => !open && onClose?.()}>
+      <DialogContent
+        className={
+          isMobile
+            ? 'max-w-[95vw] border-white/10 bg-black text-white'
+            : 'max-w-[1000px] border-white/10 bg-black text-white'
+        }
+      >
+        <DialogHeader>
+          <DialogTitle>{t('选择要覆盖的冲突项')}</DialogTitle>
+        </DialogHeader>
+
+        {dataSource.length === 0 ? (
+          <div className='py-6 text-center text-white/60'>{t('无冲突项')}</div>
+        ) : (
+          <>
+            <div className='text-sm text-white/60'>
+              {t('仅会覆盖你勾选的字段，未勾选的字段保持本地不变。')}
+            </div>
+            <div className='flex items-center justify-end gap-2'>
+              <Search className='h-4 w-4 text-white/40' />
+              <Input
+                placeholder={t('搜索模型...')}
+                value={searchKeyword}
+                onChange={(e) => {
+                  setSearchKeyword(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className='w-full border-white/10 bg-white/6 text-white'
+              />
+            </div>
+
+            {filteredDataSource.length > 0 ? (
+              <>
+                <DataTable
+                  columns={columns}
+                  data={pagedDataSource}
+                  loading={loading}
+                />
+                {filteredDataSource.length > MODEL_TABLE_PAGE_SIZE && (
+                  <div className='mt-4 flex justify-end gap-2'>
+                    <Button
+                      type='button'
+                      variant='secondary'
+                      onClick={() =>
+                        setCurrentPage((page) => Math.max(1, page - 1))
+                      }
+                      disabled={currentPage === 1}
+                    >
+                      {t('上一页')}
+                    </Button>
+                    <Button
+                      type='button'
+                      variant='secondary'
+                      onClick={() =>
+                        setCurrentPage((page) =>
+                          page * MODEL_TABLE_PAGE_SIZE < filteredDataSource.length
+                            ? page + 1
+                            : page,
+                        )
+                      }
+                      disabled={
+                        currentPage * MODEL_TABLE_PAGE_SIZE >=
+                        filteredDataSource.length
+                      }
+                    >
+                      {t('下一页')}
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className='py-6 text-center text-white/60'>
+                {searchKeyword ? t('未找到匹配的模型') : t('无冲突项')}
+              </div>
+            )}
+          </>
+        )}
+
+        <DialogFooter className='border-white/10 bg-transparent'>
+          <Button type='button' variant='secondary' onClick={onClose}>
+            {t('取消')}
+          </Button>
+          <Button type='button' onClick={handleOk} disabled={loading}>
+            {t('应用覆盖')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

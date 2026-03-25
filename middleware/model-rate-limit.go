@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/common/limiter"
-	"github.com/QuantumNous/opencrab/constant"
-	"github.com/QuantumNous/opencrab/setting"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/common/limiter"
+	"github.com/roseforljh/opencrab/constant"
+	"github.com/roseforljh/opencrab/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"

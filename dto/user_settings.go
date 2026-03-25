@@ -13,7 +13,7 @@ type UserSetting struct {
 	UpstreamModelUpdateNotifyEnabled bool    `json:"upstream_model_update_notify_enabled,omitempty"` // 是否接收上游模型更新定时检测通知（仅管理员）
 	RecordIpLog                      bool    `json:"record_ip_log,omitempty"`                        // 是否记录请求和错误日志IP
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
-	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
+	DispatchPreference               string  `json:"dispatch_preference,omitempty"`                  // DispatchPreference 调度偏好
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
 }
 

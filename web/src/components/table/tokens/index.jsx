@@ -1,37 +1,7 @@
-﻿/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Notification,
-  Button,
-  Space,
-  Toast,
-  Typography,
-  Select,
-} from '@douyinfe/semi-ui';
-import {
-  API,
-  showError,
-  getModelCategories,
-  selectFilter,
-} from '../../../helpers';
+import { Notification, Button, Space, Toast, Select } from '@douyinfe/semi-ui';
+import { API, showError, getModelCategories, selectFilter } from '../../../helpers';
 import CardPro from '../../common/ui/CardPro';
 import TokensTable from './TokensTable';
 import TokensActions from './TokensActions';
@@ -44,7 +14,6 @@ import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
 
 function TokensPage() {
-  // Define the function first, then pass it into the hook to avoid TDZ errors
   const openFluentNotificationRef = useRef(null);
   const openCCSwitchModalRef = useRef(null);
   const tokensData = useTokensData(
@@ -62,12 +31,10 @@ function TokensPage() {
   });
   const [modelOptions, setModelOptions] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
-  const [fluentNoticeOpen, setFluentNoticeOpen] = useState(false);
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
   const [ccSwitchKey, setCCSwitchKey] = useState('');
 
-  // Keep latest data for handlers inside notifications
   useEffect(() => {
     latestRef.current = {
       tokens: tokensData.tokens,
@@ -123,7 +90,6 @@ function TokensPage() {
     const { t } = latestRef.current;
     const SUPPRESS_KEY = 'fluent_notify_suppressed';
     if (modelOptions.length === 0) {
-      // fire-and-forget; a later effect will refresh the notice content
       loadModels();
     }
     if (!key && localStorage.getItem(SUPPRESS_KEY) === '1') return;
@@ -133,7 +99,6 @@ function TokensPage() {
       return;
     }
     setPrefillKey(key || '');
-    setFluentNoticeOpen(true);
     Notification.info({
       id: 'fluent-detected',
       title: t('检测到 FluentRead（流畅阅读）'),
@@ -157,11 +122,7 @@ function TokensPage() {
             />
           </div>
           <Space>
-            <Button
-              theme='solid'
-              type='primary'
-              onClick={handlePrefillToFluent}
-            >
+            <Button theme='solid' type='primary' onClick={handlePrefillToFluent}>
               {t('一键填充到 FluentRead')}
             </Button>
             {!key && (
@@ -176,10 +137,7 @@ function TokensPage() {
                 {t('不再提醒')}
               </Button>
             )}
-            <Button
-              type='tertiary'
-              onClick={() => Notification.close('fluent-detected')}
-            >
+            <Button type='tertiary' onClick={() => Notification.close('fluent-detected')}>
               {t('关闭')}
             </Button>
           </Space>
@@ -188,7 +146,6 @@ function TokensPage() {
       duration: 0,
     });
   }
-  // assign after definition so hook callback can call it safely
   openFluentNotificationRef.current = openFluentNotification;
 
   function openCCSwitchModal(key) {
@@ -200,16 +157,8 @@ function TokensPage() {
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
 
-  // Prefill to Fluent handler
   const handlePrefillToFluent = async () => {
-    const {
-      tokens,
-      selectedKeys,
-      t,
-      selectedModel: chosenModel,
-      prefillKey: overrideKey,
-      fetchTokenKey,
-    } = latestRef.current;
+    const { tokens, selectedKeys, t, selectedModel: chosenModel, prefillKey: overrideKey, fetchTokenKey } = latestRef.current;
     const container = document.getElementById('fluent-opencrab-container');
     if (!container) {
       Toast.error(t('未检测到 Fluent 容器'));
@@ -221,215 +170,63 @@ function TokensPage() {
       return;
     }
 
-    let status = localStorage.getItem('status');
-    let serverAddress = '';
-    if (status) {
-      try {
-        status = JSON.parse(status);
-        serverAddress = status.server_address || '';
-      } catch (_) {}
-    }
-    if (!serverAddress) serverAddress = window.location.origin;
-
-    let apiKeyToUse = '';
-    if (overrideKey) {
-      apiKeyToUse = 'sk-' + overrideKey;
-    } else {
-      const token =
-        selectedKeys && selectedKeys.length === 1
-          ? selectedKeys[0]
-          : tokens && tokens.length > 0
-            ? tokens[0]
-            : null;
-      if (!token) {
-        Toast.warning(t('没有可用令牌用于填充'));
+    let fullKey = overrideKey;
+    if (!fullKey) {
+      let target = null;
+      if (selectedKeys.length > 0) {
+        target = tokens.find((t) => t.id === selectedKeys[0]);
+      }
+      if (!target && tokens.length > 0) {
+        target = tokens[0];
+      }
+      if (!target) {
+        Toast.warning(t('未找到可用令牌'));
         return;
       }
-      try {
-        apiKeyToUse = 'sk-' + (await fetchTokenKey(token));
-      } catch (_) {
-        return;
-      }
+      fullKey = await fetchTokenKey(target);
     }
 
     const payload = {
-      id: 'opencrab',
-      baseUrl: serverAddress,
-      apiKey: apiKeyToUse,
+      serverUrl: window.location.origin,
+      apiKey: `sk-${fullKey}`,
       model: chosenModel,
     };
 
-    container.dispatchEvent(
-      new CustomEvent('fluent:prefill', { detail: payload }),
-    );
-    Toast.success(t('已发送到 Fluent'));
+    container.dispatchEvent(new CustomEvent('opencrab:prefill', { detail: payload }));
+    Toast.success(t('已发送到 FluentRead'));
     Notification.close('fluent-detected');
   };
 
-  // Show notification when Fluent container is available
   useEffect(() => {
-    const onAppeared = () => {
-      openFluentNotification();
-    };
-    const onRemoved = () => {
-      setFluentNoticeOpen(false);
-      Notification.close('fluent-detected');
-    };
-
-    window.addEventListener('fluent-container:appeared', onAppeared);
-    window.addEventListener('fluent-container:removed', onRemoved);
-    return () => {
-      window.removeEventListener('fluent-container:appeared', onAppeared);
-      window.removeEventListener('fluent-container:removed', onRemoved);
-    };
+    loadModels();
   }, []);
-
-  // When modelOptions or language changes while the notice is open, refresh the content
-  useEffect(() => {
-    if (fluentNoticeOpen) {
-      openFluentNotification();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelOptions, selectedModel, tokensData.t, fluentNoticeOpen]);
-
-  useEffect(() => {
-    const selector = '#fluent-opencrab-container';
-    const root = document.body || document.documentElement;
-
-    const existing = document.querySelector(selector);
-    if (existing) {
-      console.log('Fluent container detected (initial):', existing);
-      window.dispatchEvent(
-        new CustomEvent('fluent-container:appeared', { detail: existing }),
-      );
-    }
-
-    const isOrContainsTarget = (node) => {
-      if (!(node && node.nodeType === 1)) return false;
-      if (node.id === 'fluent-opencrab-container') return true;
-      return (
-        typeof node.querySelector === 'function' &&
-        !!node.querySelector(selector)
-      );
-    };
-
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        // appeared
-        for (const added of m.addedNodes) {
-          if (isOrContainsTarget(added)) {
-            const el = document.querySelector(selector);
-            if (el) {
-              console.log('Fluent container appeared:', el);
-              window.dispatchEvent(
-                new CustomEvent('fluent-container:appeared', { detail: el }),
-              );
-            }
-            break;
-          }
-        }
-        // removed
-        for (const removed of m.removedNodes) {
-          if (isOrContainsTarget(removed)) {
-            const elNow = document.querySelector(selector);
-            if (!elNow) {
-              console.log('Fluent container removed');
-              window.dispatchEvent(new CustomEvent('fluent-container:removed'));
-            }
-            break;
-          }
-        }
-      }
-    });
-
-    observer.observe(root, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-
-  const {
-    // Edit state
-    showEdit,
-    editingToken,
-    closeEdit,
-    refresh,
-
-    // Actions state
-    selectedKeys,
-    setEditingToken,
-    setShowEdit,
-    batchCopyTokens,
-    batchDeleteTokens,
-
-    // Filters state
-    formInitValues,
-    setFormApi,
-    searchTokens,
-    loading,
-    searching,
-
-    // Description state
-    compactMode,
-    setCompactMode,
-
-    // Translation
-    t,
-  } = tokensData;
 
   return (
     <>
       <EditTokenModal
-        refresh={refresh}
-        editingToken={editingToken}
-        visiable={showEdit}
-        handleClose={closeEdit}
+        visible={tokensData.showEdit}
+        visiable={tokensData.showEdit}
+        handleClose={tokensData.closeEdit}
+        editingToken={tokensData.editingToken}
+        refresh={tokensData.refresh}
       />
-
       <CCSwitchModal
         visible={ccSwitchVisible}
-        onClose={() => setCCSwitchVisible(false)}
+        onCancel={() => setCCSwitchVisible(false)}
         tokenKey={ccSwitchKey}
-        modelOptions={modelOptions}
       />
-
       <CardPro
-        type='type1'
-        descriptionArea={
-          <TokensDescription
-            compactMode={compactMode}
-            setCompactMode={setCompactMode}
-            t={t}
-          />
-        }
-        actionsArea={
-          <TokensActions
-            selectedKeys={selectedKeys}
-            setEditingToken={setEditingToken}
-            setShowEdit={setShowEdit}
-            batchCopyTokens={batchCopyTokens}
-            batchDeleteTokens={batchDeleteTokens}
-            t={t}
-          />
-        }
-        searchArea={
-          <TokensFilters
-            formInitValues={formInitValues}
-            setFormApi={setFormApi}
-            searchTokens={searchTokens}
-            loading={loading}
-            searching={searching}
-            t={t}
-          />
-        }
-        paginationArea={createCardProPagination({
+        title={<TokensDescription compactMode={tokensData.compactMode} setCompactMode={tokensData.setCompactMode} t={tokensData.t} />}
+        headerExtraContent={<TokensActions setShowEdit={tokensData.setShowEdit} setEditingToken={tokensData.setEditingToken} t={tokensData.t} />}
+        filterContent={<TokensFilters formApi={tokensData.formApi} setFormApi={tokensData.setFormApi} searchTokens={tokensData.searchTokens} loadTokens={tokensData.loadTokens} pageSize={tokensData.pageSize} t={tokensData.t} />}
+        pagination={createCardProPagination({
           currentPage: tokensData.activePage,
           pageSize: tokensData.pageSize,
           total: tokensData.tokenCount,
           onPageChange: tokensData.handlePageChange,
           onPageSizeChange: tokensData.handlePageSizeChange,
-          isMobile: isMobile,
-          t: tokensData.t,
+          isMobile,
         })}
-        t={tokensData.t}
       >
         <TokensTable {...tokensData} />
       </CardPro>

@@ -3,7 +3,7 @@
 import (
 	"encoding/json"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 )
 
 var Chats = []map[string]string{

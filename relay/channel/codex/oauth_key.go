@@ -3,7 +3,7 @@
 import (
 	"errors"
 
-	"github.com/QuantumNous/opencrab/common"
+	"github.com/roseforljh/opencrab/common"
 )
 
 type OAuthKey struct {

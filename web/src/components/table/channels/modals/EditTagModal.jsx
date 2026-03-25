@@ -1,23 +1,5 @@
-/*
-Copyright (C) 2025 QuantumNous
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   API,
   showError,
@@ -28,33 +10,75 @@ import {
   selectFilter,
 } from '../../../../helpers';
 import {
-  SideSheet,
-  Space,
-  Button,
-  Typography,
-  Spin,
-  Banner,
-  Card,
-  Tag,
-  Avatar,
-  Form,
-} from '@douyinfe/semi-ui';
-import {
-  IconSave,
-  IconClose,
-  IconBookmark,
-  IconUser,
-  IconCode,
-  IconSetting,
-} from '@douyinfe/semi-icons';
+  Save,
+  X,
+  Bookmark,
+  User,
+  Code2,
+  Settings,
+  Plus,
+} from 'lucide-react';
 import { getChannelModels } from '../../../../helpers';
 import { useTranslation } from 'react-i18next';
-
-const { Text, Title } = Typography;
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const MODEL_MAPPING_EXAMPLE = {
   'gpt-3.5-turbo': 'gpt-3.5-turbo-0125',
 };
+
+const createInitialInputs = (tag = '') => ({
+  tag,
+  new_tag: tag || null,
+  model_mapping: null,
+  groups: [],
+  models: [],
+  param_override: null,
+  header_override: null,
+});
+
+const SectionHeader = ({ icon: Icon, title, description, iconClassName }) => (
+  <div className='mb-3 flex items-center gap-3'>
+    <div
+      className={`flex h-9 w-9 items-center justify-center rounded-full ${iconClassName}`}
+    >
+      <Icon className='h-4 w-4' />
+    </div>
+    <div>
+      <div className='text-lg font-medium text-white'>{title}</div>
+      <div className='text-xs text-white/60'>{description}</div>
+    </div>
+  </div>
+);
+
+const HelperLink = ({ children, onClick }) => (
+  <button
+    type='button'
+    className='text-sm text-blue-300 transition hover:text-blue-200'
+    onClick={onClick}
+  >
+    {children}
+  </button>
+);
 
 const EditTagModal = (props) => {
   const { t } = useTranslation();
@@ -65,16 +89,7 @@ const EditTagModal = (props) => {
   const [groupOptions, setGroupOptions] = useState([]);
   const [customModel, setCustomModel] = useState('');
   const [modelSearchValue, setModelSearchValue] = useState('');
-  const originInputs = {
-    tag: '',
-    new_tag: null,
-    model_mapping: null,
-    groups: [],
-    models: [],
-    param_override: null,
-    header_override: null,
-  };
-  const [inputs, setInputs] = useState(originInputs);
+  const [inputs, setInputs] = useState(() => createInitialInputs());
   const modelSearchMatchedCount = useMemo(() => {
     const keyword = modelSearchValue.trim();
     if (!keyword) {
@@ -94,14 +109,8 @@ const EditTagModal = (props) => {
       name: keyword,
     });
   }, [modelSearchMatchedCount, modelSearchValue, t]);
-  const formApiRef = useRef(null);
-  const getInitValues = () => ({ ...originInputs });
-
   const handleInputChange = (name, value) => {
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
-    if (formApiRef.current) {
-      formApiRef.current.setValue(name, value);
-    }
+    setInputs((currentInputs) => ({ ...currentInputs, [name]: value }));
     if (name === 'type') {
       let localModels = [];
       switch (value) {
@@ -195,9 +204,9 @@ const EditTagModal = (props) => {
     }
   };
 
-  const handleSave = async (values) => {
+  const handleSave = async () => {
     setLoading(true);
-    const formVals = values || formApiRef.current?.getValues() || {};
+    const formVals = inputs || {};
     let data = { tag };
     if (formVals.model_mapping) {
       if (!verifyJSON(formVals.model_mapping)) {
@@ -313,26 +322,8 @@ const EditTagModal = (props) => {
     fetchGroups().then();
     fetchTagModels().then();
     setModelSearchValue('');
-    if (formApiRef.current) {
-      formApiRef.current.setValues({
-        ...getInitValues(),
-        tag: tag,
-        new_tag: tag,
-      });
-    }
-
-    setInputs({
-      ...originInputs,
-      tag: tag,
-      new_tag: tag,
-    });
+    setInputs(createInitialInputs(tag));
   }, [visible, tag]);
-
-  useEffect(() => {
-    if (formApiRef.current) {
-      formApiRef.current.setValues(inputs);
-    }
-  }, [inputs]);
 
   const addCustomModels = () => {
     if (customModel.trim() === '') return;
@@ -370,267 +361,297 @@ const EditTagModal = (props) => {
     }
   };
 
+  const filteredModelOptions = useMemo(() => {
+    const keyword = modelSearchValue.trim();
+    if (!keyword) return modelOptions;
+    return modelOptions.filter((option) => selectFilter(keyword, option));
+  }, [modelOptions, modelSearchValue]);
+
   return (
-    <SideSheet
-      placement='right'
-      title={
-        <Space>
-          <Tag color='blue' shape='circle'>
-            {t('编辑')}
-          </Tag>
-          <Title heading={4} className='m-0'>
-            {t('编辑标签')}
-          </Title>
-        </Space>
-      }
-      bodyStyle={{ padding: '0' }}
-      visible={visible}
-      width={600}
-      onCancel={handleClose}
-      footer={
-        <div className='flex justify-end bg-white'>
-          <Space>
-            <Button
-              theme='solid'
-              onClick={() => formApiRef.current?.submitForm()}
-              loading={loading}
-              icon={<IconSave />}
-            >
-              {t('保存')}
-            </Button>
-            <Button
-              theme='light'
-              type='primary'
-              onClick={handleClose}
-              icon={<IconClose />}
-            >
-              {t('取消')}
-            </Button>
-          </Space>
-        </div>
-      }
-      closeIcon={null}
-    >
-      <Form
-        key={tag || 'edit'}
-        initValues={getInitValues()}
-        getFormApi={(api) => (formApiRef.current = api)}
-        onSubmit={handleSave}
-      >
-        {() => (
-          <Spin spinning={loading}>
-            <div className='p-2'>
-              <Card className='!rounded-2xl shadow-sm border-0 mb-6'>
-                {/* Header: Tag Info */}
-                <div className='flex items-center mb-2'>
-                  <Avatar size='small' color='blue' className='mr-2 shadow-md'>
-                    <IconBookmark size={16} />
-                  </Avatar>
-                  <div>
-                    <Text className='text-lg font-medium'>{t('标签信息')}</Text>
-                    <div className='text-xs text-gray-600'>
-                      {t('标签的基本配置')}
-                    </div>
-                  </div>
+    <Dialog open={visible} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent className='max-w-[960px] border-white/10 bg-black p-0 text-white sm:max-w-[960px]'>
+        <DialogHeader className='border-b border-white/10 px-6 py-4'>
+          <div className='flex items-center gap-3'>
+            <Badge className='border-blue-500/20 bg-blue-500/15 text-blue-200'>
+              {t('编辑')}
+            </Badge>
+            <DialogTitle className='text-xl text-white'>
+              {t('编辑标签')}
+            </DialogTitle>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className='max-h-[75vh] px-6 py-5'>
+          <div className='space-y-6'>
+            <Card className='border-white/10 bg-white/5 py-0'>
+              <CardContent className='p-5'>
+                <SectionHeader
+                  icon={Bookmark}
+                  title={t('标签信息')}
+                  description={t('标签的基本配置')}
+                  iconClassName='bg-blue-500/15 text-blue-200'
+                />
+
+                <div className='mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-100'>
+                  {t('所有编辑均为覆盖操作，留空则不更改')}
                 </div>
 
-                <Banner
-                  type='warning'
-                  description={t('所有编辑均为覆盖操作，留空则不更改')}
-                  className='!rounded-lg mb-4'
+                <div className='space-y-2'>
+                  <label className='text-sm text-white/70'>{t('标签名称')}</label>
+                  <Input
+                    value={inputs.new_tag ?? ''}
+                    placeholder={t('请输入新标签，留空则解散标签')}
+                    onChange={(e) =>
+                      handleInputChange('new_tag', e.target.value)
+                    }
+                    className='border-white/10 bg-white/5 text-white'
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className='border-white/10 bg-white/5 py-0'>
+              <CardContent className='p-5'>
+                <SectionHeader
+                  icon={Code2}
+                  title={t('模型配置')}
+                  description={t('模型选择和映射设置')}
+                  iconClassName='bg-purple-500/15 text-purple-200'
                 />
 
                 <div className='space-y-4'>
-                  <Form.Input
-                    field='new_tag'
-                    label={t('标签名称')}
-                    placeholder={t('请输入新标签，留空则解散标签')}
-                    onChange={(value) => handleInputChange('new_tag', value)}
-                  />
-                </div>
-              </Card>
-
-              <Card className='!rounded-2xl shadow-sm border-0 mb-6'>
-                {/* Header: Model Config */}
-                <div className='flex items-center mb-2'>
-                  <Avatar
-                    size='small'
-                    color='purple'
-                    className='mr-2 shadow-md'
-                  >
-                    <IconCode size={16} />
-                  </Avatar>
-                  <div>
-                    <Text className='text-lg font-medium'>{t('模型配置')}</Text>
-                    <div className='text-xs text-gray-600'>
-                      {t('模型选择和映射设置')}
-                    </div>
-                  </div>
-                </div>
-
-                <div className='space-y-4'>
-                  <Banner
-                    type='info'
-                    description={t(
+                  <div className='rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-100'>
+                    {t(
                       '当前模型列表为该标签下所有渠道模型列表最长的一个，并非所有渠道的并集，请注意可能导致某些渠道模型丢失。',
                     )}
-                    className='!rounded-lg mb-4'
-                  />
-                  <Form.Select
-                    field='models'
-                    label={t('模型')}
-                    placeholder={t('请选择该渠道所支持的模型，留空则不更改')}
-                    multiple
-                    filter={selectFilter}
-                    allowCreate
-                    autoClearSearchValue={false}
-                    searchPosition='dropdown'
-                    optionList={modelOptions}
-                    onSearch={(value) => setModelSearchValue(value)}
-                    innerBottomSlot={
-                      modelSearchHintText ? (
-                        <Text className='px-3 py-2 block text-xs !text-semi-color-text-2'>
-                          {modelSearchHintText}
-                        </Text>
-                      ) : null
-                    }
-                    style={{ width: '100%' }}
-                    onChange={(value) => handleInputChange('models', value)}
-                  />
+                  </div>
 
-                  <Form.Input
-                    field='custom_model'
-                    label={t('自定义模型名称')}
-                    placeholder={t('输入自定义模型名称')}
-                    onChange={(value) => setCustomModel(value.trim())}
-                    suffix={
-                      <Button
-                        size='small'
-                        type='primary'
-                        onClick={addCustomModels}
-                      >
+                  <div className='space-y-2'>
+                    <label className='text-sm text-white/70'>{t('模型')}</label>
+                    <Input
+                      value={modelSearchValue}
+                      placeholder={t('搜索模型')}
+                      onChange={(e) => setModelSearchValue(e.target.value || '')}
+                      className='border-white/10 bg-white/5 text-white'
+                    />
+                    <div className='rounded-lg border border-white/10 bg-black/20 p-3'>
+                      <div className='mb-2 flex items-center justify-between text-xs text-white/50'>
+                        <span>
+                          {t('已选 {{count}} 项', {
+                            count: inputs.models?.length || 0,
+                          })}
+                        </span>
+                        <span>
+                          {t('匹配 {{count}} 项', {
+                            count: filteredModelOptions.length,
+                          })}
+                        </span>
+                      </div>
+                      <ScrollArea className='h-56 pr-3'>
+                        <div className='space-y-2'>
+                          {filteredModelOptions.map((option) => {
+                            const checked = inputs.models.includes(option.value);
+                            return (
+                              <label
+                                key={option.value}
+                                className='flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5'
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(nextChecked) => {
+                                    const nextModels = nextChecked
+                                      ? [...inputs.models, option.value]
+                                      : inputs.models.filter(
+                                          (model) => model !== option.value,
+                                        );
+                                    handleInputChange('models', nextModels);
+                                  }}
+                                />
+                                <span>{option.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                      {modelSearchHintText ? (
+                        <p className='mt-2 text-xs text-white/50'>
+                          {modelSearchHintText}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className='space-y-2'>
+                    <label className='text-sm text-white/70'>
+                      {t('自定义模型名称')}
+                    </label>
+                    <div className='flex gap-2'>
+                      <Input
+                        value={customModel}
+                        placeholder={t('输入自定义模型名称')}
+                        onChange={(e) => setCustomModel(e.target.value.trim())}
+                        className='border-white/10 bg-white/5 text-white'
+                      />
+                      <Button type='button' onClick={addCustomModels}>
+                        <Plus className='mr-1 h-4 w-4' />
                         {t('填入')}
                       </Button>
-                    }
-                  />
+                    </div>
+                  </div>
 
-                  <Form.TextArea
-                    field='model_mapping'
-                    label={t('模型重定向')}
-                    placeholder={t(
-                      '此项可选，用于修改请求体中的模型名称，为一个 JSON 字符串，键为请求中模型名称，值为要替换的模型名称，留空则不更改',
-                    )}
-                    autosize
-                    onChange={(value) =>
-                      handleInputChange('model_mapping', value)
-                    }
-                    extraText={
-                      <Space>
-                        <Text
-                          className='!text-semi-color-primary cursor-pointer'
-                          onClick={() =>
-                            handleInputChange(
-                              'model_mapping',
-                              JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2),
-                            )
-                          }
-                        >
-                          {t('填入模板')}
-                        </Text>
-                        <Text
-                          className='!text-semi-color-primary cursor-pointer'
-                          onClick={() =>
-                            handleInputChange(
-                              'model_mapping',
-                              JSON.stringify({}, null, 2),
-                            )
-                          }
-                        >
-                          {t('清空重定向')}
-                        </Text>
-                        <Text
-                          className='!text-semi-color-primary cursor-pointer'
-                          onClick={() => handleInputChange('model_mapping', '')}
-                        >
-                          {t('不更改')}
-                        </Text>
-                      </Space>
-                    }
-                  />
-                </div>
-              </Card>
-
-              <Card className='!rounded-2xl shadow-sm border-0 mb-6'>
-                {/* Header: Advanced Settings */}
-                <div className='flex items-center mb-2'>
-                  <Avatar
-                    size='small'
-                    color='orange'
-                    className='mr-2 shadow-md'
-                  >
-                    <IconSetting size={16} />
-                  </Avatar>
-                  <div>
-                    <Text className='text-lg font-medium'>{t('高级设置')}</Text>
-                    <div className='text-xs text-gray-600'>
-                      {t('渠道的高级配置选项')}
+                  <div className='space-y-2'>
+                    <label className='text-sm text-white/70'>
+                      {t('模型重定向')}
+                    </label>
+                    <Textarea
+                      value={inputs.model_mapping ?? ''}
+                      placeholder={t(
+                        '此项可选，用于修改请求体中的模型名称，为一个 JSON 字符串，键为请求中模型名称，值为要替换的模型名称，留空则不更改',
+                      )}
+                      onChange={(e) =>
+                        handleInputChange('model_mapping', e.target.value)
+                      }
+                      className='min-h-[140px] border-white/10 bg-white/5 font-mono text-sm text-white'
+                    />
+                    <div className='flex flex-wrap gap-3'>
+                      <HelperLink
+                        onClick={() =>
+                          handleInputChange(
+                            'model_mapping',
+                            JSON.stringify(MODEL_MAPPING_EXAMPLE, null, 2),
+                          )
+                        }
+                      >
+                        {t('填入模板')}
+                      </HelperLink>
+                      <HelperLink
+                        onClick={() =>
+                          handleInputChange(
+                            'model_mapping',
+                            JSON.stringify({}, null, 2),
+                          )
+                        }
+                      >
+                        {t('清空重定向')}
+                      </HelperLink>
+                      <HelperLink
+                        onClick={() => handleInputChange('model_mapping', '')}
+                      >
+                        {t('不更改')}
+                      </HelperLink>
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className='border-white/10 bg-white/5 py-0'>
+              <CardContent className='p-5'>
+                <SectionHeader
+                  icon={Settings}
+                  title={t('高级设置')}
+                  description={t('渠道的高级配置选项')}
+                  iconClassName='bg-orange-500/15 text-orange-200'
+                />
 
                 <div className='space-y-4'>
-                  <Form.TextArea
-                    field='param_override'
-                    label={t('参数覆盖')}
-                    placeholder={
-                      t('此项可选，用于覆盖请求参数。不支持覆盖 stream 参数') +
-                      '\n' +
-                      t('旧格式（直接覆盖）：') +
-                      '\n{\n  "temperature": 0,\n  "max_tokens": 1000\n}' +
-                      '\n\n' +
-                      t('新格式（支持条件判断与json自定义）：') +
-                      '\n{\n  "operations": [\n    {\n      "path": "temperature",\n      "mode": "set",\n      "value": 0.7,\n      "conditions": [\n        {\n          "path": "model",\n          "mode": "prefix",\n          "value": "gpt"\n        }\n      ]\n    }\n  ]\n}'
-                    }
-                    autosize
-                    showClear
-                    onChange={(value) =>
-                      handleInputChange('param_override', value)
-                    }
-                    extraText={
-                      <div className='flex gap-2 flex-wrap'>
-                        <Text
-                          className='!text-semi-color-primary cursor-pointer'
+                  <div className='space-y-2'>
+                    <label className='text-sm text-white/70'>
+                      {t('参数覆盖')}
+                    </label>
+                    <Textarea
+                      value={inputs.param_override ?? ''}
+                      placeholder={
+                        t('此项可选，用于覆盖请求参数。不支持覆盖 stream 参数') +
+                        '\n' +
+                        t('旧格式（直接覆盖）：') +
+                        '\n{\n  "temperature": 0,\n  "max_tokens": 1000\n}' +
+                        '\n\n' +
+                        t('新格式（支持条件判断与json自定义）：') +
+                        '\n{\n  "operations": [\n    {\n      "path": "temperature",\n      "mode": "set",\n      "value": 0.7,\n      "conditions": [\n        {\n          "path": "model",\n          "mode": "prefix",\n          "value": "gpt"\n        }\n      ]\n    }\n  ]\n}'
+                      }
+                      onChange={(e) =>
+                        handleInputChange('param_override', e.target.value)
+                      }
+                      className='min-h-[220px] border-white/10 bg-white/5 font-mono text-sm text-white'
+                    />
+                    <div className='flex flex-wrap gap-3'>
+                      <HelperLink
+                        onClick={() =>
+                          handleInputChange(
+                            'param_override',
+                            JSON.stringify({ temperature: 0 }, null, 2),
+                          )
+                        }
+                      >
+                        {t('旧格式模板')}
+                      </HelperLink>
+                      <HelperLink
+                        onClick={() =>
+                          handleInputChange(
+                            'param_override',
+                            JSON.stringify(
+                              {
+                                operations: [
+                                  {
+                                    path: 'temperature',
+                                    mode: 'set',
+                                    value: 0.7,
+                                    conditions: [
+                                      {
+                                        path: 'model',
+                                        mode: 'prefix',
+                                        value: 'gpt',
+                                      },
+                                    ],
+                                    logic: 'AND',
+                                  },
+                                ],
+                              },
+                              null,
+                              2,
+                            ),
+                          )
+                        }
+                      >
+                        {t('新格式模板')}
+                      </HelperLink>
+                      <HelperLink
+                        onClick={() => handleInputChange('param_override', null)}
+                      >
+                        {t('不更改')}
+                      </HelperLink>
+                    </div>
+                  </div>
+
+                  <div className='space-y-2'>
+                    <label className='text-sm text-white/70'>
+                      {t('请求头覆盖')}
+                    </label>
+                    <Textarea
+                      value={inputs.header_override ?? ''}
+                      placeholder={
+                        t('此项可选，用于覆盖请求头参数') +
+                        '\n' +
+                        t('格式示例：') +
+                        '\n{\n  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0",\n  "Authorization": "Bearer {api_key}"\n}'
+                      }
+                      onChange={(e) =>
+                        handleInputChange('header_override', e.target.value)
+                      }
+                      className='min-h-[180px] border-white/10 bg-white/5 font-mono text-sm text-white'
+                    />
+                    <div className='flex flex-col gap-2'>
+                      <div className='flex flex-wrap items-center gap-3'>
+                        <HelperLink
                           onClick={() =>
                             handleInputChange(
-                              'param_override',
-                              JSON.stringify({ temperature: 0 }, null, 2),
-                            )
-                          }
-                        >
-                          {t('旧格式模板')}
-                        </Text>
-                        <Text
-                          className='!text-semi-color-primary cursor-pointer'
-                          onClick={() =>
-                            handleInputChange(
-                              'param_override',
+                              'header_override',
                               JSON.stringify(
                                 {
-                                  operations: [
-                                    {
-                                      path: 'temperature',
-                                      mode: 'set',
-                                      value: 0.7,
-                                      conditions: [
-                                        {
-                                          path: 'model',
-                                          mode: 'prefix',
-                                          value: 'gpt',
-                                        },
-                                      ],
-                                      logic: 'AND',
-                                    },
-                                  ],
+                                  'User-Agent':
+                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0',
+                                  Authorization: 'Bearer {api_key}',
                                 },
                                 null,
                                 2,
@@ -638,116 +659,86 @@ const EditTagModal = (props) => {
                             )
                           }
                         >
-                          {t('新格式模板')}
-                        </Text>
-                        <Text
-                          className='!text-semi-color-primary cursor-pointer'
+                          {t('填入模板')}
+                        </HelperLink>
+                        <HelperLink
                           onClick={() =>
-                            handleInputChange('param_override', null)
+                            handleInputChange('header_override', null)
                           }
                         >
                           {t('不更改')}
-                        </Text>
+                        </HelperLink>
                       </div>
-                    }
-                  />
-
-                  <Form.TextArea
-                    field='header_override'
-                    label={t('请求头覆盖')}
-                    placeholder={
-                      t('此项可选，用于覆盖请求头参数') +
-                      '\n' +
-                      t('格式示例：') +
-                      '\n{\n  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0",\n  "Authorization": "Bearer {api_key}"\n}'
-                    }
-                    autosize
-                    showClear
-                    onChange={(value) =>
-                      handleInputChange('header_override', value)
-                    }
-                    extraText={
-                      <div className='flex flex-col gap-1'>
-                        <div className='flex gap-2 flex-wrap items-center'>
-                          <Text
-                            className='!text-semi-color-primary cursor-pointer'
-                            onClick={() =>
-                              handleInputChange(
-                                'header_override',
-                                JSON.stringify(
-                                  {
-                                    'User-Agent':
-                                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0',
-                                    Authorization: 'Bearer {api_key}',
-                                  },
-                                  null,
-                                  2,
-                                ),
-                              )
-                            }
-                          >
-                            {t('填入模板')}
-                          </Text>
-                          <Text
-                            className='!text-semi-color-primary cursor-pointer'
-                            onClick={() =>
-                              handleInputChange('header_override', null)
-                            }
-                          >
-                            {t('不更改')}
-                          </Text>
-                        </div>
-                        <div>
-                          <Text type='tertiary' size='small'>
-                            {t('支持变量：')}
-                          </Text>
-                          <div className='text-xs text-tertiary ml-2'>
-                            <div>
-                              {t('渠道密钥')}: {'{api_key}'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    }
-                  />
-                </div>
-              </Card>
-
-              <Card className='!rounded-2xl shadow-sm border-0'>
-                {/* Header: Group Settings */}
-                <div className='flex items-center mb-2'>
-                  <Avatar size='small' color='green' className='mr-2 shadow-md'>
-                    <IconUser size={16} />
-                  </Avatar>
-                  <div>
-                    <Text className='text-lg font-medium'>{t('分组设置')}</Text>
-                    <div className='text-xs text-gray-600'>
-                      {t('用户分组配置')}
+                      <p className='text-xs text-white/50'>
+                        {t('支持变量：')} {t('渠道密钥')}: {'{api_key}'}
+                      </p>
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
 
-                <div className='space-y-4'>
-                  <Form.Select
-                    field='groups'
-                    label={t('分组')}
-                    placeholder={t('请选择可以使用该渠道的分组，留空则不更改')}
-                    multiple
-                    allowAdditions
-                    additionLabel={t(
-                      '请在系统设置页面编辑分组倍率以添加新的分组：',
-                    )}
-                    optionList={groupOptions}
-                    style={{ width: '100%' }}
-                    onChange={(value) => handleInputChange('groups', value)}
-                  />
+            <Card className='border-white/10 bg-white/5 py-0'>
+              <CardContent className='p-5'>
+                <SectionHeader
+                  icon={User}
+                  title={t('分组设置')}
+                  description={t('用户分组配置')}
+                  iconClassName='bg-green-500/15 text-green-200'
+                />
+
+                <div className='space-y-2'>
+                  <label className='text-sm text-white/70'>{t('分组')}</label>
+                  <div className='grid gap-2 sm:grid-cols-2'>
+                    {groupOptions.map((group) => {
+                      const checked = inputs.groups.includes(group.value);
+                      return (
+                        <label
+                          key={group.value}
+                          className='flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5'
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(nextChecked) => {
+                              const nextGroups = nextChecked
+                                ? [...inputs.groups, group.value]
+                                : inputs.groups.filter(
+                                    (item) => item !== group.value,
+                                  );
+                              handleInputChange('groups', nextGroups);
+                            }}
+                          />
+                          <span>{group.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className='text-xs text-white/50'>
+                    {t('请在系统设置页面编辑分组倍率以添加新的分组：')}
+                  </p>
                 </div>
-              </Card>
-            </div>
-          </Spin>
-        )}
-      </Form>
-    </SideSheet>
+              </CardContent>
+            </Card>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className='border-white/10 bg-black/80'>
+          <Button
+            type='button'
+            variant='secondary'
+            onClick={handleClose}
+            disabled={loading}
+          >
+            <X className='mr-1 h-4 w-4' />
+            {t('取消')}
+          </Button>
+          <Button type='button' onClick={handleSave} disabled={loading}>
+            <Save className='mr-1 h-4 w-4' />
+            {loading ? t('保存中...') : t('保存')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

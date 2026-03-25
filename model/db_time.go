@@ -1,6 +1,6 @@
 ﻿package model
 
-import "github.com/QuantumNous/opencrab/common"
+import "github.com/roseforljh/opencrab/common"
 
 // GetDBTimestamp returns a UNIX timestamp from database time.
 // Falls back to application time on error.

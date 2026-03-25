@@ -1,24 +1,6 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useState } from 'react';
-import { Button } from '@douyinfe/semi-ui';
+import { Button } from '@/components/ui/button';
 import { showError } from '../../../helpers';
 import CopyTokensModal from './modals/CopyTokensModal';
 import DeleteTokensModal from './modals/DeleteTokensModal';
@@ -59,8 +41,7 @@ const TokensActions = ({
     <>
       <div className='flex w-full flex-wrap gap-2'>
         <Button
-          type='primary'
-          className='!h-11 !rounded-2xl !border-0 !bg-white/90 hover:!bg-white/80 !px-5 !text-black'
+          className='h-11 rounded-2xl border-0 bg-white/90 px-5 text-black hover:bg-white/80'
           onClick={() => {
             setEditingToken({
               id: undefined,
@@ -72,16 +53,16 @@ const TokensActions = ({
         </Button>
 
         <Button
-          type='tertiary'
-          className='!h-11 !rounded-2xl !border !border-white/10 !bg-white/6 !px-5 !text-white hover:!bg-white/10'
+          variant='secondary'
+          className='h-11 rounded-2xl border border-white/10 bg-white/6 px-5 text-white hover:bg-white/10'
           onClick={handleCopySelectedTokens}
         >
           {t('复制所选')}
         </Button>
 
         <Button
-          type='danger'
-          className='!h-11 !rounded-2xl !border !border-red-400/20 !bg-red-500/10 !px-5 !text-red-100 hover:!bg-red-500/20'
+          variant='destructive'
+          className='h-11 rounded-2xl border border-red-400/20 bg-red-500/10 px-5 text-red-100 hover:bg-red-500/20'
           onClick={handleDeleteSelectedTokens}
         >
           {t('删除所选')}

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -33,10 +15,19 @@ import { useTranslation } from 'react-i18next';
 // 导入子组件
 import UserInfoHeader from './personal/components/UserInfoHeader';
 import AccountManagement from './personal/cards/AccountManagement';
-import NotificationSettings from './personal/cards/NotificationSettings';
 import AccountDeleteModal from './personal/modals/AccountDeleteModal';
 import ChangePasswordModal from './personal/modals/ChangePasswordModal';
-import { Modal, Form } from '@douyinfe/semi-ui';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
 const PersonalSetting = () => {
   const [userState, userDispatch] = useContext(UserContext);
   let navigate = useNavigate();
@@ -56,19 +47,6 @@ const PersonalSetting = () => {
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [systemToken, setSystemToken] = useState('');
-  const [notificationSettings, setNotificationSettings] = useState({
-    warningType: 'email',
-    warningThreshold: 100000,
-    webhookUrl: '',
-    webhookSecret: '',
-    notificationEmail: '',
-    barkUrl: '',
-    gotifyUrl: '',
-    gotifyToken: '',
-    gotifyPriority: 5,
-    upstreamModelUpdateNotifyEnabled: false,
-    recordIpLog: false,
-  });
   const [pinInputs, setPinInputs] = useState({
     currentPin: '',
     pin: '',
@@ -119,43 +97,8 @@ const PersonalSetting = () => {
   }, []);
 
   useEffect(() => {
-    if (userState?.user?.setting) {
-      try {
-        const settings = JSON.parse(userState.user.setting);
-        setNotificationSettings({
-          warningType: settings.notify_type || 'email',
-          warningThreshold: settings.quota_warning_threshold || 500000,
-          webhookUrl: settings.webhook_url || '',
-          webhookSecret: settings.webhook_secret || '',
-          notificationEmail: settings.notification_email || '',
-          barkUrl: settings.bark_url || '',
-          gotifyUrl: settings.gotify_url || '',
-          gotifyToken: settings.gotify_token || '',
-          gotifyPriority:
-            settings.gotify_priority !== undefined
-              ? settings.gotify_priority
-              : 5,
-          upstreamModelUpdateNotifyEnabled:
-            settings.upstream_model_update_notify_enabled === true,
-          recordIpLog: settings.record_ip_log || false,
-        });
-      } catch {
-        setNotificationSettings({
-          warningType: 'email',
-          warningThreshold: 100000,
-          webhookUrl: '',
-          webhookSecret: '',
-          notificationEmail: '',
-          barkUrl: '',
-          gotifyUrl: '',
-          gotifyToken: '',
-          gotifyPriority: 5,
-          upstreamModelUpdateNotifyEnabled: false,
-          recordIpLog: false,
-        });
-      }
-    }
-  }, [userState?.user?.setting]);
+    getUserData();
+  }, []);
 
   const handleInputChange = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
@@ -272,52 +215,7 @@ const PersonalSetting = () => {
     if (await copy(text)) {
       showSuccess(t('已复制：') + text);
     } else {
-      // setSearchKeyword(text);
       Modal.error({ title: t('无法复制到剪贴板，请手动复制'), content: text });
-    }
-  };
-
-  const handleNotificationSettingChange = (type, value) => {
-    setNotificationSettings((prev) => ({
-      ...prev,
-      [type]: value.target
-        ? value.target.value !== undefined
-          ? value.target.value
-          : value.target.checked
-        : value, // handle checkbox properly
-    }));
-  };
-
-  const saveNotificationSettings = async () => {
-    try {
-      const res = await API.put('/api/user/setting', {
-        notify_type: notificationSettings.warningType,
-        quota_warning_threshold: parseFloat(
-          notificationSettings.warningThreshold,
-        ),
-        webhook_url: notificationSettings.webhookUrl,
-        webhook_secret: notificationSettings.webhookSecret,
-        notification_email: notificationSettings.notificationEmail,
-        bark_url: notificationSettings.barkUrl,
-        gotify_url: notificationSettings.gotifyUrl,
-        gotify_token: notificationSettings.gotifyToken,
-        gotify_priority: (() => {
-          const parsed = parseInt(notificationSettings.gotifyPriority);
-          return isNaN(parsed) ? 5 : parsed;
-        })(),
-        upstream_model_update_notify_enabled:
-          notificationSettings.upstreamModelUpdateNotifyEnabled === true,
-        record_ip_log: notificationSettings.recordIpLog,
-      });
-
-      if (res.data.success) {
-        showSuccess(t('设置保存成功'));
-        await getUserData();
-      } else {
-        showError(res.data.message);
-      }
-    } catch (error) {
-      showError(t('设置保存失败'));
     }
   };
 
@@ -326,32 +224,23 @@ const PersonalSetting = () => {
       <div className='flex justify-center'>
         <div className='mx-auto w-full max-w-7xl px-2 md:px-3'>
           <div className='rounded-[32px] border border-white/10 bg-white/6 p-3 shadow-[0_30px_100px_rgba(0,0,0,0.34)] backdrop-blur-2xl md:p-5'>
-          {/* 顶部用户信息区域 */}
-          <UserInfoHeader t={t} userState={userState} />
+            {/* 顶部用户信息区域 */}
+            <UserInfoHeader t={t} userState={userState} />
 
-          {/* 账户管理和其他设置 */}
-          <div className='mt-4 grid grid-cols-1 items-start gap-4 md:mt-6 md:gap-6 xl:grid-cols-2'>
-            {/* 左侧：账户管理设置 */}
-            <div className='flex flex-col gap-4 md:gap-6'>
-              <AccountManagement
-                t={t}
-                systemToken={systemToken}
-                generateAccessToken={generateAccessToken}
-                handleSystemTokenClick={handleSystemTokenClick}
-                setShowChangePasswordModal={setShowChangePasswordModal}
-                setShowPinModal={setShowPinModal}
-                setShowAccountDeleteModal={setShowAccountDeleteModal}
-              />
+            {/* 账户管理和其他设置 */}
+            <div className='mt-4 grid grid-cols-1 items-start gap-4 md:mt-6 md:gap-6'>
+              <div className='flex flex-col gap-4 md:gap-6'>
+                <AccountManagement
+                  t={t}
+                  systemToken={systemToken}
+                  generateAccessToken={generateAccessToken}
+                  handleSystemTokenClick={handleSystemTokenClick}
+                  setShowChangePasswordModal={setShowChangePasswordModal}
+                  setShowPinModal={setShowPinModal}
+                  setShowAccountDeleteModal={setShowAccountDeleteModal}
+                />
+              </div>
             </div>
-
-            {/* 右侧：其他设置 */}
-            <NotificationSettings
-              t={t}
-              notificationSettings={notificationSettings}
-              handleNotificationSettingChange={handleNotificationSettingChange}
-              saveNotificationSettings={saveNotificationSettings}
-            />
-          </div>
           </div>
         </div>
       </div>
@@ -382,39 +271,54 @@ const PersonalSetting = () => {
         setTurnstileToken={setTurnstileToken}
       />
 
-      <Modal
-        title={t('修改 PIN')}
-        visible={showPinModal}
-        onCancel={() => setShowPinModal(false)}
-        onOk={handleUpdatePin}
-        okText={t('保存 PIN')}
-        cancelText={t('取消')}
-        centered
-      >
-        <Form>
-          <Form.Input
-            field='currentPin'
-            label={t('当前 PIN')}
-            mode='password'
-            value={pinInputs.currentPin}
-            onChange={(value) => handlePinInputChange('currentPin', value)}
-          />
-          <Form.Input
-            field='pin'
-            label={t('新 PIN')}
-            mode='password'
-            value={pinInputs.pin}
-            onChange={(value) => handlePinInputChange('pin', value)}
-          />
-          <Form.Input
-            field='confirmPin'
-            label={t('确认 PIN')}
-            mode='password'
-            value={pinInputs.confirmPin}
-            onChange={(value) => handlePinInputChange('confirmPin', value)}
-          />
-        </Form>
-      </Modal>
+      <Dialog open={showPinModal} onOpenChange={setShowPinModal}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle>{t('修改 PIN')}</DialogTitle>
+          </DialogHeader>
+          <div className='grid gap-4 py-4'>
+            <div className='grid gap-2'>
+              <Label htmlFor='currentPin'>{t('当前 PIN')}</Label>
+              <Input
+                id='currentPin'
+                type='password'
+                value={pinInputs.currentPin}
+                onChange={(e) =>
+                  handlePinInputChange('currentPin', e.target.value)
+                }
+              />
+            </div>
+            <div className='grid gap-2'>
+              <Label htmlFor='pin'>{t('新 PIN')}</Label>
+              <Input
+                id='pin'
+                type='password'
+                value={pinInputs.pin}
+                onChange={(e) => handlePinInputChange('pin', e.target.value)}
+              />
+            </div>
+            <div className='grid gap-2'>
+              <Label htmlFor='confirmPin'>{t('确认 PIN')}</Label>
+              <Input
+                id='confirmPin'
+                type='password'
+                value={pinInputs.confirmPin}
+                onChange={(e) =>
+                  handlePinInputChange('confirmPin', e.target.value)
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setShowPinModal(false)}>
+              {t('取消')}
+            </Button>
+            <Button type='submit' onClick={handleUpdatePin}>
+              {t('保存 PIN')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

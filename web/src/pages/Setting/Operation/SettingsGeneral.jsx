@@ -1,24 +1,6 @@
-﻿/*
-Copyright (C) 2025 QuantumNous
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-
-import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   compareObjects,
   API,
@@ -26,7 +8,10 @@ import {
   showSuccess,
   showWarning,
 } from '../../../helpers';
-import { useTranslation } from 'react-i18next';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 export default function GeneralSettings(props) {
   const { t } = useTranslation();
@@ -38,7 +23,6 @@ export default function GeneralSettings(props) {
   };
   const allowedKeys = Object.keys(defaultInputs);
   const [inputs, setInputs] = useState(defaultInputs);
-  const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
 
   function handleFieldChange(fieldName) {
@@ -91,58 +75,74 @@ export default function GeneralSettings(props) {
     }
     setInputs(nextInputs);
     setInputsRow(structuredClone(nextInputs));
-    refForm.current?.setValues(nextInputs);
   }, [props.options]);
 
   return (
-    <>
-      <Spin spinning={loading}>
-        <Form
-          values={inputs}
-          getFormApi={(formAPI) => (refForm.current = formAPI)}
-          style={{ marginBottom: 15 }}
-        >
-          <Form.Section text={t('实例基础行为')}>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Input
-                  field={'general_setting.docs_link'}
-                  label={t('文档地址')}
-                  initValue={''}
-                  placeholder={t('例如 https://docs.opencrab.pro')}
-                  onChange={handleFieldChange('general_setting.docs_link')}
-                  showClear
+    <div className='space-y-6'>
+      <div className='flex flex-col space-y-4'>
+        <h3 className='text-lg font-medium leading-none text-white'>
+          {t('实例基础行为')}
+        </h3>
+
+        <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6'>
+          <div className='space-y-2'>
+            <Label
+              className='text-white/80'
+              htmlFor='general_setting.docs_link'
+            >
+              {t('文档地址')}
+            </Label>
+            <Input
+              id='general_setting.docs_link'
+              value={inputs['general_setting.docs_link']}
+              placeholder={t('例如 https://docs.opencrab.pro')}
+              onChange={(e) =>
+                handleFieldChange('general_setting.docs_link')(e.target.value)
+              }
+              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+            />
+          </div>
+
+          <div className='space-y-2'>
+            <Label className='text-white/80' htmlFor='RetryTimes'>
+              {t('失败重试次数')}
+            </Label>
+            <Input
+              id='RetryTimes'
+              value={inputs['RetryTimes']}
+              placeholder={t('失败重试次数')}
+              onChange={(e) => handleFieldChange('RetryTimes')(e.target.value)}
+              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+            />
+          </div>
+
+          <div className='space-y-3 pt-1'>
+            <div className='flex flex-col space-y-2'>
+              <Label className='text-white/80' htmlFor='DefaultCollapseSidebar'>
+                {t('默认折叠侧边栏')}
+              </Label>
+              <div className='flex items-center h-9'>
+                <Switch
+                  id='DefaultCollapseSidebar'
+                  checked={inputs['DefaultCollapseSidebar']}
+                  onCheckedChange={handleFieldChange('DefaultCollapseSidebar')}
+                  className='data-[state=checked]:bg-white data-[state=unchecked]:bg-white/20'
                 />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Input
-                  field={'RetryTimes'}
-                  label={t('失败重试次数')}
-                  initValue={''}
-                  placeholder={t('失败重试次数')}
-                  onChange={handleFieldChange('RetryTimes')}
-                  showClear
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'DefaultCollapseSidebar'}
-                  label={t('默认折叠侧边栏')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={handleFieldChange('DefaultCollapseSidebar')}
-                />
-              </Col>
-            </Row>
-            <Row>
-              <Button size='default' onClick={onSubmit}>
-                {t('保存实例基础行为设置')}
-              </Button>
-            </Row>
-          </Form.Section>
-        </Form>
-      </Spin>
-    </>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className='pt-2'>
+          <Button
+            onClick={onSubmit}
+            disabled={loading}
+            className='bg-white text-black hover:bg-white/90'
+          >
+            {t('保存实例基础行为设置')}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

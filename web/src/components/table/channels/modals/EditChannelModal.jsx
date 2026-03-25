@@ -1,21 +1,3 @@
-﻿/*
-Copyright (C) 2025 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -31,26 +13,6 @@ import {
   CHANNEL_OPTIONS,
   MODEL_FETCHABLE_CHANNEL_TYPES,
 } from '../../../../constants';
-import {
-  SideSheet,
-  Space,
-  Spin,
-  Button,
-  Typography,
-  Checkbox,
-  Banner,
-  Modal,
-  ImagePreview,
-  Card,
-  Tag,
-  Avatar,
-  Form,
-  Row,
-  Col,
-  Highlight,
-  Input,
-  Tooltip,
-} from '@douyinfe/semi-ui';
 import {
   getChannelModels,
   copy,
@@ -71,20 +33,40 @@ import {
   collectNewDisallowedStatusCodeRedirects,
 } from './statusCodeRiskGuard';
 import {
-  IconSave,
-  IconClose,
-  IconServer,
-  IconSetting,
-  IconCode,
-  IconCopy,
-  IconGlobe,
-  IconBolt,
-  IconSearch,
-  IconChevronUp,
-  IconChevronDown,
-} from '@douyinfe/semi-icons';
-
-const { Text, Title } = Typography;
+  Save,
+  X,
+  Server,
+  Settings,
+  Code2,
+  Copy,
+  Globe,
+  Zap,
+  Search,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const MODEL_MAPPING_EXAMPLE = {
   'gpt-3.5-turbo': 'gpt-3.5-turbo-0125',
@@ -124,6 +106,32 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
   ],
 };
 
+const SectionHeader = ({ icon: Icon, title, description, iconClassName }) => (
+  <div className='mb-3 flex items-center gap-3'>
+    <div
+      className={`flex h-9 w-9 items-center justify-center rounded-full ${iconClassName}`}
+    >
+      <Icon className='h-4 w-4' />
+    </div>
+    <div>
+      <div className='text-lg font-medium text-white'>{title}</div>
+      {description ? (
+        <div className='text-xs text-white/60'>{description}</div>
+      ) : null}
+    </div>
+  </div>
+);
+
+const InlineAction = ({ children, onClick }) => (
+  <button
+    type='button'
+    className='text-sm text-blue-300 transition hover:text-blue-200'
+    onClick={onClick}
+  >
+    {children}
+  </button>
+);
+
 // 支持并且已适配通过接口获取模型列表的渠道类型
 const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43,
@@ -145,7 +153,7 @@ function type2secretPrompt(type) {
     case 45:
       return '请输入渠道对应的鉴权密钥, 豆包语音输入：AppId|AccessToken';
     case 50:
-      return '按照如下格式输入: AccessKey|SecretKey, 如果上游是New API，则直接输ApiKey';
+      return '按照如下格式输入: AccessKey|SecretKey, 如果上游是 OpenCrab 兼容网关，则直接输 ApiKey';
     case 51:
       return '按照如下格式输入: AccessKey|SecretAccessKey';
     case 57:
@@ -561,14 +569,12 @@ const EditChannelModal = (props) => {
     }
 
     if (name === 'base_url' && value.endsWith('/v1')) {
-      Modal.confirm({
-        title: '警告',
-        content:
-          '不需要在末尾加/v1，New API会自动处理，添加后可能导致请求失败，是否继续？',
-        onOk: () => {
-          setInputs((inputs) => ({ ...inputs, [name]: value }));
-        },
-      });
+      const confirmed = window.confirm(
+        '不需要在末尾加/v1，OpenCrab 会自动处理，添加后可能导致请求失败，是否继续？',
+      );
+      if (confirmed) {
+        setInputs((inputs) => ({ ...inputs, [name]: value }));
+      }
       return;
     }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
@@ -1355,60 +1361,14 @@ const EditChannelModal = (props) => {
 
   const confirmMissingModelMappings = (missingModels) =>
     new Promise((resolve) => {
-      const modal = Modal.confirm({
-        title: t('模型未加入列表，可能无法调用'),
-        content: (
-          <div className='text-sm leading-6'>
-            <div>
-              {t(
-                '模型重定向里的下列模型尚未添加到“模型”列表，调用时会因为缺少可用模型而失败：',
-              )}
-            </div>
-            <div className='font-mono text-xs break-all text-red-600 mt-1'>
-              {missingModels.join(', ')}
-            </div>
-            <div className='mt-2'>
-              {t(
-                '你可以在“自定义模型名称”处手动添加它们，然后点击填入后再提交，或者直接使用下方操作自动处理。',
-              )}
-            </div>
-          </div>
-        ),
-        centered: true,
-        footer: (
-          <Space align='center' className='w-full justify-end'>
-            <Button
-              type='tertiary'
-              onClick={() => {
-                modal.destroy();
-                resolve('cancel');
-              }}
-            >
-              {t('返回修改')}
-            </Button>
-            <Button
-              type='primary'
-              theme='light'
-              onClick={() => {
-                modal.destroy();
-                resolve('submit');
-              }}
-            >
-              {t('直接提交')}
-            </Button>
-            <Button
-              type='primary'
-              theme='solid'
-              onClick={() => {
-                modal.destroy();
-                resolve('add');
-              }}
-            >
-              {t('添加后提交')}
-            </Button>
-          </Space>
-        ),
-      });
+      const shouldAdd = window.confirm(
+        `${t(
+          '模型重定向里的下列模型尚未添加到“模型”列表，调用时会因为缺少可用模型而失败：',
+        )}\n${missingModels.join(', ')}\n\n${t(
+          '选择“确定”将自动添加后提交，选择“取消”则返回修改。',
+        )}`,
+      );
+      resolve(shouldAdd ? 'add' : 'cancel');
     });
 
   const resolveStatusCodeRiskConfirm = (confirmed) => {
@@ -1889,30 +1849,25 @@ const EditChannelModal = (props) => {
             const checked = e.target.checked;
 
             if (!checked && vertexFileList.length > 1) {
-              Modal.confirm({
-                title: t('切换为单密钥模式'),
-                content: t(
-                  '将仅保留第一个密钥文件，其余文件将被移除，是否继续？',
-                ),
-                onOk: () => {
-                  const firstFile = vertexFileList[0];
-                  const firstKey = vertexKeys[0] ? [vertexKeys[0]] : [];
+              const confirmed = window.confirm(
+                t('将仅保留第一个密钥文件，其余文件将被移除，是否继续？'),
+              );
+              if (confirmed) {
+                const firstFile = vertexFileList[0];
+                const firstKey = vertexKeys[0] ? [vertexKeys[0]] : [];
 
-                  setVertexFileList([firstFile]);
-                  setVertexKeys(firstKey);
+                setVertexFileList([firstFile]);
+                setVertexKeys(firstKey);
 
-                  formApiRef.current?.setValue('vertex_files', [firstFile]);
-                  setInputs((prev) => ({ ...prev, vertex_files: [firstFile] }));
+                formApiRef.current?.setValue('vertex_files', [firstFile]);
+                setInputs((prev) => ({ ...prev, vertex_files: [firstFile] }));
 
-                  setBatch(false);
-                  setMultiToSingle(false);
-                  setMultiKeyMode('random');
-                },
-                onCancel: () => {
-                  setBatch(true);
-                },
-                centered: true,
-              });
+                setBatch(false);
+                setMultiToSingle(false);
+                setMultiKeyMode('random');
+              } else {
+                setBatch(true);
+              }
               return;
             }
 
@@ -2052,88 +2007,24 @@ const EditChannelModal = (props) => {
 
   return (
     <>
-      <SideSheet
-        placement={isEdit ? 'right' : 'left'}
-        title={
-          <Space>
-            <Tag color='blue' shape='circle'>
-              {isEdit ? t('编辑') : t('新建')}
-            </Tag>
-            <Title heading={4} className='m-0'>
-              {isEdit ? t('更新渠道信息') : t('创建新的渠道')}
-            </Title>
-          </Space>
-        }
-        bodyStyle={{ padding: '0' }}
-        visible={props.visible}
-        width={isMobile ? '100%' : 600}
-        footer={
-          <div className='flex justify-between items-center bg-white'>
-            <div className='flex gap-2'>
-              <Button
-                size='small'
-                type='tertiary'
-                icon={<IconChevronUp />}
-                onClick={() => navigateToSection('up')}
-                style={{
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                title={t('上一个表单块')}
-              />
-              <Button
-                size='small'
-                type='tertiary'
-                icon={<IconChevronDown />}
-                onClick={() => navigateToSection('down')}
-                style={{
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                title={t('下一个表单块')}
-              />
-            </div>
-            <Space>
-              <Button
-                theme='solid'
-                onClick={() => formApiRef.current?.submitForm()}
-                icon={<IconSave />}
-              >
-                {t('提交')}
-              </Button>
-              <Button
-                theme='light'
-                type='primary'
-                onClick={handleCancel}
-                icon={<IconClose />}
-              >
-                {t('取消')}
-              </Button>
-            </Space>
-          </div>
-        }
-        closeIcon={null}
-        onCancel={() => handleCancel()}
-      >
-        <Form
-          key={isEdit ? 'edit' : 'new'}
-          initValues={originInputs}
-          getFormApi={(api) => (formApiRef.current = api)}
-          onSubmit={submit}
+      <Dialog open={props.visible} onOpenChange={(open) => !open && handleCancel()}>
+        <DialogContent
+          className='max-w-[1100px] border-white/10 bg-black p-0 text-white sm:max-w-[1100px]'
+          showCloseButton={false}
         >
-          {() => (
-            <Spin spinning={loading}>
-              <div className='p-2 space-y-3' ref={formContainerRef}>
+          <DialogHeader className='border-b border-white/10 px-6 py-4'>
+            <div className='flex items-center gap-3'>
+              <Badge className='border-blue-500/20 bg-blue-500/15 text-blue-200'>
+                {isEdit ? t('编辑') : t('新建')}
+              </Badge>
+              <DialogTitle className='text-xl text-white'>
+                {isEdit ? t('更新渠道信息') : t('创建新的渠道')}
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+
+          <ScrollArea className='max-h-[78vh] px-6 py-5'>
+            <div className='space-y-3' ref={formContainerRef}>
                 <div ref={(el) => (formSectionRefs.current.basicInfo = el)}>
                   <Card className='!rounded-2xl shadow-sm border-0 mb-6'>
                     {/* Header: Basic Info */}
@@ -2916,7 +2807,7 @@ const EditChannelModal = (props) => {
                           <Banner
                             type='warning'
                             description={t(
-                              '如果你对接的是上游One API或者New API等转发项目，请使用OpenAI类型，不要使用此类型，除非你知道你在做什么。',
+                              '如果你对接的是上游 One API、OpenCrab 或其他兼容转发项目，请使用 OpenAI 类型，不要使用此类型，除非你知道你在做什么。',
                             )}
                             className='!rounded-lg'
                           />
@@ -3898,16 +3789,40 @@ const EditChannelModal = (props) => {
                     />
                   </Card>
                 </div>
-              </div>
-            </Spin>
-          )}
-        </Form>
-        <ImagePreview
-          src={modalImageUrl}
-          visible={isModalOpenurl}
-          onVisibleChange={(visible) => setIsModalOpenurl(visible)}
-        />
-      </SideSheet>
+            </div>
+          </ScrollArea>
+          <DialogFooter className='border-white/10 bg-black/80'>
+            <div className='mr-auto flex gap-2'>
+              <Button
+                size='icon-sm'
+                type='button'
+                variant='secondary'
+                onClick={() => navigateToSection('up')}
+                title={t('上一个表单块')}
+              >
+                <ChevronUp className='h-4 w-4' />
+              </Button>
+              <Button
+                size='icon-sm'
+                type='button'
+                variant='secondary'
+                onClick={() => navigateToSection('down')}
+                title={t('下一个表单块')}
+              >
+                <ChevronDown className='h-4 w-4' />
+              </Button>
+            </div>
+            <Button type='button' variant='secondary' onClick={handleCancel}>
+              <X className='mr-1 h-4 w-4' />
+              {t('取消')}
+            </Button>
+            <Button type='button' onClick={submit}>
+              <Save className='mr-1 h-4 w-4' />
+              {t('提交')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <StatusCodeRiskGuardModal
         visible={statusCodeRiskConfirmVisible}
         detailItems={statusCodeRiskDetailItems}

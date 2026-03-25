@@ -106,8 +106,8 @@ func GetJsonString(data any) string {
 	return string(b)
 }
 
-// NormalizeBillingPreference clamps the billing preference to valid values.
-func NormalizeBillingPreference(pref string) string {
+// NormalizeDispatchPreference clamps the dispatch preference to valid values.
+func NormalizeDispatchPreference(pref string) string {
 	switch strings.TrimSpace(pref) {
 	case "subscription_first", "wallet_first", "subscription_only", "wallet_only":
 		return strings.TrimSpace(pref)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/opencrab/common"
-	"github.com/QuantumNous/opencrab/types"
+	"github.com/roseforljh/opencrab/common"
+	"github.com/roseforljh/opencrab/types"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -57,7 +57,7 @@ type GeneralOpenAIRequest struct {
 	ToolChoice          any               `json:"tool_choice,omitempty"`
 	FunctionCall        json.RawMessage   `json:"function_call,omitempty"`
 	User                json.RawMessage   `json:"user,omitempty"`
-	// ServiceTier specifies upstream service level and may affect billing.
+	// ServiceTier specifies upstream service level and may affect upstream behavior.
 	// This field is filtered by default and can be enabled via channel setting allow_service_tier.
 	ServiceTier json.RawMessage `json:"service_tier,omitempty"`
 	LogProbs    *bool           `json:"logprobs,omitempty"`
@@ -826,7 +826,7 @@ type OpenAIResponsesRequest struct {
 	ParallelToolCalls  json.RawMessage `json:"parallel_tool_calls,omitempty"`
 	PreviousResponseID string          `json:"previous_response_id,omitempty"`
 	Reasoning          *Reasoning      `json:"reasoning,omitempty"`
-	// ServiceTier specifies upstream service level and may affect billing.
+	// ServiceTier specifies upstream service level and may affect upstream behavior.
 	// This field is filtered by default and can be enabled via channel setting allow_service_tier.
 	ServiceTier string `json:"service_tier,omitempty"`
 	// Store controls whether upstream may store request/response data.

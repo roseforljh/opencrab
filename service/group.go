@@ -1,7 +1,7 @@
 ﻿package service
 
 import (
-	"github.com/QuantumNous/opencrab/setting"
+	"github.com/roseforljh/opencrab/setting"
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {

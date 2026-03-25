@@ -1,13 +1,13 @@
 ﻿package relay
 
 import (
-	relaycommon "github.com/QuantumNous/opencrab/relay/common"
-	"github.com/QuantumNous/opencrab/types"
+	relaycommon "github.com/roseforljh/opencrab/relay/common"
+	"github.com/roseforljh/opencrab/types"
 )
 
-func newAPIErrorFromParamOverride(err error) *types.NewAPIError {
+func openCrabErrorFromParamOverride(err error) *types.OpenCrabError {
 	if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
-		return relaycommon.NewAPIErrorFromParamOverride(fixedErr)
+		return relaycommon.OpenCrabErrorFromParamOverride(fixedErr)
 	}
 	return types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid, types.ErrOptionWithSkipRetry())
 }
