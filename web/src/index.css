@@ -1,0 +1,1798 @@
+/* ==================== Tailwind CSS 配置 ==================== */
+@layer tailwind-base, semi, tailwind-components, tailwind-utils;
+
+@layer tailwind-base {
+  @tailwind base;
+}
+
+@layer tailwind-components {
+  @tailwind components;
+}
+
+@layer tailwind-utils {
+  @tailwind utilities;
+}
+
+/* ==================== 全局基础样式 ==================== */
+:root {
+  --sidebar-width: 180px;
+  --sidebar-width-collapsed: 60px;
+  --sidebar-current-width: var(--sidebar-width);
+}
+
+body.sidebar-collapsed {
+  --sidebar-current-width: var(--sidebar-width-collapsed);
+}
+
+body {
+  font-family: Lato, 'Helvetica Neue', Arial, Helvetica, 'Microsoft YaHei',
+    sans-serif;
+  color: var(--semi-color-text-0);
+  background-color: var(--semi-color-bg-0);
+}
+
+body.sidebar-collapsed .semi-navigation-item,
+body.sidebar-collapsed .semi-navigation-sub-title {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  justify-content: center !important;
+}
+
+body.sidebar-collapsed .sidebar-icon-container {
+  margin-right: 0 !important;
+}
+
+body.sidebar-collapsed .semi-navigation-item-icon {
+  margin-right: 0 !important;
+}
+
+/* ==================== 布局相关样式 ==================== */
+.semi-layout::-webkit-scrollbar,
+.semi-layout-content::-webkit-scrollbar,
+.semi-sider::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.semi-layout,
+.semi-layout-content,
+.semi-sider {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==================== 导航和侧边栏样式 ==================== */
+.semi-navigation-item {
+  margin-bottom: 4px !important;
+  padding: 4px 12px !important;
+}
+
+.semi-navigation-sub-title {
+  padding: 0 !important;
+}
+
+.semi-navigation-item-icon {
+  justify-items: center;
+  align-items: center;
+}
+
+.semi-navigation-item-icon-info {
+  margin-right: 0;
+}
+
+.sidebar-nav .semi-navigation-item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.semi-navigation-item,
+.semi-navigation-sub-title {
+  height: 100% !important;
+}
+
+.semi-navigation-item-collapsed {
+  height: 44px !important;
+}
+
+#root
+  > section
+  > header
+  > section
+  > div
+  > div
+  > div
+  > div.semi-navigation-header-list-outer
+  > div.semi-navigation-list-wrapper
+  > ul
+  > div
+  > a
+  > li
+  > span {
+  font-weight: 600 !important;
+}
+
+/* 自定义侧边栏样式 */
+.sidebar-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transition: width 0.3s ease;
+  background: var(--semi-color-bg-0);
+}
+
+.sidebar-nav {
+  flex: 1;
+  width: 100%;
+  background: var(--semi-color-bg-0);
+  height: 100%;
+  overflow-x: hidden;
+  border-right: none;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
+
+/* 侧边栏导航项样式 */
+.sidebar-nav-item {
+  border-radius: 8px;
+  margin: 3px 8px;
+  transition: all 0.15s ease;
+  padding: 8px 12px;
+}
+
+.sidebar-nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sidebar-nav-item-selected {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+}
+
+/* 图标容器样式 */
+.sidebar-icon-container {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  transition: all 0.2s ease;
+}
+
+.sidebar-sub-icon-container {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  margin-left: 1px;
+  transition: all 0.2s ease;
+}
+
+/* 分割线样式 */
+.sidebar-divider {
+  margin: 4px 8px;
+  opacity: 0.15;
+}
+
+/* 分组标签样式 */
+.sidebar-group-label {
+  padding: 4px 15px 8px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+}
+
+/* 底部折叠按钮 */
+.sidebar-collapse-button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+  margin-top: auto;
+  cursor: pointer;
+  background-color: var(--semi-color-bg-0);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  box-shadow: 0 -10px 10px -5px var(--semi-color-bg-0);
+  backdrop-filter: blur(4px);
+  border-top: 1px solid rgba(var(--semi-grey-0), 0.08);
+}
+
+.sidebar-collapse-button-inner {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--semi-color-fill-0);
+  transition: all 0.2s ease;
+}
+
+.sidebar-collapse-icon-container {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+/* 侧边栏区域容器 */
+.sidebar-section {
+  padding-top: 12px;
+}
+
+@media (max-width: 767px) {
+  .sidebar-container {
+    background: var(--semi-color-bg-1);
+    border-right: 1px solid var(--semi-color-border);
+  }
+
+  .sidebar-nav {
+    background: var(--semi-color-bg-1);
+  }
+
+  .sidebar-collapse-button {
+    background-color: var(--semi-color-bg-1);
+    box-shadow: 0 -10px 10px -5px var(--semi-color-bg-1);
+  }
+}
+
+/* ==================== 聊天界面样式 ==================== */
+.semi-chat {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  height: 100%;
+  max-width: 100% !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+.semi-chat-chatBox {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.semi-chat-chatBox-wrap {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.semi-chat-chatBox-content {
+  min-width: auto;
+  word-break: break-word;
+  max-width: 100% !important;
+  overflow-wrap: break-word !important;
+}
+
+.semi-chat-content {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.semi-chat-list {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.semi-chat-container {
+  overflow-x: hidden !important;
+}
+
+.semi-chat-chatBox-action {
+  column-gap: 0 !important;
+}
+
+.semi-chat-inputBox-clearButton.semi-button .semi-icon {
+  font-size: 20px !important;
+}
+
+/* 隐藏所有聊天相关区域的滚动条 */
+.semi-chat::-webkit-scrollbar,
+.semi-chat-chatBox::-webkit-scrollbar,
+.semi-chat-chatBox-wrap::-webkit-scrollbar,
+.semi-chat-chatBox-content::-webkit-scrollbar,
+.semi-chat-content::-webkit-scrollbar,
+.semi-chat-list::-webkit-scrollbar,
+.semi-chat-container::-webkit-scrollbar {
+  display: none;
+}
+
+.semi-chat,
+.semi-chat-chatBox,
+.semi-chat-chatBox-wrap,
+.semi-chat-chatBox-content,
+.semi-chat-content,
+.semi-chat-list,
+.semi-chat-container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==================== 组件特定样式 ==================== */
+/* SelectableButtonGroup */
+.sbg-button .semi-button-content {
+  min-width: 0 !important;
+}
+
+.sbg-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.sbg-ellipsis {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Badge for count/multiplier in filter buttons */
+.sbg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  background-color: var(--semi-color-fill-0);
+  color: var(--semi-color-text-2);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.sbg-badge-active {
+  background-color: var(--semi-color-primary-light-active);
+  color: var(--semi-color-primary);
+}
+
+/* ---- SelectableButtonGroup color variants ---- */
+.sbg-variant-violet {
+  --semi-color-primary: #6d28d9;
+  --semi-color-primary-light-default: rgba(124, 58, 237, 0.08);
+  --semi-color-primary-light-hover: rgba(124, 58, 237, 0.15);
+  --semi-color-primary-light-active: rgba(124, 58, 237, 0.22);
+}
+
+.sbg-variant-teal {
+  --semi-color-primary: #0f766e;
+  --semi-color-primary-light-default: rgba(20, 184, 166, 0.08);
+  --semi-color-primary-light-hover: rgba(20, 184, 166, 0.15);
+  --semi-color-primary-light-active: rgba(20, 184, 166, 0.22);
+}
+
+.sbg-variant-amber {
+  --semi-color-primary: #b45309;
+  --semi-color-primary-light-default: rgba(245, 158, 11, 0.08);
+  --semi-color-primary-light-hover: rgba(245, 158, 11, 0.15);
+  --semi-color-primary-light-active: rgba(245, 158, 11, 0.22);
+}
+
+.sbg-variant-rose {
+  --semi-color-primary: #be123c;
+  --semi-color-primary-light-default: rgba(244, 63, 94, 0.08);
+  --semi-color-primary-light-hover: rgba(244, 63, 94, 0.15);
+  --semi-color-primary-light-active: rgba(244, 63, 94, 0.22);
+}
+
+.sbg-variant-green {
+  --semi-color-primary: #047857;
+  --semi-color-primary-light-default: rgba(16, 185, 129, 0.08);
+  --semi-color-primary-light-hover: rgba(16, 185, 129, 0.15);
+  --semi-color-primary-light-active: rgba(16, 185, 129, 0.22);
+}
+
+/* Dark mode: lighter text, slightly stronger backgrounds */
+html.dark .sbg-variant-violet {
+  --semi-color-primary: #a78bfa;
+  --semi-color-primary-light-default: rgba(139, 92, 246, 0.14);
+  --semi-color-primary-light-hover: rgba(139, 92, 246, 0.22);
+  --semi-color-primary-light-active: rgba(139, 92, 246, 0.3);
+}
+
+html.dark .sbg-variant-teal {
+  --semi-color-primary: #2dd4bf;
+  --semi-color-primary-light-default: rgba(45, 212, 191, 0.14);
+  --semi-color-primary-light-hover: rgba(45, 212, 191, 0.22);
+  --semi-color-primary-light-active: rgba(45, 212, 191, 0.3);
+}
+
+html.dark .sbg-variant-amber {
+  --semi-color-primary: #fbbf24;
+  --semi-color-primary-light-default: rgba(251, 191, 36, 0.14);
+  --semi-color-primary-light-hover: rgba(251, 191, 36, 0.22);
+  --semi-color-primary-light-active: rgba(251, 191, 36, 0.3);
+}
+
+html.dark .sbg-variant-rose {
+  --semi-color-primary: #fb7185;
+  --semi-color-primary-light-default: rgba(251, 113, 133, 0.14);
+  --semi-color-primary-light-hover: rgba(251, 113, 133, 0.22);
+  --semi-color-primary-light-active: rgba(251, 113, 133, 0.3);
+}
+
+html.dark .sbg-variant-green {
+  --semi-color-primary: #34d399;
+  --semi-color-primary-light-default: rgba(52, 211, 153, 0.14);
+  --semi-color-primary-light-hover: rgba(52, 211, 153, 0.22);
+  --semi-color-primary-light-active: rgba(52, 211, 153, 0.3);
+}
+
+/* Tabs组件样式 */
+.semi-tabs-content {
+  padding: 0 !important;
+  height: calc(100% - 40px) !important;
+  flex: 1 !important;
+}
+
+.semi-tabs-content .semi-tabs-pane {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.semi-tabs-content .semi-tabs-pane > div {
+  height: 100% !important;
+}
+
+/* 表格样式 */
+.tableShow {
+  display: revert;
+}
+
+.tableHiddle {
+  display: none !important;
+}
+
+/* 页脚样式 */
+.custom-footer {
+  font-size: 1.1em;
+}
+
+/* 卡片内容容器通用样式 */
+.card-content-container {
+  position: relative;
+}
+
+.card-content-fade-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  background: linear-gradient(transparent, var(--semi-color-bg-1));
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* ==================== 调试面板特定样式 ==================== */
+.debug-panel .semi-tabs {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.debug-panel .semi-tabs-bar {
+  flex-shrink: 0 !important;
+}
+
+.debug-panel .semi-tabs-content {
+  flex: 1 !important;
+  overflow: hidden !important;
+}
+
+/* ==================== 滚动条样式统一管理 ==================== */
+/* 通用隐藏滚动条工具类 */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  /* Chrome, Safari, Opera */
+}
+
+/* 表格滚动条样式 */
+.semi-table-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.semi-table-body::-webkit-scrollbar-thumb {
+  background: rgba(var(--semi-grey-2), 0.3);
+  border-radius: 2px;
+}
+
+.semi-table-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--semi-grey-2), 0.5);
+}
+
+.semi-table-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 侧边抽屉滚动条样式 */
+.semi-sidesheet-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.semi-sidesheet-body::-webkit-scrollbar-thumb {
+  background: rgba(var(--semi-grey-2), 0.3);
+  border-radius: 2px;
+}
+
+.semi-sidesheet-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--semi-grey-2), 0.5);
+}
+
+.semi-sidesheet-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 隐藏内容区域滚动条 */
+.pricing-scroll-hide,
+.model-test-scroll,
+.card-content-scroll,
+.model-settings-scroll,
+.thinking-content-scroll,
+.custom-request-textarea .semi-input,
+.custom-request-textarea textarea,
+.notice-content-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.pricing-scroll-hide::-webkit-scrollbar,
+.model-test-scroll::-webkit-scrollbar,
+.card-content-scroll::-webkit-scrollbar,
+.model-settings-scroll::-webkit-scrollbar,
+.thinking-content-scroll::-webkit-scrollbar,
+.custom-request-textarea .semi-input::-webkit-scrollbar,
+.custom-request-textarea textarea::-webkit-scrollbar,
+.notice-content-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* 图片列表滚动条样式 */
+.image-list-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.image-list-scroll::-webkit-scrollbar-thumb {
+  background: var(--semi-color-tertiary-light-default);
+  border-radius: 3px;
+}
+
+.image-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--semi-color-tertiary);
+}
+
+.image-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ==================== 同步倍率 - 渠道选择器 ==================== */
+
+.components-transfer-source-item,
+.components-transfer-selected-item {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+}
+
+.semi-transfer-left-list,
+.semi-transfer-right-list {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.semi-transfer-left-list::-webkit-scrollbar,
+.semi-transfer-right-list::-webkit-scrollbar {
+  display: none;
+}
+
+.components-transfer-source-item .semi-checkbox,
+.components-transfer-selected-item .semi-checkbox {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.components-transfer-source-item .semi-avatar,
+.components-transfer-selected-item .semi-avatar {
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.components-transfer-source-item .info,
+.components-transfer-selected-item .info {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.components-transfer-source-item .name,
+.components-transfer-selected-item .name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.components-transfer-source-item .email,
+.components-transfer-selected-item .email {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  display: flex;
+  align-items: center;
+}
+
+.components-transfer-selected-item .semi-icon-close {
+  margin-left: 8px;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+}
+
+.components-transfer-selected-item .semi-icon-close:hover {
+  color: var(--semi-color-text-0);
+}
+
+/* ==================== 未读通知闪光效果 ==================== */
+@keyframes sweep-shine {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.shine-text {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 40%,
+    rgba(255, 255, 255, 0.9) 50%,
+    currentColor 60%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: sweep-shine 4s linear infinite;
+}
+
+.dark .shine-text {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 40%,
+    #facc15 50%,
+    currentColor 60%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ==================== ScrollList 定制样式 ==================== */
+.semi-scrolllist,
+.semi-scrolllist * {
+  -ms-overflow-style: none;
+  /* IE, Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  background: transparent !important;
+}
+
+.semi-scrolllist::-webkit-scrollbar,
+.semi-scrolllist *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+.semi-scrolllist-body {
+  padding: 1px !important;
+}
+
+.semi-scrolllist-list-outer {
+  padding-right: 0 !important;
+}
+
+/* ==================== Banner 背景模糊球 ==================== */
+.blur-ball {
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.blur-ball-indigo {
+  background: #6366f1;
+  /* indigo-500 */
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.5;
+}
+
+.blur-ball-teal {
+  background: #14b8a6;
+  /* teal-400 */
+  top: 200px;
+  left: 30%;
+  opacity: 0.4;
+}
+
+/* 浅色主题下让模糊球更柔和 */
+html:not(.dark) .blur-ball-indigo {
+  opacity: 0.25;
+}
+
+html:not(.dark) .blur-ball-teal {
+  opacity: 0.2;
+}
+
+/* ==================== 卡片马卡龙模糊球（类封装） ==================== */
+/* 使用方式：给容器加上 with-pastel-balls 类即可，无需在 JSX 中插入额外节点 */
+.with-pastel-balls {
+  position: relative;
+  overflow: hidden;
+  /* 默认变量（明亮模式） */
+  --pb1: #ffd1dc;
+  /* 粉 */
+  --pb2: #e5d4ff;
+  /* 薰衣草 */
+  --pb3: #d1fff6;
+  /* 薄荷 */
+  --pb4: #ffe5d9;
+  /* 桃 */
+  --pb-opacity: 0.55;
+  --pb-blur: 60px;
+}
+
+.with-pastel-balls::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+      circle at -5% -10%,
+      var(--pb1) 0%,
+      transparent 60%
+    ),
+    radial-gradient(circle at 105% -10%, var(--pb2) 0%, transparent 55%),
+    radial-gradient(circle at 5% 110%, var(--pb3) 0%, transparent 55%),
+    radial-gradient(circle at 105% 110%, var(--pb4) 0%, transparent 50%);
+  filter: blur(var(--pb-blur));
+  opacity: var(--pb-opacity);
+  transform: translateZ(0);
+}
+
+/* 暗黑模式下更柔和的色彩和透明度 */
+html.dark .with-pastel-balls {
+  /* 使用与明亮模式一致的“刚才那组”马卡龙色，但整体更柔和 */
+  --pb1: #ffd1dc;
+  /* 粉 */
+  --pb2: #e5d4ff;
+  /* 薰衣草 */
+  --pb3: #d1fff6;
+  /* 薄荷 */
+  --pb4: #ffe5d9;
+  /* 桃 */
+  --pb-opacity: 0.36;
+  --pb-blur: 65px;
+}
+
+/* 暗黑模式下用更柔和的混合模式避免突兀的高亮 */
+html.dark .with-pastel-balls::before {
+  mix-blend-mode: screen;
+}
+
+/* ==================== 表格卡片滚动设置 ==================== */
+.table-scroll-card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 110px);
+  max-height: calc(100vh - 110px);
+}
+
+.table-scroll-card .semi-card-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.table-scroll-card .semi-card-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table-scroll-card .semi-card-body::-webkit-scrollbar-thumb {
+  background: rgba(var(--semi-grey-2), 0.3);
+  border-radius: 2px;
+}
+
+.table-scroll-card .semi-card-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--semi-grey-2), 0.5);
+}
+
+.table-scroll-card .semi-card-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 767px) {
+  .table-scroll-card {
+    height: calc(100vh - 77px);
+    max-height: calc(100vh - 77px);
+  }
+}
+
+/* ==================== 模型定价页面布局 ==================== */
+.pricing-layout {
+  height: calc(100vh - 60px);
+  overflow: hidden;
+  margin-top: 60px;
+}
+
+.pricing-sidebar {
+  width: clamp(280px, 24vw, 520px) !important;
+  min-width: clamp(280px, 24vw, 520px) !important;
+  max-width: clamp(280px, 24vw, 520px) !important;
+  height: calc(100vh - 60px);
+  background-color: var(--semi-color-bg-0);
+  overflow: auto;
+}
+
+.pricing-content {
+  height: calc(100vh - 60px);
+  background-color: var(--semi-color-bg-0);
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-pagination-divider {
+  border-color: var(--semi-color-border);
+}
+
+.pricing-content-mobile {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.pricing-search-header {
+  padding: 0.5rem;
+  background-color: var(--semi-color-bg-0);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.pricing-view-container {
+  flex: 1;
+  overflow: auto;
+}
+
+.pricing-view-container-mobile {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ==================== semi-ui 组件自定义样式 ==================== */
+.semi-card-header,
+.semi-card-body {
+  padding: 10px !important;
+}
+
+/* ==================== 使用日志: channel affinity tag ==================== */
+.semi-tag.channel-affinity-tag {
+  border: 1px solid rgba(var(--semi-cyan-5), 0.35);
+  background-color: rgba(var(--semi-cyan-5), 0.15);
+  color: rgba(var(--semi-cyan-9), 1);
+  cursor: help;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.semi-tag.channel-affinity-tag:hover {
+  background-color: rgba(var(--semi-cyan-5), 0.22);
+  border-color: rgba(var(--semi-cyan-5), 0.6);
+  box-shadow: 0 0 0 2px rgba(var(--semi-cyan-5), 0.18);
+}
+
+.semi-tag.channel-affinity-tag:active {
+  background-color: rgba(var(--semi-cyan-5), 0.28);
+}
+
+.semi-tag.channel-affinity-tag .channel-affinity-tag-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* ==================== 自定义圆角样式 ==================== */
+.semi-radio,
+.semi-tagInput,
+.semi-input-textarea-wrapper,
+.semi-navigation-sub-title,
+.semi-chat-inputBox-sendButton,
+.semi-page-item,
+.semi-navigation-item,
+.semi-tag-closable,
+.semi-input-wrapper,
+.semi-tabs-tab-button,
+.semi-select,
+.semi-button,
+.semi-datepicker-range-input {
+  border-radius: 10px !important;
+}
+
+/* Pure Black Dark Theme Overrides */
+html.dark body,
+body[theme-mode='dark'] {
+  --semi-color-bg-0: #000000 !important;
+  --semi-color-bg-1: #0a0a0a !important;
+  --semi-color-bg-2: #121212 !important;
+  --semi-color-bg-3: #1a1a1a !important;
+  --semi-color-bg-4: #222222 !important;
+
+  --semi-color-border: #222222 !important;
+  --semi-color-fill-0: rgba(255, 255, 255, 0.04) !important;
+  --semi-color-fill-1: rgba(255, 255, 255, 0.08) !important;
+  --semi-color-fill-2: rgba(255, 255, 255, 0.12) !important;
+
+  --semi-color-nav-bg: #000000 !important;
+  --semi-color-header-bg: rgba(0, 0, 0, 0.8) !important;
+
+  /* Adjust text colors slightly for pure black background */
+  --semi-color-text-0: #ececec !important;
+  --semi-color-text-1: #b0b0b0 !important;
+  --semi-color-text-2: #808080 !important;
+  --semi-color-text-3: #505050 !important;
+
+  /* Card and Panel Overrides */
+  background-color: #000000 !important;
+}
+
+/* Override tailwind dark backgrounds to pure black */
+.dark .bg-gray-900,
+.dark .bg-zinc-900,
+.dark .bg-slate-900,
+.dark .dark\:bg-gray-900,
+.dark .dark\:bg-zinc-900 {
+  background-color: #000000 !important;
+}
+
+.dark .bg-gray-800,
+.dark .bg-zinc-800,
+.dark .bg-slate-800,
+.dark .dark\:bg-gray-800,
+.dark .dark\:bg-zinc-800 {
+  background-color: #0a0a0a !important;
+  border-color: #222222 !important;
+}
+
+.dark .bg-white\/85,
+.dark .dark\:bg-zinc-900\/85 {
+  background-color: rgba(0, 0, 0, 0.85) !important;
+}
+
+/* Semi Card Backgrounds */
+html.dark .semi-card,
+html.dark .semi-modal-content,
+html.dark .semi-popover-content,
+html.dark .semi-dropdown-menu,
+html.dark .semi-select-popover {
+  background-color: #0a0a0a !important;
+  border: 1px solid #222222 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* App Header & Sider */
+html.dark .semi-layout-header,
+html.dark .app-layout > .semi-layout-header {
+  background-color: rgba(0, 0, 0, 0.85) !important;
+  border-bottom: 1px solid #222222 !important;
+}
+html.dark .app-sider,
+html.dark .sidebar-nav,
+html.dark .semi-navigation-wrapper {
+  background-color: #000000 !important;
+}
+
+html.dark .app-sider {
+  border-right: 1px solid #222222 !important;
+}
+
+/* Forms and Inputs */
+html.dark .semi-input,
+html.dark .semi-input-textarea,
+html.dark .semi-select-selection {
+  background-color: #121212 !important;
+  border-color: #333333 !important;
+}
+html.dark .semi-input:hover,
+html.dark .semi-input-textarea:hover,
+html.dark .semi-select-selection:hover,
+html.dark .semi-input:focus,
+html.dark .semi-input-textarea:focus,
+html.dark .semi-select-selection:focus {
+  background-color: #1a1a1a !important;
+  border-color: var(--semi-color-primary) !important;
+}
+
+/* Fixes for Playground / Tables */
+html.dark .semi-table-row {
+  background-color: transparent !important;
+}
+html.dark .semi-table-row:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+html.dark .semi-table-thead > .semi-table-row > th {
+  background-color: #0a0a0a !important;
+  border-bottom: 1px solid #222222 !important;
+}
+html.dark .semi-table-row > td {
+  border-bottom: 1px solid #222222 !important;
+}
+
+/* Scrollbars in Dark Theme */
+html.dark ::-webkit-scrollbar-track {
+  background: #000000 !important;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #222222 !important;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #444444 !important;
+}
+
+/* Chat bubble styling */
+html.dark .chat-message-assistant {
+  background-color: #0a0a0a !important;
+  border: 1px solid #222222 !important;
+}
+html.dark .chat-message-user {
+  background-color: #1a1a1a !important;
+}
+
+/* Buttons in Dark Theme */
+html.dark .semi-button-primary {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #ffffff !important;
+}
+html.dark .semi-button-primary:hover {
+  background-color: #e5e5e5 !important;
+  border-color: #e5e5e5 !important;
+}
+html.dark .semi-button-tertiary {
+  background-color: transparent !important;
+  color: #b0b0b0 !important;
+}
+html.dark .semi-button-tertiary:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+html.dark .semi-button-light {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+html.dark .semi-button-light:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Modals */
+html.dark .semi-modal {
+  background-color: #0a0a0a !important;
+  border: 1px solid #333333 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8) !important;
+}
+html.dark .semi-modal-header {
+  border-bottom: 1px solid #222 !important;
+}
+html.dark .semi-modal-footer {
+  border-top: 1px solid #222 !important;
+}
+
+/* Layout overrides */
+html.dark .bg-gray-50,
+html.dark .bg-gray-100 {
+  background-color: #000000 !important;
+}
+
+html.dark .bg-white {
+  background-color: #0a0a0a !important;
+  border-color: #222 !important;
+}
+
+/* Fix shadows and borders for UI components */
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+
+html.dark .border,
+html.dark .border-gray-200,
+html.dark .border-gray-300 {
+  border-color: #222 !important;
+}
+
+html.dark .divide-y > * + * {
+  border-color: #222 !important;
+}
+
+/* Focus and Active States */
+html.dark *:focus-visible {
+  outline: 2px solid var(--semi-color-primary) !important;
+  outline-offset: 2px !important;
+}
+
+/* Typography Overrides */
+html.dark .text-gray-900,
+html.dark .text-gray-800 {
+  color: #ececec !important;
+}
+html.dark .text-gray-700,
+html.dark .text-gray-600 {
+  color: #b0b0b0 !important;
+}
+html.dark .text-gray-500 {
+  color: #808080 !important;
+}
+
+/* Semi Tag and Badge */
+html.dark .semi-tag {
+  background-color: #1a1a1a !important;
+  border: 1px solid #333 !important;
+  color: #ececec !important;
+}
+
+/* Dropdowns & Popovers */
+html.dark .semi-popover-inner,
+html.dark .semi-dropdown-menu-item {
+  background-color: transparent !important;
+  color: #b0b0b0 !important;
+}
+html.dark .semi-dropdown-menu-item:hover,
+html.dark .semi-dropdown-menu-item-active {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+/* Charts and Data Vis */
+html.dark .recharts-surface,
+html.dark .semi-chart-wrapper {
+  background-color: #0a0a0a !important;
+}
+
+/* Loader / Skeleton */
+html.dark .semi-skeleton-avatar,
+html.dark .semi-skeleton-title,
+html.dark .semi-skeleton-paragraph > li {
+  background-color: #1a1a1a !important;
+}
+
+/* Notifications / Toasts */
+html.dark .semi-toast-inner {
+  background-color: #1a1a1a !important;
+  border: 1px solid #333 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8) !important;
+  color: #ececec !important;
+}
+
+/* Clean up lingering off-whites */
+html.dark .bg-slate-50,
+html.dark .bg-slate-100 {
+  background-color: #000000 !important;
+}
+
+/* Hide soft glow backgrounds in dark mode if any */
+html.dark .blur-ball {
+  display: none !important;
+}
+
+/* Remove hover backgrounds that are too light in dark mode */
+html.dark .hover\:bg-gray-50:hover,
+html.dark .hover\:bg-gray-100:hover,
+html.dark .hover\:bg-gray-200:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Override Semi UI Specific Components */
+
+/* Pagination */
+html.dark .semi-page-item {
+  background-color: transparent !important;
+  color: #b0b0b0 !important;
+  border-color: #333 !important;
+}
+html.dark .semi-page-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ececec !important;
+}
+html.dark .semi-page-item-active {
+  background-color: var(--semi-color-primary) !important;
+  color: #ffffff !important;
+  border-color: var(--semi-color-primary) !important;
+}
+
+/* Tabs */
+html.dark .semi-tabs-tab {
+  color: #808080 !important;
+}
+html.dark .semi-tabs-tab:hover {
+  color: #ececec !important;
+}
+html.dark .semi-tabs-tab-active {
+  color: var(--semi-color-primary) !important;
+  font-weight: 600 !important;
+}
+html.dark .semi-tabs-bar-line {
+  border-bottom: 1px solid #222 !important;
+}
+
+/* Steps */
+html.dark .semi-steps-item-title {
+  color: #ececec !important;
+}
+html.dark .semi-steps-item-description {
+  color: #808080 !important;
+}
+
+/* Collapse / Accordion */
+html.dark .semi-collapse-panel-header {
+  background-color: #0a0a0a !important;
+  border-bottom: 1px solid #222 !important;
+  color: #ececec !important;
+}
+html.dark .semi-collapse-panel-header:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+html.dark .semi-collapse-panel-content {
+  background-color: #000000 !important;
+  border-bottom: 1px solid #222 !important;
+}
+
+/* Switch */
+html.dark .semi-switch {
+  background-color: #333 !important;
+}
+html.dark .semi-switch-checked {
+  background-color: var(--semi-color-primary) !important;
+}
+
+/* Checkbox & Radio */
+html.dark .semi-checkbox-inner,
+html.dark .semi-radio-inner {
+  background-color: #121212 !important;
+  border-color: #444 !important;
+}
+html.dark .semi-checkbox-inner:hover,
+html.dark .semi-radio-inner:hover {
+  border-color: #888 !important;
+}
+html.dark .semi-checkbox-inner-checked,
+html.dark .semi-radio-inner-checked {
+  background-color: var(--semi-color-primary) !important;
+  border-color: var(--semi-color-primary) !important;
+}
+
+/* Breadcrumbs */
+html.dark .semi-breadcrumb-item,
+html.dark .semi-breadcrumb-separator {
+  color: #808080 !important;
+}
+html.dark .semi-breadcrumb-item-active {
+  color: #ececec !important;
+}
+
+/* Tooltips */
+html.dark .semi-tooltip-wrapper {
+  background-color: #1a1a1a !important;
+  color: #ececec !important;
+  border: 1px solid #333 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8) !important;
+}
+html.dark .semi-tooltip-arrow-inner {
+  background-color: #1a1a1a !important;
+  border-color: #333 transparent transparent #333 !important;
+}
+
+/* Spin / Loading */
+html.dark .semi-spin-children-layer {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Dashboard specific classes */
+html.dark .bg-blue-50,
+html.dark .bg-indigo-50,
+html.dark .bg-purple-50,
+html.dark .bg-emerald-50,
+html.dark .bg-amber-50,
+html.dark .bg-rose-50,
+html.dark .bg-teal-50 {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid #222 !important;
+}
+
+/* Global Scrollbar Overrides (Targeting webkit universally in dark mode) */
+html.dark *::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+/* Semi Form & Label Overrides */
+html.dark .semi-form-field-label {
+  color: #ececec !important;
+  font-weight: 500 !important;
+}
+html.dark .semi-form-field-extra {
+  color: #808080 !important;
+}
+
+/* Semi Progress Bar */
+html.dark .semi-progress-track {
+  background-color: #222 !important;
+}
+html.dark .semi-progress-circle-ring-bg {
+  stroke: #222 !important;
+}
+
+/* Semi Date Picker & Calendar */
+html.dark .semi-datepicker,
+html.dark .semi-calendar {
+  background-color: #0a0a0a !important;
+  border: 1px solid #333 !important;
+}
+html.dark
+  .semi-datepicker-month-grid
+  > .semi-datepicker-month-row
+  > .semi-datepicker-month-cell,
+html.dark .semi-calendar-date {
+  color: #ececec !important;
+}
+html.dark
+  .semi-datepicker-month-grid
+  > .semi-datepicker-month-row
+  > .semi-datepicker-month-cell:hover,
+html.dark .semi-calendar-date:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+html.dark
+  .semi-datepicker-month-grid
+  > .semi-datepicker-month-row
+  > .semi-datepicker-month-cell-selected,
+html.dark .semi-calendar-date-selected {
+  background-color: var(--semi-color-primary) !important;
+  color: #fff !important;
+}
+html.dark .semi-datepicker-header {
+  border-bottom: 1px solid #222 !important;
+}
+
+/* Semi Typography specific overrides */
+html.dark .semi-typography-primary {
+  color: #ececec !important;
+}
+html.dark .semi-typography-secondary {
+  color: #b0b0b0 !important;
+}
+html.dark .semi-typography-tertiary {
+  color: #808080 !important;
+}
+
+/* Playground / Chat Elements Overrides */
+html.dark .chat-input-container {
+  background-color: #0a0a0a !important;
+  border-top: 1px solid #222 !important;
+}
+html.dark .code-block,
+html.dark pre {
+  background-color: #000000 !important;
+  border: 1px solid #333 !important;
+}
+html.dark .markdown-body {
+  color: #ececec !important;
+}
+
+/* Highlight & Selection */
+html.dark ::selection {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+/* Semi UI Overrides for pure gray/white global theme */
+html.dark {
+  --semi-color-primary: #e5e5e5 !important;
+  --semi-color-primary-hover: #ffffff !important;
+  --semi-color-primary-active: #cccccc !important;
+  --semi-color-primary-light-default: rgba(255, 255, 255, 0.08) !important;
+  --semi-color-primary-light-hover: rgba(255, 255, 255, 0.15) !important;
+  --semi-color-primary-light-active: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Fix focus rings */
+html.dark *:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5) !important;
+  outline-offset: 2px !important;
+}
+
+/* Divider */
+html.dark .semi-divider {
+  border-color: #222 !important;
+}
+
+/* Avatar */
+html.dark .semi-avatar {
+  background-color: #1a1a1a !important;
+  border: 1px solid #333 !important;
+  color: #ececec !important;
+}
+
+/* Slider */
+html.dark .semi-slider-track {
+  background-color: #333 !important;
+}
+html.dark .semi-slider-handle {
+  background-color: var(--semi-color-primary) !important;
+  border-color: #0a0a0a !important;
+}
+html.dark .semi-slider-handle:hover,
+html.dark .semi-slider-handle:active {
+  box-shadow: 0 0 0 4px var(--semi-color-primary-light-hover) !important;
+}
+
+/* Remove stray tailwind borders */
+html.dark .border-zinc-200,
+html.dark .border-gray-200,
+html.dark .border-zinc-300,
+html.dark .border-gray-300 {
+  border-color: #222 !important;
+}
+
+/* Login Page Styling (Light & Dark) */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: #000000 !important;
+}
+
+.login-grid-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: center center;
+  opacity: 0.9;
+}
+
+.login-container::before {
+  display: none !important;
+}
+
+/* Floating Dots (Stars/Particles/Snowflakes) */
+.stars-container {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.star {
+  position: absolute;
+  border-radius: 50%;
+  background-color: white;
+  opacity: 0.8;
+  animation: fall linear infinite;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(-10vh) translateX(0) scale(1) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(50vh) translateX(20px) scale(0.8) rotate(180deg);
+  }
+  90% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(110vh) translateX(-20px) scale(0.5) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+
+
+.login-card-wrapper {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+}
+
+/* Glassmorphism Card (Light Mode) */
+.login-card {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  border-radius: 20px !important;
+  padding: 10px;
+}
+
+.login-title {
+  font-weight: 800 !important;
+  letter-spacing: -0.02em !important;
+  color: #1a1a1a !important;
+}
+
+.login-input-container .semi-input-wrapper {
+  border-radius: 12px !important;
+  height: 48px !important;
+  font-size: 16px !important;
+  background-color: #fff !important;
+}
+
+.login-input-container .semi-input,
+.login-input-container .semi-input-password {
+  font-size: 16px !important;
+  background-color: transparent !important;
+  border: none !important;
+}
+
+.login-btn {
+  height: 48px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  border-radius: 24px !important;
+  transition: all 0.3s ease !important;
+}
+
+/* Dark Mode Overrides */
+html.dark .login-container {
+  background-color: #000000 !important;
+}
+
+html.dark .login-grid-overlay {
+  background-image: linear-gradient(
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px) !important;
+  opacity: 1 !important;
+}
+
+html.dark .login-container::before {
+  display: none !important;
+}
+
+
+
+html.dark .login-card {
+  background: rgba(8, 8, 8, 0.82) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9) !important;
+}
+
+html.dark .login-title {
+  background: linear-gradient(to bottom, #fff 0%, #aaa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.dark .login-input-container .semi-input-wrapper {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+  color: #fff !important;
+  height: 48px !important;
+  font-size: 16px !important;
+  transition: all 0.2s ease !important;
+}
+
+html.dark .login-input-container .semi-input,
+html.dark .login-input-container .semi-input-password {
+  background-color: transparent !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html.dark .login-input-container .semi-input:focus,
+html.dark .login-input-container .semi-input-password:focus {
+  box-shadow: none !important;
+  outline: none !important;
+  border: none !important;
+}
+
+html.dark .login-input-container .semi-input-wrapper:focus-within,
+html.dark .login-input-container .semi-input-focus {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark .login-input-container .semi-input-prefix {
+  color: #808080 !important;
+  margin-left: 8px !important;
+}
+
+html.dark .login-input-container .semi-form-field-label {
+  color: #b0b0b0 !important;
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
+}
+
+html.dark .login-btn {
+  height: 48px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1) !important;
+  border: none !important;
+  transition: all 0.3s ease !important;
+}
+
+html.dark .login-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.2) !important;
+  background: #e5e5e5 !important;
+}
+
+html.dark .login-btn:active {
+  transform: translateY(0) !important;
+}
+
+html.dark .login-terms-text {
+  color: #808080 !important;
+}
+html.dark .login-terms-link {
+  color: var(--semi-color-primary) !important;
+}
+html.dark .login-terms-link:hover {
+  color: var(--semi-color-primary-hover) !important;
+  text-decoration: underline !important;
+}
+
+/* Sidebar interactive animations */
+.sidebar-nav-item-animated {
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transform: scale(1);
+}
+
+.sidebar-nav-item-animated:active {
+  transform: scale(0.96);
+  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Remove static hover background to prevent conflicting with JS animated sliding hover */
+.sidebar-nav-item-wrapper:hover > .semi-navigation-item {
+  background-color: transparent !important;
+}
+
+/* Global button and interactive element transitions */
+button,
+a,
+.semi-button,
+.semi-navigation-item,
+.semi-select,
+.semi-input,
+.semi-input-wrapper {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+button:active,
+.semi-button:active {
+  transform: scale(0.97);
+}
+
+/* Sidebar nav item wrapper click feedback */
+.sidebar-nav-item-wrapper {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-nav-item-wrapper:active {
+  transform: scale(0.97);
+}
+
+/* Selected sidebar nav item wrapper */
+.sidebar-nav-item-wrapper.selected {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin: 2px 4px;
+}
+
+/* Enhanced sidebar nav item base styles */
+.sidebar-nav-item-animated {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 12px;
+}
+
+.sidebar-nav-item-animated:hover:not(.active-item) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Enhanced active item glow effect */
+.sidebar-nav-item-animated.active-item {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.15);
+}
