@@ -1,46 +1,42 @@
-"use client";
-
-import type { ColumnDef } from "@tanstack/react-table";
-
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
-import { DataTable } from "@/components/shared/data-table";
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { FilterBar } from "@/components/shared/filter-bar";
 import { SectionCard } from "@/components/shared/section-card";
+import { StaticTable, type StaticTableColumn } from "@/components/shared/static-table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { getDictionary } from "@/lib/i18n-shared";
+import { getServerLanguage } from "@/lib/i18n-server";
 import { channels } from "@/lib/mock/console-data";
-import { useI18n } from "@/components/i18n-provider";
 
-const columns: ColumnDef<(typeof channels)[number]>[] = [
+const columns: StaticTableColumn<(typeof channels)[number]>[] = [
   {
-    accessorKey: "name",
     header: "渠道名",
-    cell: ({ row }) => <span className="font-medium text-foreground">{row.original.name}</span>
+    cell: (row) => <span className="font-medium text-foreground">{row.name}</span>
   },
   {
-    accessorKey: "provider",
-    header: "类型"
+    header: "类型",
+    cell: (row) => row.provider
   },
   {
-    accessorKey: "status",
     header: "状态",
-    cell: ({ row }) => <StatusBadge status={row.original.status} />
+    cell: (row) => <StatusBadge status={row.status} />
   },
   {
-    accessorKey: "endpoint",
     header: "地址",
-    cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.endpoint}</span>
+    cell: (row) => <span className="font-mono text-xs text-muted-foreground">{row.endpoint}</span>
   },
   {
-    accessorKey: "models",
-    header: "模型数"
+    header: "模型数",
+    cell: (row) => row.models
   }
 ];
 
-export default function ChannelsPage() {
-  const { t } = useI18n();
+export default async function ChannelsPage() {
+  const language = await getServerLanguage();
+  const dictionary = getDictionary(language);
+  const t = (key: string) => dictionary[key] ?? key;
 
   return (
     <PageContainer>
@@ -58,7 +54,7 @@ export default function ChannelsPage() {
           trailingAction={<Button variant="secondary">测试连通性</Button>}
         />
         <div className="mt-4">
-          <DataTable
+          <StaticTable
             columns={columns}
             data={channels}
             emptyTitle="暂无渠道"

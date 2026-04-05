@@ -23,15 +23,15 @@ export function DetailDrawer({
         <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 hover:text-primary">{triggerLabel}</Button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-background/80 backdrop-blur-sm" />
-        <Dialog.Content className="fixed right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-border/60 bg-background shadow-2xl outline-none">
+        <Dialog.Overlay className="animate-overlay fixed inset-0 bg-background/80 backdrop-blur-sm" />
+        <Dialog.Content className="animate-drawer fixed right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-border/60 bg-background shadow-2xl outline-none will-change-transform">
           <div className="flex items-start justify-between border-b border-border px-6 py-5">
             <div>
               <Dialog.Title className="text-lg font-semibold text-foreground">{title}</Dialog.Title>
               <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{description}</Dialog.Description>
             </div>
             <Dialog.Close asChild>
-              <button className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="关闭抽屉">
+              <button className="rounded-lg p-2 text-muted-foreground transition-[background-color,color,transform] duration-200 ease-[var(--ease-out-smooth)] hover:rotate-90 hover:bg-muted hover:text-foreground" aria-label="关闭抽屉">
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>

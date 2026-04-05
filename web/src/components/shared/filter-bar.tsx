@@ -27,7 +27,7 @@ export function FilterBar({
           {chips.map((chip) => (
             <button
               key={chip.label}
-              className="flex items-center gap-1.5 rounded-lg bg-background px-3 py-1.5 ring-1 ring-border/60 transition-colors hover:bg-secondary/50 hover:text-foreground"
+              className="flex items-center gap-1.5 rounded-lg bg-background px-3 py-1.5 ring-1 ring-border/60 transition-[background-color,color,transform] duration-200 ease-[var(--ease-out-smooth)] hover:-translate-y-0.5 hover:bg-secondary/50 hover:text-foreground"
             >
               {chip.label}
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />

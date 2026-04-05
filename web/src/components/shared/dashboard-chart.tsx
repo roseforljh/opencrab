@@ -14,14 +14,29 @@ export function DashboardChart({
   const padding = 20;
   const max = Math.max(...data.map((item) => item.requests));
 
-  const buildLine = (key: "requests" | "success" | "errors") =>
-    data
-      .map((item, index) => {
-        const x = padding + (index / (data.length - 1)) * (width - padding * 2);
-        const y = height - padding - (item[key] / max) * (height - padding * 2);
-        return `${x},${y}`;
-      })
-      .join(" ");
+  const buildPoints = (key: "requests" | "success" | "errors") =>
+    data.map((item, index) => {
+      const x = padding + (index / (data.length - 1)) * (width - padding * 2);
+      const y = height - padding - (item[key] / max) * (height - padding * 2);
+      return { x, y };
+    });
+
+  const buildPath = (key: "requests" | "success" | "errors") => {
+    const points = buildPoints(key);
+
+    return points.reduce((acc, point, index, array) => {
+      if (index === 0) {
+        return `M ${point.x} ${point.y}`;
+      }
+
+      const previous = array[index - 1];
+      const controlX = (previous.x + point.x) / 2;
+
+      return `${acc} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+    }, "");
+  };
+
+  const requestPoints = buildPoints("requests");
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-background p-4">
@@ -34,13 +49,12 @@ export function DashboardChart({
         </div>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="relative h-[260px] w-full overflow-visible">
-        <polyline fill="none" stroke={chartColors.requests} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={buildLine("requests")} />
-        <polyline fill="none" stroke={chartColors.success} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={buildLine("success")} />
-        <polyline fill="none" stroke={chartColors.errors} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={buildLine("errors")} />
-        {data.map((item, index) => {
-          const x = padding + (index / (data.length - 1)) * (width - padding * 2);
-          const y = height - padding - (item.requests / max) * (height - padding * 2);
-          return <circle key={item.label} cx={x} cy={y} r="4" fill={chartColors.requests} />;
+        <path fill="none" stroke={chartColors.requests} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" d={buildPath("requests")} />
+        <path fill="none" stroke={chartColors.success} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d={buildPath("success")} />
+        <path fill="none" stroke={chartColors.errors} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d={buildPath("errors")} />
+        {requestPoints.map((point, index) => {
+          const item = data[index];
+          return <circle key={item.label} cx={point.x} cy={point.y} r="4" fill={chartColors.requests} />;
         })}
       </svg>
       <div className="relative mt-3 grid grid-cols-6 gap-2 text-xs text-muted-foreground">

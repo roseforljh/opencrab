@@ -9,19 +9,30 @@ export function Sparkline({ values, colorVar = "var(--chart-1)" }: { values: num
     .map((value, index) => {
       const x = (index / (values.length - 1)) * width;
       const y = height - ((value - min) / range) * (height - 6) - 3;
-      return `${x},${y}`;
+      return { x, y };
     })
-    .join(" ");
+    ;
+
+  const path = points.reduce((acc, point, index, array) => {
+    if (index === 0) {
+      return `M ${point.x} ${point.y}`;
+    }
+
+    const previous = array[index - 1];
+    const controlX = (previous.x + point.x) / 2;
+
+    return `${acc} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+  }, "");
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-9 w-full">
-      <polyline
+      <path
         fill="none"
         stroke={colorVar}
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        points={points}
+        d={path}
       />
     </svg>
   );

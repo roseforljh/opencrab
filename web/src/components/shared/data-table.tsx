@@ -50,7 +50,7 @@ export function DataTable<TData>({
         </thead>
         <tbody className="divide-y divide-border/50 bg-background">
           {table.getRowModel().rows.map((row, index) => (
-            <tr key={row.id} className="transition-colors hover:bg-secondary/30">
+            <tr key={row.id} className="transition-[background-color] duration-200 ease-[var(--ease-out-smooth)] hover:bg-secondary/30">
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id} className="px-4 py-3.5 text-foreground">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}

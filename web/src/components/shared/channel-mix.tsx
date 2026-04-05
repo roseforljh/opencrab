@@ -12,7 +12,7 @@ export function ChannelMix({
             <span className="text-muted-foreground">{item.value}%</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${item.value}%`, backgroundColor: item.color }} />
+            <div className="h-full rounded-full transition-[width] duration-500 ease-[var(--ease-emphasized)]" style={{ width: `${item.value}%`, backgroundColor: item.color }} />
           </div>
         </div>
       ))}

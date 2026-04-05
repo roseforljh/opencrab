@@ -17,7 +17,7 @@ export function Topbar() {
         <button
           type="button"
           onClick={toggleCollapsed}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-all duration-200 ease-[var(--ease-out-smooth)] hover:-translate-y-0.5 hover:bg-accent hover:text-foreground"
           title={collapsed ? "展开侧边栏" : "收起侧边栏"}
         >
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -42,7 +42,7 @@ export function Topbar() {
 
         <button
           onClick={() => setLanguage(language === "zh-CN" ? "en-US" : "zh-CN")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-muted-foreground transition-[background-color,color,border-color,transform] duration-200 ease-[var(--ease-out-smooth)] hover:-translate-y-0.5 hover:bg-accent hover:text-foreground"
           title={language === "zh-CN" ? "Switch to English" : "切换到中文"}
         >
           <Languages className="h-4 w-4" />
@@ -51,7 +51,7 @@ export function Topbar() {
 
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-muted-foreground transition-[background-color,color,border-color,transform] duration-200 ease-[var(--ease-out-smooth)] hover:-translate-y-0.5 hover:bg-accent hover:text-foreground"
           title={theme === "dark" ? t("theme.light") : t("theme.dark")}
         >
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

@@ -1,47 +1,43 @@
-"use client";
-
-import type { ColumnDef } from "@tanstack/react-table";
-
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
-import { DataTable } from "@/components/shared/data-table";
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { FilterBar } from "@/components/shared/filter-bar";
 import { SectionCard } from "@/components/shared/section-card";
+import { StaticTable, type StaticTableColumn } from "@/components/shared/static-table";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { getDictionary } from "@/lib/i18n-shared";
+import { getServerLanguage } from "@/lib/i18n-server";
 import { apiKeys } from "@/lib/mock/console-data";
-import { useI18n } from "@/components/i18n-provider";
 
-const columns: ColumnDef<(typeof apiKeys)[number]>[] = [
+const columns: StaticTableColumn<(typeof apiKeys)[number]>[] = [
   {
-    accessorKey: "name",
     header: "名称",
-    cell: ({ row }) => <span className="font-medium text-foreground">{row.original.name}</span>
+    cell: (row) => <span className="font-medium text-foreground">{row.name}</span>
   },
   {
-    accessorKey: "preview",
     header: "预览",
-    cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.preview}</span>
+    cell: (row) => <span className="font-mono text-xs text-muted-foreground">{row.preview}</span>
   },
   {
-    accessorKey: "status",
     header: "状态",
-    cell: ({ row }) => <StatusBadge status={row.original.status} />
+    cell: (row) => <StatusBadge status={row.status} />
   },
   {
-    accessorKey: "usage",
-    header: "用量"
+    header: "用量",
+    cell: (row) => row.usage
   },
   {
-    accessorKey: "lastUsed",
-    header: "最近使用"
+    header: "最近使用",
+    cell: (row) => row.lastUsed
   }
 ];
 
-export default function ApiKeysPage() {
-  const { t } = useI18n();
+export default async function ApiKeysPage() {
+  const language = await getServerLanguage();
+  const dictionary = getDictionary(language);
+  const t = (key: string) => dictionary[key] ?? key;
 
   return (
     <PageContainer>
@@ -64,7 +60,7 @@ export default function ApiKeysPage() {
           chips={[{ label: "全部状态" }, { label: "最近使用" }]}
         />
         <div className="mt-4">
-          <DataTable
+          <StaticTable
             columns={columns}
             data={apiKeys}
             emptyTitle="暂无访问密钥"

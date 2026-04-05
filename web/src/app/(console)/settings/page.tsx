@@ -1,5 +1,3 @@
-"use client";
-
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -7,12 +5,15 @@ import { FilterBar } from "@/components/shared/filter-bar";
 import { SectionCard } from "@/components/shared/section-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { getDictionary } from "@/lib/i18n-shared";
+import { getServerLanguage } from "@/lib/i18n-server";
 import { settingsGroups } from "@/lib/mock/console-data";
 import { AlertTriangle } from "lucide-react";
-import { useI18n } from "@/components/i18n-provider";
 
-export default function SettingsPage() {
-  const { t } = useI18n();
+export default async function SettingsPage() {
+  const language = await getServerLanguage();
+  const dictionary = getDictionary(language);
+  const t = (key: string) => dictionary[key] ?? key;
 
   return (
     <PageContainer>

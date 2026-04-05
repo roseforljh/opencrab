@@ -14,6 +14,46 @@ export const dashboardTrafficSeries = [
   { label: "20:00", requests: 1240, success: 1196, errors: 44 }
 ];
 
+export const dashboardSystemStatus = [
+  { label: "运行时长", value: "6 天 07 小时", accent: "var(--chart-1)" },
+  { label: "并发请求", value: "51", accent: "var(--chart-5)" },
+  { label: "活跃模型", value: "12", accent: "var(--chart-2)" },
+  { label: "系统版本", value: "构建 0.1.0-beta", accent: "var(--chart-4)" }
+];
+
+export const dashboardNetworkStatus = [
+  { label: "OpenAI 延迟", value: "213 ms", accent: "var(--chart-4)" },
+  { label: "Anthropic 延迟", value: "48 ms", accent: "var(--chart-5)" },
+  { label: "Gemini 延迟", value: "96 ms", accent: "var(--chart-2)" },
+  { label: "默认网关", value: "openai-main", accent: "var(--chart-1)" }
+];
+
+export const dashboardWeeklyTraffic = [
+  { label: "Mon", value: 180 },
+  { label: "Tue", value: 520 },
+  { label: "Wed", value: 870 },
+  { label: "Thu", value: 920 },
+  { label: "Fri", value: 460 },
+  { label: "Sat", value: 90 },
+  { label: "Sun", value: 35 }
+];
+
+export const dashboardRanking = [
+  { label: "gpt-4.1", value: "17.9 万 tokens", width: 100 },
+  { label: "claude-3.7-sonnet", value: "14.9 万 tokens", width: 82 },
+  { label: "gemini-2.5-pro", value: "7.3 万 tokens", width: 55 },
+  { label: "gpt-4.1-mini", value: "2.5 万 tokens", width: 22 },
+  { label: "text-embedding-3-large", value: "1.3 万 tokens", width: 11 }
+];
+
+export const dashboardTrafficSummary = {
+  total: "49.3 万 tokens",
+  upload: "16.3 万 prompt",
+  download: "33.1 万 completion",
+  direct: "2.5 万 direct",
+  proxy: "46.8 万 routed"
+};
+
 export const dashboardChannelMix = [
   { label: "OpenAI", value: 48, color: "var(--chart-1)" },
   { label: "Anthropic", value: 27, color: "var(--chart-2)" },
