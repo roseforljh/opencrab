@@ -1,14 +1,22 @@
 
-import { Toast, Pagination } from '@douyinfe/semi-ui';
-import { toastConstants } from '../constants';
 import React from 'react';
 import { toast } from 'react-toastify';
+import { toastConstants } from '../constants';
 import {
   THINK_TAG_REGEX,
   MESSAGE_ROLES,
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -101,46 +109,46 @@ export function showError(error) {
         case 401:
           // 清除用户状态
           localStorage.removeItem('user');
-          // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
+          toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
           window.location.href = '/login?expired=true';
           break;
         case 429:
-          Toast.error('错误：请求次数过多，请稍后再试！');
+          toast.error('错误：请求次数过多，请稍后再试！', showErrorOptions);
           break;
         case 500:
-          Toast.error('错误：服务器内部错误，请联系管理员！');
+          toast.error('错误：服务器内部错误，请联系管理员！', showErrorOptions);
           break;
         case 405:
-          Toast.info('本站仅作演示之用，无服务端！');
+          toast.info('本站仅作演示之用，无服务端！', showInfoOptions);
           break;
         default:
-          Toast.error('错误：' + error.message);
+          toast.error('错误：' + error.message, showErrorOptions);
       }
       return;
     }
-    Toast.error('错误：' + error.message);
+    toast.error('错误：' + error.message, showErrorOptions);
   } else {
-    Toast.error('错误：' + error);
+    toast.error('错误：' + error, showErrorOptions);
   }
 }
 
 export function showWarning(message) {
-  Toast.warning(message);
+  toast.warning(message, showWarningOptions);
 }
 
 export function showSuccess(message) {
-  Toast.success(message);
+  toast.success(message, showSuccessOptions);
 }
 
 export function showInfo(message) {
-  Toast.info(message);
+  toast.info(message, showInfoOptions);
 }
 
 export function showNotice(message, isHTML = false) {
   if (isHTML) {
     toast(<HTMLToastContent htmlContent={message} />, showNoticeOptions);
   } else {
-    Toast.info(message);
+    toast.info(message, showNoticeOptions);
   }
 }
 
@@ -858,7 +866,7 @@ export const formatPriceInfo = (priceData, t, quotaDisplayType = 'USD') => {
   return (
     <>
       {items.map((item) => (
-        <span key={item.key} style={{ color: 'var(--semi-color-text-1)' }}>
+        <span key={item.key} className='text-foreground'>
           {item.label} {item.value}
           {item.suffix}
         </span>
@@ -887,31 +895,82 @@ export const createCardProPagination = ({
   const end = Math.min(currentPage * pageSize, total);
   const totalText = `${t('显示第')} ${start} ${t('条 - 第')} ${end} ${t('条，共')} ${total} ${t('条')}`;
 
+  // Build page numbers
+  const pageNumbers = [];
+  const maxVisible = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let endPage = Math.min(total, startPage + maxVisible - 1);
+  if (endPage - startPage < maxVisible - 1) {
+    startPage = Math.max(1, endPage - maxVisible + 1);
+  }
+  for (let i = startPage; i <= endPage; i++) {
+    pageNumbers.push(i);
+  }
+
   return (
     <>
       {/* 桌面端左侧总数信息 */}
       {!isMobile && (
         <span
-          className='text-sm select-none'
-          style={{ color: 'var(--semi-color-text-2)' }}
+          className='text-sm select-none text-muted-foreground'
         >
           {totalText}
         </span>
       )}
 
       {/* 右侧分页控件 */}
-      <Pagination
-        currentPage={currentPage}
-        pageSize={pageSize}
-        total={total}
-        pageSizeOpts={pageSizeOpts}
-        showSizeChanger={showSizeChanger}
-        onPageSizeChange={onPageSizeChange}
-        onPageChange={onPageChange}
-        size={isMobile ? 'small' : 'default'}
-        showQuickJumper={isMobile}
-        showTotal
-      />
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={() => onPageChange?.(currentPage - 1)}
+              className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+            />
+          </PaginationItem>
+          {startPage > 1 && (
+            <>
+              <PaginationItem>
+                <PaginationLink
+                  isActive={currentPage === 1}
+                  onClick={() => onPageChange?.(1)}
+                >
+                  1
+                </PaginationLink>
+              </PaginationItem>
+              {startPage > 2 && <PaginationEllipsis />}
+            </>
+          )}
+          {pageNumbers.map((page) => (
+            <PaginationItem key={page}>
+              <PaginationLink
+                isActive={currentPage === page}
+                onClick={() => onPageChange?.(page)}
+              >
+                {page}
+              </PaginationLink>
+            </PaginationItem>
+          ))}
+          {endPage < total && (
+            <>
+              {endPage < total - 1 && <PaginationEllipsis />}
+              <PaginationItem>
+                <PaginationLink
+                  isActive={currentPage === total}
+                  onClick={() => onPageChange?.(total)}
+                >
+                  {total}
+                </PaginationLink>
+              </PaginationItem>
+            </>
+          )}
+          <PaginationItem>
+            <PaginationNext
+              onClick={() => onPageChange?.(currentPage + 1)}
+              className={currentPage >= total ? 'pointer-events-none opacity-50' : ''}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </>
   );
 };

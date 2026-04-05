@@ -1,15 +1,29 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, transformWithEsbuild } from 'vite';
-import pkg from '@douyinfe/vite-plugin-semi';
 import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
-const { vitePluginSemi } = pkg;
 
 // https://vitejs.dev/config/
 export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@douyinfe/semi-ui/lib/es/typography/text': path.resolve(
+        __dirname,
+        './src/lib/semi-typography-text.jsx',
+      ),
+      '@douyinfe/semi-ui/lib/es/typography/title': path.resolve(
+        __dirname,
+        './src/lib/semi-typography-title.jsx',
+      ),
+      '@douyinfe/semi-ui': path.resolve(
+        __dirname,
+        './src/lib/semi-ui-compat.jsx',
+      ),
+      '@douyinfe/semi-icons': path.resolve(
+        __dirname,
+        './src/lib/semi-icons-compat.jsx',
+      ),
     },
   },
   plugins: [
@@ -32,9 +46,6 @@ export default defineConfig({
       },
     },
     react(),
-    vitePluginSemi({
-      cssLayer: true,
-    }),
   ],
   optimizeDeps: {
     force: true,
@@ -50,7 +61,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'react-core': ['react', 'react-dom', 'react-router-dom'],
-          'semi-ui': ['@douyinfe/semi-icons', '@douyinfe/semi-ui'],
           tools: ['axios', 'history', 'marked'],
           'react-components': [
             'react-dropzone',
@@ -72,15 +82,15 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5946',
         changeOrigin: true,
       },
       '/mj': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5946',
         changeOrigin: true,
       },
       '/pg': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5946',
         changeOrigin: true,
       },
     },

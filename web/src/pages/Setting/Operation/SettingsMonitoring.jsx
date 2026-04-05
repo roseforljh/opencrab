@@ -157,7 +157,7 @@ export default function SettingsMonitoring(props) {
                     parseInt(e.target.value) || 10,
                 })
               }
-              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+              className='!bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
             />
             <div className='text-xs text-white/50'>
               {t('每隔多少分钟测试一次所有通道')}
@@ -181,7 +181,7 @@ export default function SettingsMonitoring(props) {
                   ChannelDisableThreshold: e.target.value,
                 })
               }
-              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+              className='!bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
             />
             <div className='text-xs text-white/50'>
               {t('当运行通道全部测试时，超过此时间将自动禁用通道')}
@@ -200,7 +200,7 @@ export default function SettingsMonitoring(props) {
               onChange={(e) =>
                 setInputs({ ...inputs, QuotaRemindThreshold: e.target.value })
               }
-              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+              className='!bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
             />
             <div className='text-xs text-white/50'>
               {t('低于此额度时将发送邮件提醒用户')}
@@ -305,7 +305,7 @@ export default function SettingsMonitoring(props) {
                     AutomaticDisableKeywords: e.target.value,
                   })
                 }
-                className='min-h-[120px] bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20 resize-y'
+                className='min-h-[120px] !bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20 resize-y'
               />
               <div className='text-xs text-white/50'>
                 {t(
@@ -320,7 +320,7 @@ export default function SettingsMonitoring(props) {
           <Button
             onClick={onSubmit}
             disabled={loading}
-            className='bg-white text-black hover:bg-white/90'
+            className='bg-white/10 text-white border border-white/20 hover:bg-white/20'
           >
             {t('保存监控设置')}
           </Button>

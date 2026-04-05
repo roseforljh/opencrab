@@ -158,7 +158,14 @@ function TokensPage() {
   openCCSwitchModalRef.current = openCCSwitchModal;
 
   const handlePrefillToFluent = async () => {
-    const { tokens, selectedKeys, t, selectedModel: chosenModel, prefillKey: overrideKey, fetchTokenKey } = latestRef.current;
+    const {
+      tokens,
+      selectedKeys,
+      t,
+      selectedModel: chosenModel,
+      prefillKey: overrideKey,
+      fetchTokenKey,
+    } = latestRef.current;
     const container = document.getElementById('fluent-opencrab-container');
     if (!container) {
       Toast.error(t('未检测到 Fluent 容器'));
@@ -174,7 +181,7 @@ function TokensPage() {
     if (!fullKey) {
       let target = null;
       if (selectedKeys.length > 0) {
-        target = tokens.find((t) => t.id === selectedKeys[0]);
+        target = selectedKeys[0];
       }
       if (!target && tokens.length > 0) {
         target = tokens[0];
@@ -212,14 +219,39 @@ function TokensPage() {
       />
       <CCSwitchModal
         visible={ccSwitchVisible}
-        onCancel={() => setCCSwitchVisible(false)}
+        onClose={() => setCCSwitchVisible(false)}
         tokenKey={ccSwitchKey}
+        modelOptions={modelOptions}
       />
       <CardPro
-        title={<TokensDescription compactMode={tokensData.compactMode} setCompactMode={tokensData.setCompactMode} t={tokensData.t} />}
-        headerExtraContent={<TokensActions setShowEdit={tokensData.setShowEdit} setEditingToken={tokensData.setEditingToken} t={tokensData.t} />}
-        filterContent={<TokensFilters formApi={tokensData.formApi} setFormApi={tokensData.setFormApi} searchTokens={tokensData.searchTokens} loadTokens={tokensData.loadTokens} pageSize={tokensData.pageSize} t={tokensData.t} />}
-        pagination={createCardProPagination({
+        descriptionArea={
+          <TokensDescription
+            compactMode={tokensData.compactMode}
+            setCompactMode={tokensData.setCompactMode}
+            t={tokensData.t}
+          />
+        }
+        actionsArea={
+          <TokensActions
+            selectedKeys={tokensData.selectedKeys}
+            setShowEdit={tokensData.setShowEdit}
+            setEditingToken={tokensData.setEditingToken}
+            batchCopyTokens={tokensData.batchCopyTokens}
+            batchDeleteTokens={tokensData.batchDeleteTokens}
+            t={tokensData.t}
+          />
+        }
+        searchArea={
+          <TokensFilters
+            formInitValues={tokensData.formInitValues}
+            setFormApi={tokensData.setFormApi}
+            searchTokens={tokensData.searchTokens}
+            loading={tokensData.loading}
+            searching={tokensData.searching}
+            t={tokensData.t}
+          />
+        }
+        paginationArea={createCardProPagination({
           currentPage: tokensData.activePage,
           pageSize: tokensData.pageSize,
           total: tokensData.tokenCount,

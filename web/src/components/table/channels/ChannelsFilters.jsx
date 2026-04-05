@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+const ALL_GROUP_VALUE = '__all_groups__';
+
 const ChannelsFilters = ({
   setEditingChannel,
   setShowEdit,
@@ -36,7 +38,7 @@ const ChannelsFilters = ({
   }, [formInitValues, setFormApi, values]);
 
   const searchableGroups = useMemo(
-    () => [{ label: t('选择分组'), value: '' }, ...groupOptions],
+    () => [{ label: t('选择分组'), value: ALL_GROUP_VALUE }, ...groupOptions],
     [groupOptions, t],
   );
 
@@ -118,11 +120,11 @@ const ChannelsFilters = ({
             />
           </div>
           <Select
-            value={values.searchGroup || ''}
+            value={values.searchGroup || ALL_GROUP_VALUE}
             onValueChange={(value) => {
               setValues((prev) => ({
                 ...prev,
-                searchGroup: value,
+                searchGroup: value === ALL_GROUP_VALUE ? '' : value,
               }));
               setTimeout(() => {
                 searchChannels(enableTagMode);
@@ -136,7 +138,7 @@ const ChannelsFilters = ({
               {searchableGroups.map((option) => (
                 <SelectItem
                   key={option.value || 'all'}
-                  value={option.value || ''}
+                  value={option.value || ALL_GROUP_VALUE}
                 >
                   {option.label}
                 </SelectItem>

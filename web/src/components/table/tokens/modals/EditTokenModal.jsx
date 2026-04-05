@@ -41,9 +41,6 @@ const EditTokenModal = (props) => {
   const isMobile = useIsMobile();
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
-  const [values, setValues] = useState(getInitValues());
-  const isEdit = props.editingToken.id !== undefined;
-
   const getInitValues = () => ({
     name: '',
     remain_quota: 0,
@@ -56,6 +53,8 @@ const EditTokenModal = (props) => {
     cross_group_retry: false,
     tokenCount: 1,
   });
+  const [values, setValues] = useState(getInitValues());
+  const isEdit = props.editingToken.id !== undefined;
 
   const handleCancel = () => {
     props.handleClose();
@@ -87,7 +86,8 @@ const EditTokenModal = (props) => {
     const { success, message, data } = res.data;
     if (success) {
       const categories = getModelCategories(t);
-      const localModelOptions = data.map((model) => {
+      const modelsData = Array.isArray(data) ? data : [];
+      const localModelOptions = modelsData.map((model) => {
         let icon = null;
         for (const [key, category] of Object.entries(categories)) {
           if (key !== 'all' && category.filter({ model_name: model })) {
@@ -115,7 +115,8 @@ const EditTokenModal = (props) => {
     const res = await API.get('/api/user/self/groups');
     const { success, message, data } = res.data;
     if (success) {
-      let localGroupOptions = Object.entries(data).map(([group, info]) => ({
+      const groupsData = data && typeof data === 'object' ? data : {};
+      let localGroupOptions = Object.entries(groupsData).map(([group, info]) => ({
         label: info.desc,
         value: group,
         ratio: info.ratio,
@@ -149,9 +150,12 @@ const EditTokenModal = (props) => {
   };
 
   useEffect(() => {
+    if (!props.visiable) {
+      return;
+    }
     loadModels();
     loadGroups();
-  }, [props.editingToken.id]);
+  }, [props.visiable, props.editingToken.id]);
 
   useEffect(() => {
     if (props.visiable) {

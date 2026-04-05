@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { Progress, Divider, Empty } from '@douyinfe/semi-ui';
+import { Progress, ProgressTrack, ProgressIndicator } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
 import {
   timestamp2string,
   timestamp2string1,
@@ -155,15 +156,13 @@ export const renderMonitorList = (
   if (!monitors || monitors.length === 0) {
     return (
       <div className='flex justify-center items-center py-4'>
-        <Empty
-          image={
-            <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
+        <div className='flex flex-col items-center gap-2'>
+          <div className='flex h-[120px] w-[120px] items-center justify-center rounded-[28px] border border-white/10 bg-black/50 text-3xl text-white/30'>
               ○
-            </div>
-          }
-          title={t('暂无监控数据')}
-          description={t('当前还没有采集到可用的监控项。')}
-        />
+          </div>
+          <p className='text-sm text-muted-foreground'>{t('暂无监控数据')}</p>
+          <p className='text-xs text-muted-foreground'>{t('当前还没有采集到可用的监控项。')}</p>
+        </div>
       </div>
     );
   }
@@ -196,12 +195,16 @@ export const renderMonitorList = (
           {getUptimeStatusText(monitor.status)}
         </span>
         <div className='flex-1'>
-          <Progress
-            percent={(monitor.uptime || 0) * 100}
-            showInfo={false}
-            aria-label={`${monitor.name} uptime`}
-            stroke={getUptimeStatusColor(monitor.status)}
-          />
+          <Progress>
+            <ProgressTrack>
+              <ProgressIndicator
+                style={{
+                  width: `${(monitor.uptime || 0) * 100}%`,
+                  backgroundColor: getUptimeStatusColor(monitor.status),
+                }}
+              />
+            </ProgressTrack>
+          </Progress>
         </div>
       </div>
     </div>
@@ -214,7 +217,7 @@ export const renderMonitorList = (
           <div className='text-md font-semibold text-gray-500 px-2 py-1'>
             {gname}
           </div>
-          <Divider />
+          <Separator />
         </>
       )}
       {list.map(renderItem)}

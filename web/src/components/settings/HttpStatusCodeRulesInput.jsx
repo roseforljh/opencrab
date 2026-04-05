@@ -24,7 +24,7 @@ export default function HttpStatusCodeRulesInput(props) {
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+        className='!bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
       />
       {extraText && <div className="text-xs text-white/50">{extraText}</div>}
       

@@ -296,6 +296,7 @@ export default function SettingsChannelAffinity(props) {
     }
     Modal.info({
       title: t('参数覆盖模板预览'),
+      className: 'settings-modal-shell',
       content: (
         <div style={{ marginTop: 6, paddingBottom: 10 }}>
           <pre
@@ -341,6 +342,7 @@ export default function SettingsChannelAffinity(props) {
   const confirmClearAllCache = () => {
     Modal.confirm({
       title: t('确认清空全部渠道亲和性缓存'),
+      className: 'settings-modal-shell',
       content: (
         <div style={{ lineHeight: '1.6' }}>
           <Text>{t('将删除所有仍在内存中的渠道亲和性缓存条目。')}</Text>
@@ -372,6 +374,7 @@ export default function SettingsChannelAffinity(props) {
     }
     Modal.confirm({
       title: t('确认清空该规则缓存'),
+      className: 'settings-modal-shell',
       content: (
         <div style={{ lineHeight: '1.6' }}>
           <Text>{t('规则')}：</Text> <Text strong>{name}</Text>
@@ -458,6 +461,7 @@ export default function SettingsChannelAffinity(props) {
 
     Modal.confirm({
       title: t('填充 Codex CLI / Claude CLI 模版'),
+      className: 'settings-modal-shell',
       content: (
         <div style={{ lineHeight: '1.6' }}>
           <Text type='tertiary'>{t('将追加 2 条规则到现有规则列表。')}</Text>
@@ -1019,6 +1023,7 @@ export default function SettingsChannelAffinity(props) {
       <Modal
         title={isEdit ? t('编辑规则') : t('新增规则')}
         visible={modalVisible}
+        className='settings-modal-shell'
         onCancel={() => {
           setModalVisible(false);
           setEditingRule(null);
@@ -1339,6 +1344,7 @@ export default function SettingsChannelAffinity(props) {
 
       <ParamOverrideEditorModal
         visible={paramTemplateEditorVisible}
+        className='settings-modal-shell'
         value={paramTemplateDraft || ''}
         onSave={(nextValue) => {
           updateParamTemplateDraft(nextValue || '');

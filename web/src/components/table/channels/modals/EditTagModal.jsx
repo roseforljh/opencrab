@@ -189,12 +189,13 @@ const EditTagModal = (props) => {
 
   const fetchGroups = async () => {
     try {
-      let res = await API.get(`/api/group/`);
+      let res = await API.get(`/api/user/groups`);
       if (res === undefined) {
         return;
       }
+      const groups = Object.keys(res?.data?.data || {});
       setGroupOptions(
-        res.data.data.map((group) => ({
+        groups.map((group) => ({
           label: group,
           value: group,
         })),

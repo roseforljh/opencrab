@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
-import { Card, Spin, Tabs } from '@douyinfe/semi-ui';
+import { Card, Tabs } from '@douyinfe/semi-ui';
+import { Loader2 } from 'lucide-react';
 
 import { API, showError, showSuccess, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
@@ -89,30 +90,35 @@ const ModelSetting = () => {
   }, []);
 
   return (
-    <>
-      <Spin spinning={loading} size='large'>
+    <div className='relative'>
+      {loading && (
+        <div className='absolute inset-0 z-50 flex items-center justify-center rounded-[32px] bg-black/20 backdrop-blur-sm'>
+          <Loader2 className='h-8 w-8 animate-spin text-white' />
+        </div>
+      )}
+      <div className='flex flex-col gap-6'>
         {/* OpenAI */}
-        <Card style={{ marginTop: '10px' }}>
+        <Card className='!p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
           <SettingGlobalModel options={inputs} refresh={onRefresh} />
         </Card>
         {/* Channel affinity */}
-        <Card style={{ marginTop: '10px' }}>
+        <Card className='!p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
           <SettingsChannelAffinity options={inputs} refresh={onRefresh} />
         </Card>
         {/* Gemini */}
-        <Card style={{ marginTop: '10px' }}>
+        <Card className='!p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
           <SettingGeminiModel options={inputs} refresh={onRefresh} />
         </Card>
         {/* Claude */}
-        <Card style={{ marginTop: '10px' }}>
+        <Card className='!p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
           <SettingClaudeModel options={inputs} refresh={onRefresh} />
         </Card>
         {/* Grok */}
-        <Card style={{ marginTop: '10px' }}>
+        <Card className='!p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
           <SettingGrokModel options={inputs} refresh={onRefresh} />
         </Card>
-      </Spin>
-    </>
+      </div>
+    </div>
   );
 };
 

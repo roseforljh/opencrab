@@ -2,7 +2,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import '@douyinfe/semi-ui/dist/css/semi.css';
 import { UserProvider } from './context/User';
 import 'react-toastify/dist/ReactToastify.css';
 import { StatusProvider } from './context/Status';
@@ -10,10 +9,6 @@ import { ThemeProvider } from './context/Theme';
 import PageLayout from './components/layout/PageLayout';
 import './i18n/i18n';
 import './index.css';
-import { LocaleProvider } from '@douyinfe/semi-ui';
-import { useTranslation } from 'react-i18next';
-import zh_CN from '@douyinfe/semi-ui/lib/es/locale/source/zh_CN';
-import en_GB from '@douyinfe/semi-ui/lib/es/locale/source/en_GB';
 
 // Welcome message
 if (typeof window !== 'undefined') {
@@ -22,15 +17,6 @@ if (typeof window !== 'undefined') {
     'color: #10b981; font-weight: bold; font-size: 24px;',
     'color: inherit; font-size: 14px;',
   );
-}
-
-function SemiLocaleWrapper({ children }) {
-  const { i18n } = useTranslation();
-  const semiLocale = React.useMemo(
-    () => ({ zh: zh_CN, en: en_GB })[i18n.language] || zh_CN,
-    [i18n.language],
-  );
-  return <LocaleProvider locale={semiLocale}>{children}</LocaleProvider>;
 }
 
 // initialization
@@ -47,9 +33,7 @@ root.render(
           }}
         >
           <ThemeProvider>
-            <SemiLocaleWrapper>
-              <PageLayout />
-            </SemiLocaleWrapper>
+            <PageLayout />
           </ThemeProvider>
         </BrowserRouter>
       </UserProvider>

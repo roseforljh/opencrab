@@ -66,17 +66,17 @@ const OperationSetting = () => {
   return (
     <div className='relative'>
       {loading && (
-        <div className='absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-lg'>
+        <div className='absolute inset-0 z-50 flex items-center justify-center rounded-[32px] bg-black/20 backdrop-blur-sm'>
           <Loader2 className='h-8 w-8 animate-spin text-white' />
         </div>
       )}
-      <Card className='mt-2 bg-transparent text-white border-white/10'>
-        <CardContent className='p-4'>
+      <Card className='!p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
+        <CardContent className='p-4 md:p-6'>
           <SettingsGeneral options={inputs} refresh={onRefresh} />
         </CardContent>
       </Card>
-      <Card className='mt-2 bg-transparent text-white border-white/10'>
-        <CardContent className='p-4'>
+      <Card className='mt-6 !p-0 !rounded-[32px] !border !border-white/10 !bg-white/6 !shadow-[0_30px_100px_rgba(0,0,0,0.34)] !backdrop-blur-2xl !ring-0'>
+        <CardContent className='p-4 md:p-6'>
           <SettingsMonitoring options={inputs} refresh={onRefresh} />
         </CardContent>
       </Card>

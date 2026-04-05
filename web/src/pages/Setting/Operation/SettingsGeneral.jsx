@@ -99,7 +99,7 @@ export default function GeneralSettings(props) {
               onChange={(e) =>
                 handleFieldChange('general_setting.docs_link')(e.target.value)
               }
-              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+              className='!bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
             />
           </div>
 
@@ -112,7 +112,7 @@ export default function GeneralSettings(props) {
               value={inputs['RetryTimes']}
               placeholder={t('失败重试次数')}
               onChange={(e) => handleFieldChange('RetryTimes')(e.target.value)}
-              className='bg-black/20 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
+              className='!bg-black/40 border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/20'
             />
           </div>
 
@@ -137,7 +137,7 @@ export default function GeneralSettings(props) {
           <Button
             onClick={onSubmit}
             disabled={loading}
-            className='bg-white text-black hover:bg-white/90'
+            className='bg-white/10 text-white border border-white/20 hover:bg-white/20'
           >
             {t('保存实例基础行为设置')}
           </Button>

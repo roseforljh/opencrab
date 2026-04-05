@@ -6,6 +6,7 @@ import { getLogo, getSystemName } from '../../helpers';
 import HeaderLogo from './headerbar/HeaderLogo';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const routerMap = {
   home: '/',
@@ -70,7 +71,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   }, [collapsed]);
 
   return (
-    <div className='flex h-full flex-col border-r border-white/10 bg-[#050816]/95 text-white backdrop-blur-xl'>
+    <div className='flex h-full flex-col border-r border-white/10 bg-[#050816]/95 text-white backdrop-blur-xl transition-all duration-300 ease-in-out'>
       <div className='flex items-center justify-between px-4 py-4'>
         <HeaderLogo
           collapsed={collapsed}
@@ -85,7 +86,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           onClick={toggleCollapsed}
           className='text-white/80 hover:bg-white/10 hover:text-white'
         >
-          <span>{collapsed ? '→' : '←'}</span>
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </Button>
       </div>
 

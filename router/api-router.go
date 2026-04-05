@@ -122,18 +122,16 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
-		modelsRoute := apiRouter.Group("/models")
-		modelsRoute.Use(middleware.AdminAuth())
+
+		vendorsRoute := apiRouter.Group("/vendors")
+		vendorsRoute.Use(middleware.AdminAuth())
 		{
-			modelsRoute.GET("/sync_upstream/preview", controller.SyncUpstreamPreview)
-			modelsRoute.POST("/sync_upstream", controller.SyncUpstreamModels)
-			modelsRoute.GET("/missing", controller.GetMissingModels)
-			modelsRoute.GET("/", controller.GetAllModelsMeta)
-			modelsRoute.GET("/search", controller.SearchModelsMeta)
-			modelsRoute.GET("/:id", controller.GetModelMeta)
-			modelsRoute.POST("/", controller.CreateModelMeta)
-			modelsRoute.PUT("/", controller.UpdateModelMeta)
-			modelsRoute.DELETE("/:id", controller.DeleteModelMeta)
+			vendorsRoute.GET("/", controller.GetAllVendors)
+			vendorsRoute.GET("/search", controller.SearchVendors)
+			vendorsRoute.GET("/:id", controller.GetVendorMeta)
+			vendorsRoute.POST("/", controller.CreateVendorMeta)
+			vendorsRoute.PUT("/", controller.UpdateVendorMeta)
+			vendorsRoute.DELETE("/:id", controller.DeleteVendorMeta)
 		}
 	}
 }

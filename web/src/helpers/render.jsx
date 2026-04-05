@@ -1,6 +1,7 @@
 
 import i18next from 'i18next';
-import { Modal, Tag, Typography, Avatar } from '@douyinfe/semi-ui';
+import { Badge } from '@/components/ui/badge';
+import { Avatar } from '@/components/ui/avatar';
 import { copy, showSuccess } from './utils';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
 import { visit } from 'unist-util-visit';
@@ -88,7 +89,7 @@ import {
 export function getLucideIcon(key, selected = false) {
   const size = 16;
   const strokeWidth = 2;
-  const SELECTED_COLOR = 'var(--semi-color-primary)';
+  const SELECTED_COLOR = 'hsl(var(--primary))';
   const iconColor = selected ? SELECTED_COLOR : 'currentColor';
   const commonProps = {
     size,
@@ -406,7 +407,7 @@ export function getLobeHubIcon(iconName, size = 14) {
   if (typeof iconName === 'string') iconName = iconName.trim();
   // 如果没有图标名称，返回 Avatar
   if (!iconName) {
-    return <Avatar size='extra-extra-small'>?</Avatar>;
+    return <Avatar size='sm'>?</Avatar>;
   }
 
   // 解析组件路径与点号链式属性
@@ -431,7 +432,7 @@ export function getLobeHubIcon(iconName, size = 14) {
     (typeof IconComponent !== 'function' && typeof IconComponent !== 'object')
   ) {
     const firstLetter = String(iconName).charAt(0).toUpperCase();
-    return <Avatar size='extra-extra-small'>{firstLetter}</Avatar>;
+    return <Avatar size='sm'>{firstLetter}</Avatar>;
   }
 
   // 解析点号链式属性，形如：key={...}、key='...'、key="..."、key=123、key、key=true/false
@@ -538,7 +539,7 @@ export function getOAuthProviderIcon(iconName, size = 20) {
   const iconSize = Number(size) > 0 ? Number(size) : 20;
 
   if (!raw) {
-    return <Layers size={iconSize} color='var(--semi-color-text-2)' />;
+    return <Layers size={iconSize} className='text-muted-foreground' />;
   }
 
   if (isHttpUrl(raw)) {
@@ -577,7 +578,7 @@ export function getOAuthProviderIcon(iconName, size = 20) {
   }
 
   return (
-    <Avatar size='extra-extra-small'>{raw.charAt(0).toUpperCase()}</Avatar>
+    <Avatar size='sm'>{raw.charAt(0).toUpperCase()}</Avatar>
   );
 }
 
@@ -733,17 +734,18 @@ export function renderModelTag(modelName, options = {}) {
     }
   }
 
+  const badgeVariant = color ? undefined : 'outline';
+
   return (
-    <Tag
-      color={color || stringToColor(modelName)}
-      prefixIcon={icon}
-      suffixIcon={suffixIcon}
-      size={size}
-      shape={shape}
+    <Badge
+      variant={badgeVariant}
+      className={onClick ? 'cursor-pointer' : ''}
       onClick={onClick}
     >
+      {icon}
       {modelName}
-    </Tag>
+      {suffixIcon}
+    </Badge>
   );
 }
 
@@ -762,60 +764,56 @@ export function renderText(text, limit) {
 export function renderGroup(group) {
   if (group === '') {
     return (
-      <Tag key='default' color='white' shape='circle'>
+      <Badge key='default' variant='outline'>
         {i18next.t('用户分组')}
-      </Tag>
+      </Badge>
     );
   }
 
   const tagColors = {
-    vip: 'yellow',
-    pro: 'yellow',
-    svip: 'red',
-    premium: 'red',
+    vip: 'bg-yellow-100 text-yellow-800',
+    pro: 'bg-yellow-100 text-yellow-800',
+    svip: 'bg-red-100 text-red-800',
+    premium: 'bg-red-100 text-red-800',
   };
 
   const groups = group.split(',').sort();
 
   return (
     <span key={group}>
-      {groups.map((group) => (
-        <Tag
-          color={tagColors[group] || stringToColor(group)}
-          key={group}
-          shape='circle'
+      {groups.map((g) => (
+        <Badge
+          className={tagColors[g] || ''}
+          key={g}
           onClick={async (event) => {
             event.stopPropagation();
-            if (await copy(group)) {
-              showSuccess(i18next.t('已复制：') + group);
+            if (await copy(g)) {
+              showSuccess(i18next.t('已复制：') + g);
             } else {
-              Modal.error({
-                title: i18next.t('无法复制到剪贴板，请手动复制'),
-                content: group,
-              });
+              alert(i18next.t('无法复制到剪贴板，请手动复制：') + g);
             }
           }}
         >
-          {group}
-        </Tag>
+          {g}
+        </Badge>
       ))}
     </span>
   );
 }
 
 export function renderRatio(ratio) {
-  let color = 'green';
+  let colorClass = 'bg-green-100 text-green-800';
   if (ratio > 5) {
-    color = 'red';
+    colorClass = 'bg-red-100 text-red-800';
   } else if (ratio > 3) {
-    color = 'orange';
+    colorClass = 'bg-orange-100 text-orange-800';
   } else if (ratio > 1) {
-    color = 'blue';
+    colorClass = 'bg-blue-100 text-blue-800';
   }
   return (
-    <Tag color={color}>
+    <Badge className={colorClass}>
       {ratio}x {i18next.t('倍率')}
-    </Tag>
+    </Badge>
   );
 }
 
@@ -919,14 +917,11 @@ export const renderGroupOption = (item) => {
     alignItems: 'center',
     padding: '8px 16px',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    backgroundColor: focused ? 'var(--semi-color-fill-0)' : 'transparent',
+    backgroundColor: focused ? 'hsl(var(--muted))' : 'transparent',
     opacity: disabled ? 0.5 : 1,
     ...(selected && {
-      backgroundColor: 'var(--semi-color-primary-light-default)',
+      backgroundColor: 'hsl(var(--primary) / 0.1)',
     }),
-    '&:hover': {
-      backgroundColor: !disabled && 'var(--semi-color-fill-1)',
-    },
   };
 
   const handleClick = () => {
@@ -948,12 +943,12 @@ export const renderGroupOption = (item) => {
       onMouseEnter={handleMouseEnter}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
+        <span className={`font-semibold ${disabled ? 'text-muted-foreground' : ''}`}>
           {value}
-        </Typography.Text>
-        <Typography.Text type='secondary' size='small'>
+        </span>
+        <span className='text-sm text-muted-foreground'>
           {label}
-        </Typography.Text>
+        </span>
       </div>
       {item.ratio && renderRatio(item.ratio)}
     </div>

@@ -23,6 +23,11 @@
   --sidebar-current-width: var(--sidebar-width);
 }
 
+.app-sider {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 body.sidebar-collapsed {
   --sidebar-current-width: var(--sidebar-width-collapsed);
 }
@@ -1687,30 +1692,71 @@ html.dark .border-gray-300 {
   transform: translateY(-22px);
 }
 
-/* Glassmorphism Card (Light Mode) */
-.login-card {
-  background: rgba(255, 255, 255, 0.78) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
-  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+.login-brand-mark {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
+    rgba(10, 10, 10, 0.45);
   box-shadow:
-    0 20px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-  border-radius: 20px !important;
-  padding: 10px;
+    0 20px 50px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.login-brand-title {
+  letter-spacing: -0.03em !important;
+  font-weight: 700 !important;
+}
+
+.login-brand-subtitle,
+.login-subtitle {
+  letter-spacing: 0.01em !important;
+}
+
+.login-card {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(10, 14, 24, 0.82), rgba(5, 8, 14, 0.72)) !important;
+  backdrop-filter: blur(26px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(135%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow:
+    0 40px 120px rgba(0, 0, 0, 0.62),
+    0 12px 40px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  border-radius: 28px !important;
+  padding: 12px;
+}
+
+.login-card-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 34%),
+    radial-gradient(circle at bottom, rgba(255, 255, 255, 0.04), transparent 26%);
+  pointer-events: none;
 }
 
 .login-title {
   font-weight: 800 !important;
   letter-spacing: -0.02em !important;
-  color: #1a1a1a !important;
+  background: linear-gradient(180deg, #ffffff 0%, #d7d7d7 55%, #8f8f8f 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .login-input-container .semi-input-wrapper {
-  border-radius: 12px !important;
-  height: 48px !important;
+  border-radius: 16px !important;
+  height: 52px !important;
   font-size: 16px !important;
-  background-color: #fff !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 20px rgba(0, 0, 0, 0.16) !important;
 }
 
 .login-input-container .semi-input,
@@ -1721,11 +1767,26 @@ html.dark .border-gray-300 {
 }
 
 .login-btn {
-  height: 48px !important;
+  height: 52px !important;
   font-size: 16px !important;
-  font-weight: 600 !important;
-  border-radius: 24px !important;
+  font-weight: 700 !important;
+  border-radius: 16px !important;
+  letter-spacing: 0.02em !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%) !important;
+  color: #020617 !important;
+  box-shadow:
+    0 20px 35px rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
   transition: all 0.3s ease !important;
+}
+
+.login-btn:hover {
+  transform: translateY(-2px) scale(1.01) !important;
+  box-shadow:
+    0 24px 40px rgba(255, 255, 255, 0.1),
+    0 12px 24px rgba(0, 0, 0, 0.24) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #e7e7e7 100%) !important;
 }
 
 /* Dark Mode Overrides */
@@ -1748,27 +1809,35 @@ html.dark .login-container::before {
 }
 
 html.dark .login-card {
-  background: rgba(8, 8, 8, 0.82) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9) !important;
+  background:
+    linear-gradient(180deg, rgba(10, 14, 24, 0.82), rgba(5, 8, 14, 0.72)) !important;
+  backdrop-filter: blur(26px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(135%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow:
+    0 40px 120px rgba(0, 0, 0, 0.62),
+    0 12px 40px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 html.dark .login-title {
-  background: linear-gradient(to bottom, #fff 0%, #aaa 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #d7d7d7 55%, #8f8f8f 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 html.dark .login-input-container .semi-input-wrapper {
-  background-color: rgba(255, 255, 255, 0.03) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 12px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)) !important;
+  border: 1px solid rgba(148, 163, 184, 0.16) !important;
+  border-radius: 16px !important;
   color: #fff !important;
-  height: 48px !important;
+  height: 52px !important;
   font-size: 16px !important;
   transition: all 0.2s ease !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 20px rgba(0, 0, 0, 0.16) !important;
 }
 
 html.dark .login-input-container .semi-input,
@@ -1790,9 +1859,11 @@ html.dark .login-input-container .semi-input-password:focus {
 
 html.dark .login-input-container .semi-input-wrapper:focus-within,
 html.dark .login-input-container .semi-input-focus {
-  background-color: rgba(255, 255, 255, 0.06) !important;
-  border-color: #ffffff !important;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.12),
+    0 16px 30px rgba(2, 6, 23, 0.22) !important;
 }
 
 html.dark .login-input-container .semi-input-prefix {
@@ -1807,22 +1878,26 @@ html.dark .login-input-container .semi-form-field-label {
 }
 
 html.dark .login-btn {
-  height: 48px !important;
+  height: 52px !important;
   font-size: 16px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.5px !important;
-  border-radius: 24px !important;
-  background: #ffffff !important;
-  color: #000000 !important;
-  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1) !important;
-  border: none !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+  border-radius: 16px !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%) !important;
+  color: #020617 !important;
+  box-shadow:
+    0 20px 35px rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
   transition: all 0.3s ease !important;
 }
 
 html.dark .login-btn:hover {
-  transform: translateY(-2px) !important;
-  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.2) !important;
-  background: #e5e5e5 !important;
+  transform: translateY(-2px) scale(1.01) !important;
+  box-shadow:
+    0 24px 40px rgba(255, 255, 255, 0.1),
+    0 12px 24px rgba(0, 0, 0, 0.24) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #e7e7e7 100%) !important;
 }
 
 html.dark .login-btn:active {
@@ -1991,4 +2066,306 @@ button:active,
   html {
     font-family: 'Geist Variable', Lato, Arial, sans-serif;
   }
+}
+
+/* ==================== Settings Page Scoped Dark Theme ==================== */
+.settings-page-shell .settings-content-shell {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Inputs, Selects, Textareas, Numbers */
+.settings-page-shell .ant-input,
+.settings-page-shell .ant-input-affix-wrapper,
+.settings-page-shell .ant-input-number,
+.settings-page-shell .ant-input-number-input,
+.settings-page-shell .ant-select-selector,
+.settings-page-shell .ant-picker,
+.settings-page-shell .semi-input,
+.settings-page-shell .semi-input-wrapper,
+.settings-page-shell .semi-input-textarea-wrapper,
+.settings-page-shell .semi-select,
+.settings-page-shell .semi-select-selection,
+.settings-page-shell .semi-input-number,
+.settings-modal-shell .ant-input,
+.settings-modal-shell .ant-input-affix-wrapper,
+.settings-modal-shell .ant-input-number,
+.settings-modal-shell .ant-input-number-input,
+.settings-modal-shell .ant-select-selector,
+.settings-modal-shell .ant-picker,
+.settings-modal-shell .semi-input,
+.settings-modal-shell .semi-input-wrapper,
+.settings-modal-shell .semi-input-textarea-wrapper,
+.settings-modal-shell .semi-select,
+.settings-modal-shell .semi-select-selection,
+.settings-modal-shell .semi-input-number {
+  background-color: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.settings-page-shell .ant-input:hover,
+.settings-page-shell .ant-input-affix-wrapper:hover,
+.settings-page-shell .ant-input-number:hover,
+.settings-page-shell .ant-select-selector:hover,
+.settings-page-shell .ant-picker:hover,
+.settings-page-shell .semi-input:hover,
+.settings-page-shell .semi-input-wrapper:hover,
+.settings-page-shell .semi-input-textarea-wrapper:hover,
+.settings-page-shell .semi-select:hover,
+.settings-page-shell .semi-select-selection:hover,
+.settings-page-shell .semi-input-number:hover,
+.settings-modal-shell .ant-input:hover,
+.settings-modal-shell .ant-input-affix-wrapper:hover,
+.settings-modal-shell .ant-input-number:hover,
+.settings-modal-shell .ant-select-selector:hover,
+.settings-modal-shell .ant-picker:hover,
+.settings-modal-shell .semi-input:hover,
+.settings-modal-shell .semi-input-wrapper:hover,
+.settings-modal-shell .semi-input-textarea-wrapper:hover,
+.settings-modal-shell .semi-select:hover,
+.settings-modal-shell .semi-select-selection:hover,
+.settings-modal-shell .semi-input-number:hover {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.settings-page-shell .ant-input:focus,
+.settings-page-shell .ant-input-focused,
+.settings-page-shell .ant-input-affix-wrapper-focused,
+.settings-page-shell .ant-input-number-focused,
+.settings-page-shell .ant-select-focused .ant-select-selector,
+.settings-page-shell .ant-picker-focused,
+.settings-page-shell .semi-input:focus,
+.settings-page-shell .semi-input-wrapper-focus,
+.settings-page-shell .semi-input-textarea-wrapper-focus,
+.settings-page-shell .semi-select-focus,
+.settings-page-shell .semi-select-selection-focus,
+.settings-page-shell .semi-input-number-focus,
+.settings-modal-shell .ant-input:focus,
+.settings-modal-shell .ant-input-focused,
+.settings-modal-shell .ant-input-affix-wrapper-focused,
+.settings-modal-shell .ant-input-number-focused,
+.settings-modal-shell .ant-select-focused .ant-select-selector,
+.settings-modal-shell .ant-picker-focused,
+.settings-modal-shell .semi-input:focus,
+.settings-modal-shell .semi-input-wrapper-focus,
+.settings-modal-shell .semi-input-textarea-wrapper-focus,
+.settings-modal-shell .semi-select-focus,
+.settings-modal-shell .semi-select-selection-focus,
+.settings-modal-shell .semi-input-number-focus {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
+}
+
+.settings-page-shell .ant-input::placeholder,
+.settings-page-shell .ant-select-selection-placeholder,
+.settings-page-shell .semi-input::placeholder,
+.settings-page-shell .semi-select-selection-placeholder,
+.settings-modal-shell .ant-input::placeholder,
+.settings-modal-shell .ant-select-selection-placeholder,
+.settings-modal-shell .semi-input::placeholder,
+.settings-modal-shell .semi-select-selection-placeholder {
+  color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.settings-page-shell .ant-select-selection-item,
+.settings-page-shell .semi-select-selection-text,
+.settings-modal-shell .ant-select-selection-item,
+.settings-modal-shell .semi-select-selection-text {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Tables */
+.settings-page-shell .ant-table,
+.settings-page-shell .ant-table-container,
+.settings-page-shell .semi-table,
+.settings-page-shell .semi-table-container,
+.settings-page-shell .semi-table-wrapper,
+.settings-modal-shell .ant-table,
+.settings-modal-shell .ant-table-container,
+.settings-modal-shell .semi-table,
+.settings-modal-shell .semi-table-container,
+.settings-modal-shell .semi-table-wrapper {
+  background-color: transparent !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.settings-page-shell .ant-table-thead > tr > th,
+.settings-page-shell .semi-table-thead > tr > th,
+.settings-modal-shell .ant-table-thead > tr > th,
+.settings-modal-shell .semi-table-thead > tr > th {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  font-weight: 500 !important;
+}
+
+.settings-page-shell .ant-table-tbody > tr > td,
+.settings-page-shell .semi-table-tbody > tr > td,
+.settings-modal-shell .ant-table-tbody > tr > td,
+.settings-modal-shell .semi-table-tbody > tr > td {
+  background-color: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.settings-page-shell .ant-table-tbody > tr:hover > td,
+.settings-page-shell .semi-table-tbody > tr:hover > td,
+.settings-page-shell .semi-table-row:hover,
+.settings-modal-shell .ant-table-tbody > tr:hover > td,
+.settings-modal-shell .semi-table-tbody > tr:hover > td,
+.settings-modal-shell .semi-table-row:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Collapse / Accordion */
+.settings-page-shell .ant-collapse,
+.settings-page-shell .semi-collapse,
+.settings-modal-shell .ant-collapse,
+.settings-modal-shell .semi-collapse {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.settings-page-shell .ant-collapse-item,
+.settings-page-shell .semi-collapse-panel,
+.settings-modal-shell .ant-collapse-item,
+.settings-modal-shell .semi-collapse-panel {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.settings-page-shell .ant-collapse-item:last-child,
+.settings-page-shell .semi-collapse-panel:last-child,
+.settings-modal-shell .ant-collapse-item:last-child,
+.settings-modal-shell .semi-collapse-panel:last-child {
+  border-bottom: none !important;
+}
+
+.settings-page-shell .ant-collapse-header,
+.settings-page-shell .semi-collapse-panel-header,
+.settings-modal-shell .ant-collapse-header,
+.settings-modal-shell .semi-collapse-panel-header {
+  color: rgba(255, 255, 255, 0.9) !important;
+  background-color: transparent !important;
+}
+
+.settings-page-shell .ant-collapse-content,
+.settings-page-shell .semi-collapse-panel-content,
+.settings-modal-shell .ant-collapse-content,
+.settings-modal-shell .semi-collapse-panel-content {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Tags */
+.settings-page-shell .ant-tag,
+.settings-page-shell .semi-tag,
+.settings-modal-shell .ant-tag,
+.settings-modal-shell .semi-tag {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Switch */
+.settings-page-shell .ant-switch,
+.settings-page-shell .semi-switch,
+.settings-modal-shell .ant-switch,
+.settings-modal-shell .semi-switch {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.settings-page-shell .ant-switch-checked,
+.settings-page-shell .semi-switch-checked,
+.settings-modal-shell .ant-switch-checked,
+.settings-modal-shell .semi-switch-checked {
+  background-color: var(--semi-color-primary, #ffffff) !important;
+}
+
+/* Typography inside settings */
+.settings-page-shell .semi-typography,
+.settings-page-shell .ant-typography,
+.settings-modal-shell .semi-typography,
+.settings-modal-shell .ant-typography {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.settings-page-shell .semi-typography-tertiary,
+.settings-modal-shell .semi-typography-tertiary {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Empty state */
+.settings-page-shell .ant-empty-description,
+.settings-page-shell .semi-empty-title,
+.settings-page-shell .semi-empty-description,
+.settings-modal-shell .ant-empty-description,
+.settings-modal-shell .semi-empty-title,
+.settings-modal-shell .semi-empty-description {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Pagination */
+.settings-page-shell .ant-pagination-item,
+.settings-page-shell .semi-page-item,
+.settings-modal-shell .ant-pagination-item,
+.settings-modal-shell .semi-page-item {
+  background-color: transparent !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.settings-page-shell .ant-pagination-item-active,
+.settings-page-shell .semi-page-item-active,
+.settings-modal-shell .ant-pagination-item-active,
+.settings-modal-shell .semi-page-item-active {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+
+/* Select Dropdown */
+.settings-page-shell .ant-select-dropdown,
+.settings-page-shell .semi-select-popover,
+.settings-modal-shell .ant-select-dropdown,
+.settings-modal-shell .semi-select-popover {
+  background-color: #1a1a1a !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.settings-page-shell .ant-select-item,
+.settings-page-shell .semi-select-option,
+.settings-modal-shell .ant-select-item,
+.settings-modal-shell .semi-select-option {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.settings-page-shell .ant-select-item-option-active,
+.settings-page-shell .semi-select-option-focused,
+.settings-page-shell .semi-select-option-hover,
+.settings-modal-shell .ant-select-item-option-active,
+.settings-modal-shell .semi-select-option-focused,
+.settings-modal-shell .semi-select-option-hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Pre blocks (JSON editor) */
+.settings-page-shell pre,
+.settings-modal-shell pre {
+  background-color: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Param template preview container */
+.settings-page-shell div[style*="background: var(--semi-color-fill-0)"],
+.settings-modal-shell div[style*="background: var(--semi-color-fill-0)"] {
+  background-color: rgba(0, 0, 0, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }

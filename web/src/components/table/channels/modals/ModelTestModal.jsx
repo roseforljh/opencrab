@@ -60,7 +60,7 @@ const ModelTestModal = ({
   }, [streamToggleDisabled, isStreamTest, setIsStreamTest]);
 
   const filteredModels = hasChannel
-    ? currentTestChannel.models
+    ? String(currentTestChannel.models || '')
         .split(',')
         .filter((model) =>
           model.toLowerCase().includes(modelSearchKeyword.toLowerCase()),
@@ -238,7 +238,7 @@ const ModelTestModal = ({
                 {currentTestChannel.name} {t('渠道的模型测试')}
               </DialogTitle>
               <div className='text-sm text-white/45'>
-                {t('共')} {currentTestChannel.models.split(',').length}{' '}
+                {t('共')} {String(currentTestChannel.models || '').split(',').filter(Boolean).length}{' '}
                 {t('个模型')}
               </div>
             </div>

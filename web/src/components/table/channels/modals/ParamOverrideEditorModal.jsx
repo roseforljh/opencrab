@@ -1067,7 +1067,7 @@ const validateOperations = (operations, t) => {
   return '';
 };
 
-const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
+const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel, className }) => {
   const { t } = useTranslation();
 
   const [editMode, setEditMode] = useState('visual');
@@ -1918,7 +1918,7 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
   return (
     <>
       <Dialog open={visible} onOpenChange={(open) => !open && onCancel?.()}>
-        <DialogContent className='max-h-[76vh] max-w-[1120px] overflow-y-auto border-white/10 bg-black text-white'>
+        <DialogContent className={`max-h-[76vh] max-w-[1120px] overflow-y-auto border-white/10 bg-black text-white ${className || ''}`}>
           <DialogHeader>
             <DialogTitle>{t('参数覆盖')}</DialogTitle>
           </DialogHeader>

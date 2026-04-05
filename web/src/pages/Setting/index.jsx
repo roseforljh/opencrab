@@ -24,7 +24,7 @@ const Setting = () => {
           </span>
         ),
         content: (
-          <div className='space-y-4'>
+          <div className='space-y-6'>
             <ModelSetting />
             <RateLimitSetting />
           </div>
@@ -39,7 +39,7 @@ const Setting = () => {
           </span>
         ),
         content: (
-          <div className='space-y-4'>
+          <div className='space-y-6'>
             <OperationSetting />
           </div>
         ),
@@ -53,24 +53,31 @@ const Setting = () => {
   const tabActiveKey = searchParams.get('tab') || 'routing';
 
   return (
-    <div className='px-2'>
-      <div className='w-full'>
-        <Tabs
-          value={tabActiveKey}
-          onValueChange={(key) => navigate(`?tab=${key}`)}
-          className='w-full'
-        >
-          <TabsList className='bg-white/5 border border-white/10 mb-4 h-auto p-1'>
+    <div className='pl-2 pr-0 settings-page-shell'>
+      <Tabs
+        value={tabActiveKey}
+        onValueChange={(key) => navigate(`?tab=${key}`)}
+        className='w-full flex flex-col gap-6'
+      >
+        <div className='w-full rounded-[32px] border border-white/10 bg-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.34)] backdrop-blur-2xl p-6'>
+          <div className='mb-6'>
+            <h1 className='text-2xl font-semibold text-white mb-2'>{t('设置')}</h1>
+            <p className='text-white/60'>{t('管理系统配置、模型路由与安全选项')}</p>
+          </div>
+          <TabsList className='bg-white/5 border border-white/10 h-auto p-1 rounded-2xl'>
             {panes.map((pane) => (
               <TabsTrigger
                 key={pane.itemKey}
                 value={pane.itemKey}
-                className='data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/60 py-2 px-4'
+                className='data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/60 py-2 px-4 rounded-xl transition-all'
               >
                 {pane.tab}
               </TabsTrigger>
             ))}
           </TabsList>
+        </div>
+
+        <div className='w-full rounded-[32px] border border-white/10 bg-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.34)] backdrop-blur-2xl p-6 settings-content-shell'>
           {panes.map((pane) => (
             <TabsContent
               key={pane.itemKey}
@@ -80,8 +87,8 @@ const Setting = () => {
               {pane.content}
             </TabsContent>
           ))}
-        </Tabs>
-      </div>
+        </div>
+      </Tabs>
     </div>
   );
 };

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { UserContext } from '../../context/User';
@@ -13,14 +12,14 @@ import {
   updateAPI,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
-import { Card, Form } from '@douyinfe/semi-ui';
+import { Card, Input } from '@douyinfe/semi-ui';
 import { Button } from '@/components/ui/button';
 import Title from '@douyinfe/semi-ui/lib/es/typography/title';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
 import { IconKey } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
-
-const FLOATING_DOTS_COUNT = 250;
+import { useActualTheme } from '../../context/Theme';
+import DottedSurfaceBackground from '../ui/backgrounds/DottedSurfaceBackground';
 
 const LoginForm = () => {
   const navigate = useNavigate();
@@ -35,25 +34,10 @@ const LoginForm = () => {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const actualTheme = useActualTheme();
 
   const logo = getLogo();
   const systemName = getSystemName();
-
-  const floatingDots = useMemo(
-    () =>
-      Array.from({ length: FLOATING_DOTS_COUNT }, (_, i) => ({
-        id: i,
-        top: `${Math.random() * 100}%`,
-        left: `${Math.random() * 100}%`,
-        size: `${Math.random() * 3.5 + 1.5}px`,
-        opacity: (Math.random() * 0.6 + 0.3).toFixed(2),
-        duration: `${Math.random() * 8 + 6}s`,
-        delay: `${Math.random() * 4}s`,
-        driftX: `${Math.random() * 200 - 100}px`,
-        driftY: `${Math.random() * 150 - 75}px`,
-      })),
-    [],
-  );
 
   const status = useMemo(() => {
     if (statusState?.status) return statusState.status;
@@ -119,61 +103,51 @@ const LoginForm = () => {
   return (
     <div className='relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-12 sm:px-6 lg:px-8'>
       <div className={`login-enter-overlay ${isNavigating ? 'is-active' : ''}`} />
-      <div className='login-grid-overlay'></div>
-      <div className='absolute inset-0 overflow-hidden'>
-        {floatingDots.map((dot) => (
-          <span
-            key={dot.id}
-            className='login-floating-dot'
-            style={{
-              top: dot.top,
-              left: dot.left,
-              width: dot.size,
-              height: dot.size,
-              opacity: dot.opacity,
-              animationDuration: dot.duration,
-              animationDelay: dot.delay,
-              '--dot-drift-x': dot.driftX,
-              '--dot-drift-y': dot.driftY,
-            }}
-          />
-        ))}
-      </div>
+      <DottedSurfaceBackground isDark={actualTheme === 'dark'} />
 
       <div className='relative z-10 flex w-full items-center justify-center px-2 login-card-wrapper'>
         <div className={`login-content-stage ${isNavigating ? 'is-navigating' : ''}`}>
           <div className='flex flex-col items-center'>
             <div className='w-full max-w-sm login-panel-shell'>
               <div className='mb-8 flex items-center justify-center gap-3'>
-                <div className='rounded-2xl border border-white/10 bg-white/10 p-1.5 shadow-[0_16px_48px_rgba(34,124,255,0.2)]'>
+                <div className='login-brand-mark rounded-2xl p-1.5'>
                   <img src={logo} alt='Logo' className='h-11 w-11 rounded-xl object-cover' />
                 </div>
-                <div>
-                  <Title heading={3} className='!mb-0 !text-white'>
+                <div className='login-brand-copy'>
+                  <Title heading={3} className='login-brand-title !mb-0 !text-white'>
                     {systemName}
                   </Title>
-                  <Text className='!text-white/55'>{t('个人 API 聚合控制台')}</Text>
+                  <Text className='login-brand-subtitle !text-white/55'>{t('个人 API 聚合控制台')}</Text>
                 </div>
               </div>
 
-              <Card className='login-card !overflow-hidden !rounded-[28px] !border !border-white/10 !bg-white/6 !backdrop-blur-xl !shadow-[0_30px_100px_rgba(0,0,0,0.4)]'>
-                <div className='px-3 pt-8 pb-2 text-center'>
+              <Card className='login-card !overflow-hidden !rounded-[28px] !border !border-white/12 !bg-transparent !backdrop-blur-xl !shadow-[0_30px_100px_rgba(0,0,0,0.4)] !ring-0 !ring-transparent'>
+                <div className='login-card-glow' />
+                <div className='px-4 pt-8 pb-2 text-center relative z-[1]'>
                   <Title heading={3} className='login-title !mb-2 !text-white'>
                     {t('PIN 登录')}
                   </Title>
-                  <Text className='!text-white/60'>{t('输入 PIN 进入你的 API 控制台')}</Text>
+                  <Text className='login-subtitle !text-white/60'>{t('输入 PIN 进入你的 API 控制台')}</Text>
                 </div>
-                <div className='login-input-container px-4 py-8'>
-                  <Form className='space-y-4'>
-                    <Form.Input
-                      field='pin'
-                      label={t('PIN')}
-                      placeholder={t('请输入你的 PIN')}
-                      name='pin'
-                      mode='password'
-                      onChange={(value) => handleChange('pin', value)}
-                      prefix={<IconKey />}
-                    />
+                <div className='login-input-container px-5 py-8 relative z-[1]'>
+                  <div className='space-y-4'>
+                    <div className='space-y-2'>
+                      <div className='text-sm font-medium text-white'>{t('PIN')}</div>
+                      <Input
+                        placeholder={t('请输入你的 PIN')}
+                        name='pin'
+                        mode='password'
+                        value={pin}
+                        onChange={(value) => handleChange('pin', value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSubmit();
+                          }
+                        }}
+                        enterKeyHint='enter'
+                        prefix={<IconKey />}
+                      />
+                    </div>
 
                     <div className='pt-3'>
                       <Button
@@ -185,7 +159,7 @@ const LoginForm = () => {
                         {isNavigating ? t('正在进入控制台...') : t('继续')}
                       </Button>
                     </div>
-                  </Form>
+                  </div>
 
                   {turnstileEnabled && turnstileSiteKey && (
                     <div className='mt-4 flex justify-center'>
