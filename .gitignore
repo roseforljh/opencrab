@@ -1,33 +1,38 @@
-﻿.idea
-.vscode
-.zed
-.history
-upload
-*.exe
-*.db
-build
-*.db-journal
-logs
-web/dist
-.env
-one-api
-opencrab
-/__debug_bin*
-.DS_Store
-tiktoken_cache
-.eslintcache
-.gocache
-.gomodcache/
-.cache
-web/bun.lock
-plans
-.claude
-.worktrees/
+# 这个文件用于统一忽略本地开发、构建、依赖和运行过程中产生的非源码文件，避免这些文件进入版本控制。
 
-electron/node_modules
-electron/dist
-data/
-.gomodcache/
-.gocache-temp
-.gopath
-.gstack/
+# Node.js / 前端依赖与构建输出
+node_modules/
+web/node_modules/
+web/.next/
+web/out/
+web/coverage/
+
+# Go 构建输出
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 日志与运行文件
+*.log
+logs/
+tmp/
+
+# 环境变量与本地配置
+.env
+.env.*
+!.env.example
+
+# SQLite 数据文件
+*.db
+*.db-shm
+*.db-wal
+
+# 系统与编辑器文件
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

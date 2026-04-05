@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+这个文件负责定义整个前端管理台的全局样式基础。
+
+当前阶段先完成这些事情：
+1. 建立基础字体栈。
+2. 建立页面背景和文字默认颜色。
+3. 建立盒模型和基础滚动体验。
+
+后续会继续把 DESIGN.md 里的颜色、暗色模式、组件 token 收敛到这里。
+*/
+
+:root {
+  color-scheme: light;
+  --font-sans: "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "Geist Mono", "Consolas", "JetBrains Mono", monospace;
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --muted: #f8fafc;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+body {
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
