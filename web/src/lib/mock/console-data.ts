@@ -1,8 +1,24 @@
 export const dashboardMetrics = [
-  { label: "今日请求", value: "12,480", hint: "较昨日 +8.4%" },
-  { label: "成功率", value: "99.92%", hint: "错误率维持低位" },
-  { label: "平均耗时", value: "642 ms", hint: "高峰时段 710 ms" },
-  { label: "活跃渠道", value: "3", hint: "1 个渠道处于待验证" }
+  { label: "今日请求", value: "12,480", hint: "较昨日 +8.4%", trend: [22, 24, 21, 29, 35, 32, 38] },
+  { label: "成功率", value: "99.92%", hint: "错误率维持低位", trend: [98, 98.8, 99.1, 99.4, 99.2, 99.6, 99.9] },
+  { label: "平均耗时", value: "642 ms", hint: "高峰时段 710 ms", trend: [710, 688, 702, 674, 651, 644, 642] },
+  { label: "活跃渠道", value: "3", hint: "1 个渠道处于待验证", trend: [1, 2, 2, 3, 3, 3, 3] }
+];
+
+export const dashboardTrafficSeries = [
+  { label: "00:00", requests: 320, success: 302, errors: 18 },
+  { label: "04:00", requests: 410, success: 398, errors: 12 },
+  { label: "08:00", requests: 860, success: 831, errors: 29 },
+  { label: "12:00", requests: 1180, success: 1140, errors: 40 },
+  { label: "16:00", requests: 980, success: 944, errors: 36 },
+  { label: "20:00", requests: 1240, success: 1196, errors: 44 }
+];
+
+export const dashboardChannelMix = [
+  { label: "OpenAI", value: 48, color: "var(--chart-1)" },
+  { label: "Anthropic", value: 27, color: "var(--chart-2)" },
+  { label: "Gemini", value: 17, color: "var(--chart-3)" },
+  { label: "Fallback", value: 8, color: "var(--chart-4)" }
 ];
 
 export const dashboardRecentLogs = [

@@ -20,18 +20,18 @@ export function DetailDrawer({
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
-        <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700">{triggerLabel}</Button>
+        <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 hover:text-primary">{triggerLabel}</Button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-slate-950/20 backdrop-blur-[1px]" />
-        <Dialog.Content className="fixed right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-2xl outline-none">
-          <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+        <Dialog.Overlay className="fixed inset-0 bg-background/80 backdrop-blur-sm" />
+        <Dialog.Content className="fixed right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-border/60 bg-background shadow-2xl outline-none">
+          <div className="flex items-start justify-between border-b border-border px-6 py-5">
             <div>
-              <Dialog.Title className="text-lg font-semibold text-slate-950">{title}</Dialog.Title>
-              <Dialog.Description className="mt-2 text-sm leading-6 text-slate-500">{description}</Dialog.Description>
+              <Dialog.Title className="text-lg font-semibold text-foreground">{title}</Dialog.Title>
+              <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">{description}</Dialog.Description>
             </div>
             <Dialog.Close asChild>
-              <button className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900" aria-label="关闭抽屉">
+              <button className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="关闭抽屉">
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>

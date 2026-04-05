@@ -2,14 +2,17 @@
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import { ChannelMix } from "@/components/shared/channel-mix";
+import { DashboardChart } from "@/components/shared/dashboard-chart";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
-import { LoadingState } from "@/components/shared/loading-state";
 import { SectionCard } from "@/components/shared/section-card";
+import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DataTable } from "@/components/shared/data-table";
-import { dashboardMetrics, dashboardRecentLogs } from "@/lib/mock/console-data";
+import { dashboardChannelMix, dashboardMetrics, dashboardRecentLogs, dashboardTrafficSeries } from "@/lib/mock/console-data";
 import type { ColumnDef } from "@tanstack/react-table";
+import { useI18n } from "@/components/i18n-provider";
 
 type RecentLog = typeof dashboardRecentLogs[0];
 
@@ -21,7 +24,7 @@ const columns: ColumnDef<RecentLog>[] = [
   {
     accessorKey: "model",
     header: "模型",
-    cell: ({ row }) => <span className="font-medium text-slate-900">{row.original.model}</span>,
+    cell: ({ row }) => <span className="font-medium text-foreground">{row.original.model}</span>,
   },
   {
     accessorKey: "channel",
@@ -39,30 +42,41 @@ const columns: ColumnDef<RecentLog>[] = [
 ];
 
 export default function DashboardPage() {
+  const { t } = useI18n();
+
   return (
     <PageContainer>
       <PageHeader
-        eyebrow="Dashboard"
-        title="系统概览"
-        description="优先展示最重要的健康信息、关键指标和最近活动，让控制台首页承担真正的系统总览职责。"
+        eyebrow={t("nav.dashboard")}
+        title={t("dashboard.title")}
+        description={t("dashboard.description")}
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboardMetrics.map((metric) => (
-          <SectionCard key={metric.label} title={metric.label} description={metric.hint} className="bg-slate-50">
-            <p className="text-3xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
-          </SectionCard>
+        {dashboardMetrics.map((metric, index) => (
+          <StatCard
+            key={metric.label}
+            title={metric.label}
+            description={metric.hint}
+            value={metric.value}
+            trend={metric.trend}
+            accent={`var(--chart-${(index % 5) + 1})`}
+          />
         ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <SectionCard title="请求趋势" description="后续会接入真实图表组件，这里先固定信息层级和占位区块。">
-          <LoadingState label="图表数据准备中" />
+        <SectionCard title="请求趋势" description="使用彩色线性图表达请求量、成功量和异常量的节奏变化。">
+          <DashboardChart data={dashboardTrafficSeries} />
         </SectionCard>
 
         <div className="grid gap-6">
+          <SectionCard title="渠道占比" description="用多彩条形比例快速查看主要请求流量来自哪里。">
+            <ChannelMix items={dashboardChannelMix} />
+          </SectionCard>
+
           <SectionCard title="运行摘要" description="让首页同时承担状态总览和近期变更提醒。">
-            <ul className="space-y-3 text-sm leading-6 text-slate-600">
+            <ul className="space-y-3 text-sm leading-6 text-muted-foreground">
               <li>已固定整体布局、导航、页面骨架和组件栈。</li>
               <li>当前阶段继续优先完善前端页面，不进入后端开发。</li>
               <li>后续图表、筛选和抽屉会先基于假数据补齐完整体验。</li>

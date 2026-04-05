@@ -11,12 +11,13 @@ import { SectionCard } from "@/components/shared/section-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { channels } from "@/lib/mock/console-data";
+import { useI18n } from "@/components/i18n-provider";
 
 const columns: ColumnDef<(typeof channels)[number]>[] = [
   {
     accessorKey: "name",
     header: "渠道名",
-    cell: ({ row }) => <span className="font-medium text-slate-900">{row.original.name}</span>
+    cell: ({ row }) => <span className="font-medium text-foreground">{row.original.name}</span>
   },
   {
     accessorKey: "provider",
@@ -30,7 +31,7 @@ const columns: ColumnDef<(typeof channels)[number]>[] = [
   {
     accessorKey: "endpoint",
     header: "地址",
-    cell: ({ row }) => <span className="font-mono text-xs text-slate-600">{row.original.endpoint}</span>
+    cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.endpoint}</span>
   },
   {
     accessorKey: "models",
@@ -39,13 +40,15 @@ const columns: ColumnDef<(typeof channels)[number]>[] = [
 ];
 
 export default function ChannelsPage() {
+  const { t } = useI18n();
+
   return (
     <PageContainer>
       <PageHeader
-        eyebrow="Channels"
-        title="渠道管理"
-        description="统一管理上游渠道、兼容类型、地址、状态和模型覆盖范围。当前先用假数据把表格和抽屉布局固定下来。"
-        action={<Button>新增渠道</Button>}
+        eyebrow={t("nav.channels")}
+        title={t("channels.title")}
+        description={t("channels.description")}
+        action={<Button>{t("common.create")}</Button>}
       />
 
       <SectionCard title="渠道列表" description="这一页采用筛选条 + 表格区 + 右侧编辑抽屉的标准模式。">
@@ -64,24 +67,24 @@ export default function ChannelsPage() {
               <DetailDrawer title={row.name} description="这里会承载渠道编辑表单、密钥配置和测试连接操作。" triggerLabel="查看详情">
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-sm font-medium text-slate-900">基本信息</h3>
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-white">
-                      <dl className="divide-y divide-slate-200 text-sm">
+                    <h3 className="text-sm font-medium text-foreground">基本信息</h3>
+                    <div className="mt-3 rounded-xl border border-border bg-card">
+                      <dl className="divide-y divide-border text-sm">
                         <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-slate-500">渠道类型</dt>
-                          <dd className="col-span-2 text-slate-900">{row.provider}</dd>
+                          <dt className="font-medium text-muted-foreground">渠道类型</dt>
+                          <dd className="col-span-2 text-foreground">{row.provider}</dd>
                         </div>
                         <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-slate-500">请求地址</dt>
-                          <dd className="col-span-2 font-mono text-slate-900">{row.endpoint}</dd>
+                          <dt className="font-medium text-muted-foreground">请求地址</dt>
+                          <dd className="col-span-2 font-mono text-foreground">{row.endpoint}</dd>
                         </div>
                         <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-slate-500">当前状态</dt>
+                          <dt className="font-medium text-muted-foreground">当前状态</dt>
                           <dd className="col-span-2"><StatusBadge status={row.status} /></dd>
                         </div>
                         <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-slate-500">覆盖模型数</dt>
-                          <dd className="col-span-2 text-slate-900">{row.models}</dd>
+                          <dt className="font-medium text-muted-foreground">覆盖模型数</dt>
+                          <dd className="col-span-2 text-foreground">{row.models}</dd>
                         </div>
                       </dl>
                     </div>

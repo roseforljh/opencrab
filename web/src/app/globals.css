@@ -2,43 +2,128 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
-这个文件负责定义整个前端管理台的全局样式基础。
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 0%;
+    --radius: 0.5rem;
+    --success: 142.1 76.2% 36.3%;
+    --warning: 37.7 92.1% 50.2%;
+    --danger: 0 84.2% 60.2%;
+    --chart-1: #3b82f6;
+    --chart-2: #8b5cf6;
+    --chart-3: #f43f5e;
+    --chart-4: #22c55e;
+    --chart-5: #f59e0b;
+  }
 
-当前阶段先完成这些事情：
-1. 建立基础字体栈。
-2. 建立页面背景和文字默认颜色。
-3. 建立盒模型和基础滚动体验。
-
-后续会继续把 DESIGN.md 里的颜色、暗色模式、组件 token 收敛到这里。
-*/
-
-:root {
-  color-scheme: light;
-  --font-sans: "Geist", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  --font-mono: "Geist Mono", "Consolas", "JetBrains Mono", monospace;
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --muted: #f8fafc;
-  --border: #e2e8f0;
-  --accent: #2563eb;
+  .dark {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 3%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 3%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 10%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 100%;
+    --success: 142.1 70.6% 45.3%;
+    --warning: 37.7 90.1% 58.2%;
+    --danger: 0 72.2% 50.6%;
+    --chart-1: #60a5fa;
+    --chart-2: #a78bfa;
+    --chart-3: #fb7185;
+    --chart-4: #34d399;
+    --chart-5: #fbbf24;
+  }
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+:root {
+  --font-sans: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: var(--font-geist-mono), "Consolas", "JetBrains Mono", monospace;
 }
 
 html,
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--background);
-  color: var(--foreground);
   font-family: var(--font-sans);
+  scrollbar-gutter: stable;
 }
 
 body {
   text-rendering: optimizeLegibility;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, currentColor 8%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, currentColor 8%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-attachment: fixed;
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-page-transition {
+  animation: page-fade-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes smooth-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-smooth-spin {
+  animation: smooth-spin 0.75s linear infinite;
+  will-change: transform;
 }
 
 a {
@@ -49,4 +134,8 @@ a {
 code,
 pre {
   font-family: var(--font-mono);
+}
+
+.pixelated {
+  image-rendering: pixelated;
 }
