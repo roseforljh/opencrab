@@ -10,17 +10,19 @@ export function DetailDrawer({
   title,
   description,
   triggerLabel,
+  trigger,
   children
 }: {
   title: string;
   description: string;
   triggerLabel: string;
+  trigger?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
-        <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 hover:text-primary">{triggerLabel}</Button>
+        {trigger ?? <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 hover:text-primary">{triggerLabel}</Button>}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="animate-overlay fixed inset-0 bg-background/80 backdrop-blur-sm" />

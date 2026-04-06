@@ -44,7 +44,33 @@ export default async function ChannelsPage() {
         eyebrow={t("nav.channels")}
         title={t("channels.title")}
         description={t("channels.description")}
-        action={<Button>{t("common.create")}</Button>}
+        action={
+          <DetailDrawer
+            title="新建渠道"
+            description="新增一个上游模型渠道，填写兼容类型、请求地址和默认认证信息。"
+            triggerLabel={t("common.create")}
+            trigger={<Button>{t("common.create")}</Button>}
+          >
+            <div className="space-y-4 text-sm text-muted-foreground">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">渠道名称</label>
+                <input className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-out-smooth)] focus:border-ring focus:ring-2 focus:ring-ring/15" defaultValue="new-channel" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">兼容类型</label>
+                <input className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-out-smooth)] focus:border-ring focus:ring-2 focus:ring-ring/15" defaultValue="OpenAI Compatible" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">请求地址</label>
+                <input className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-out-smooth)] focus:border-ring focus:ring-2 focus:ring-ring/15" defaultValue="https://api.example.com/v1" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline">测试连接</Button>
+                <Button>保存渠道</Button>
+              </div>
+            </div>
+          </DetailDrawer>
+        }
       />
 
       <SectionCard title="渠道列表" description="这一页采用筛选条 + 表格区 + 右侧编辑抽屉的标准模式。">
