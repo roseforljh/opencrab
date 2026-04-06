@@ -1,11 +1,22 @@
 package app
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"opencrab/internal/config"
+	"opencrab/internal/domain"
+	"opencrab/internal/observability"
+	"opencrab/internal/provider"
+	store "opencrab/internal/store/sqlite"
 	"opencrab/internal/transport/httpserver"
+	"opencrab/internal/usecase"
 )
 
 // App 表示当前后端服务的应用实例。
@@ -19,8 +30,11 @@ import (
 //
 // 后续会继续把配置对象、数据库连接、日志对象等逐步加进来。
 type App struct {
-	address string
-	server  *http.Server
+	config config.Config
+	logger *slog.Logger
+	db     *sql.DB
+	client *http.Client
+	server *http.Server
 }
 
 // New 负责创建应用实例并准备好 HTTP 服务。
@@ -28,18 +42,131 @@ type App struct {
 // 当前版本先使用固定地址和基础路由，目标是尽快把骨架立起来，
 // 等配置系统落地后，再把地址、超时等参数改成配置驱动。
 func New() (*App, error) {
-	address := ":8080"
-	router := httpserver.NewRouter()
+	appConfig := config.Load()
+	if err := config.Validate(appConfig); err != nil {
+		return nil, err
+	}
+
+	logger := observability.NewLogger(appConfig)
+	db, err := store.Open(appConfig.DB.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := store.ApplyMigrations(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	rateLimiter := usecase.NewRateLimiter(5, 10)
+	chatProvider := provider.NewOpenAICompatibleProvider(client)
+
+	router := httpserver.NewRouter(httpserver.Dependencies{
+		Logger: logger,
+		ReadinessCheck: func(ctx context.Context) error {
+			return db.PingContext(ctx)
+		},
+		ListChannels: func(ctx context.Context) ([]domain.Channel, error) {
+			return store.ListChannels(ctx, db)
+		},
+		ListAPIKeys: func(ctx context.Context) ([]domain.APIKey, error) {
+			return store.ListAPIKeys(ctx, db)
+		},
+		ListModels: func(ctx context.Context) ([]domain.ModelMapping, error) {
+			return store.ListModelMappings(ctx, db)
+		},
+		ListModelRoutes: func(ctx context.Context) ([]domain.ModelRoute, error) {
+			return store.ListModelRoutes(ctx, db)
+		},
+		CreateChannel: func(ctx context.Context, input domain.CreateChannelInput) (domain.Channel, error) {
+			return store.CreateChannel(ctx, db, input)
+		},
+		UpdateChannel: func(ctx context.Context, id int64, input domain.UpdateChannelInput) error {
+			return store.UpdateChannel(ctx, db, id, input)
+		},
+		DeleteChannel: func(ctx context.Context, id int64) error {
+			return store.DeleteChannel(ctx, db, id)
+		},
+		CreateAPIKey: func(ctx context.Context, input domain.CreateAPIKeyInput) (domain.CreatedAPIKey, error) {
+			return store.CreateAPIKey(ctx, db, input)
+		},
+		UpdateAPIKey: func(ctx context.Context, id int64, input domain.UpdateAPIKeyInput) error {
+			return store.UpdateAPIKey(ctx, db, id, input)
+		},
+		DeleteAPIKey: func(ctx context.Context, id int64) error {
+			return store.DeleteAPIKey(ctx, db, id)
+		},
+		CreateModel: func(ctx context.Context, input domain.CreateModelMappingInput) (domain.ModelMapping, error) {
+			return store.CreateModelMapping(ctx, db, input)
+		},
+		UpdateModel: func(ctx context.Context, id int64, input domain.UpdateModelMappingInput) error {
+			return store.UpdateModelMapping(ctx, db, id, input)
+		},
+		DeleteModel: func(ctx context.Context, id int64) error {
+			return store.DeleteModelMapping(ctx, db, id)
+		},
+		CreateModelRoute: func(ctx context.Context, input domain.CreateModelRouteInput) (domain.ModelRoute, error) {
+			return store.CreateModelRoute(ctx, db, input)
+		},
+		UpdateModelRoute: func(ctx context.Context, id int64, input domain.UpdateModelRouteInput) error {
+			return store.UpdateModelRoute(ctx, db, id, input)
+		},
+		DeleteModelRoute: func(ctx context.Context, id int64) error {
+			return store.DeleteModelRoute(ctx, db, id)
+		},
+		ListRequestLogs: func(ctx context.Context) ([]domain.RequestLog, error) {
+			return store.ListRequestLogs(ctx, db)
+		},
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) {
+			return store.VerifyAPIKey(ctx, db, rawKey)
+		},
+		CreateRequestLog: func(ctx context.Context, item domain.RequestLog) error {
+			return store.CreateRequestLog(ctx, db, item)
+		},
+		CheckRateLimit: func(key string) bool {
+			return rateLimiter.Allow(key)
+		},
+		ProxyChat: func(ctx context.Context, body []byte) (*http.Response, error) {
+			_ = chatProvider
+			channel, err := store.GetFirstEnabledChannel(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			proxyResp, err := chatProvider.ForwardChatCompletions(ctx, channel, body)
+			if err != nil {
+				return nil, err
+			}
+
+			rec := &http.Response{
+				StatusCode: proxyResp.StatusCode,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(bytes.NewReader(proxyResp.Body)),
+			}
+			for key, values := range proxyResp.Headers {
+				rec.Header[key] = append([]string(nil), values...)
+			}
+			rec.Header.Set("X-Opencrab-Channel", channel.Name)
+			return rec, nil
+		},
+		CopyProxy:        provider.CopyResponse,
+		RenderProxyError: provider.RenderProxyError,
+	})
 
 	server := &http.Server{
-		Addr:              address,
+		Addr:              appConfig.HTTP.Address,
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	return &App{
-		address: address,
-		server:  server,
+		config: appConfig,
+		logger: logger,
+		db:     db,
+		client: client,
+		server: server,
 	}, nil
 }
 
@@ -49,6 +176,10 @@ func New() (*App, error) {
 // 是为了让“创建应用”和“运行应用”这两个阶段分开，
 // 后续更方便补测试、补初始化逻辑、补优雅关闭。
 func (a *App) Run() error {
-	fmt.Printf("OpenCrab 后端服务启动中，监听地址: %s\n", a.address)
+	a.logger.Info("后端服务启动中",
+		slog.String("address", a.config.HTTP.Address),
+		slog.String("db_path", a.config.DB.Path),
+	)
+	fmt.Printf("%s 后端服务启动中，环境: %s，监听地址: %s\n", a.config.App.Name, a.config.App.Environment, a.config.HTTP.Address)
 	return a.server.ListenAndServe()
 }

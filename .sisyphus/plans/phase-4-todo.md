@@ -6,18 +6,18 @@
 
 ## 待办清单
 
-- [ ] 初始化 Go 项目。
-- [ ] 创建 `cmd/api/main.go`。
-- [ ] 建立 `internal/` 分层目录。
-- [ ] 实现配置文件读取。
-- [ ] 实现环境变量覆盖。
-- [ ] 实现配置校验。
-- [ ] 建立 SQLite 初始化逻辑。
-- [ ] 建立 migration 机制。
-- [ ] 建立结构化日志。
-- [ ] 建立 request id 中间件。
-- [ ] 实现 `/healthz`。
-- [ ] 实现 `/readyz`。
+- [x] 初始化 Go 项目。
+- [x] 创建 `cmd/api/main.go`。
+- [x] 建立 `internal/` 分层目录。
+- [x] 实现配置文件读取。
+- [x] 实现环境变量覆盖。
+- [x] 实现配置校验。
+- [x] 建立 SQLite 初始化逻辑。
+- [x] 建立 migration 机制。
+- [x] 建立结构化日志。
+- [x] 建立 request id 中间件。
+- [x] 实现 `/healthz`。
+- [x] 实现 `/readyz`。
 
 ## 完成标准
 

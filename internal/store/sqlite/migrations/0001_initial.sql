@@ -1,0 +1,53 @@
+CREATE TABLE IF NOT EXISTS channels (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  api_key TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS models (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  alias TEXT NOT NULL UNIQUE,
+  upstream_model TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS model_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_alias TEXT NOT NULL,
+  channel_name TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 100,
+  fallback_model TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  key_hash TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS request_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  status_code INTEGER NOT NULL,
+  latency_ms INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

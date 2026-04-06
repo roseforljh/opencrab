@@ -6,18 +6,18 @@
 
 ## 待办清单
 
-- [ ] 设计 `channels` 表。
-- [ ] 设计 `models` 表。
-- [ ] 设计 `model_routes` 表。
-- [ ] 设计 `api_keys` 表。
-- [ ] 设计 `request_logs` 表。
-- [ ] 实现渠道 CRUD API。
-- [ ] 实现模型映射 CRUD API。
-- [ ] 实现路由规则 CRUD API。
-- [ ] 实现 API Key 管理 API。
-- [ ] 实现基础限流策略。
-- [ ] 实现请求日志摘要与查询。
-- [ ] 实现敏感字段脱敏。
+- [x] 设计 `channels` 表。
+- [x] 设计 `models` 表。
+- [x] 设计 `model_routes` 表。
+- [x] 设计 `api_keys` 表。
+- [x] 设计 `request_logs` 表。
+- [x] 实现渠道 CRUD API。
+- [x] 实现模型映射 CRUD API。
+- [x] 实现路由规则 CRUD API。
+- [x] 实现 API Key 管理 API。
+- [x] 实现基础限流策略。
+- [x] 实现请求日志摘要与查询。
+- [x] 实现敏感字段脱敏。
 
 ## 完成标准
 

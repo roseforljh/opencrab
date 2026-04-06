@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opencrab-api
+    environment:
+      OPENCRAB_APP_NAME: OpenCrab
+      OPENCRAB_ENV: production
+      OPENCRAB_HTTP_ADDR: :8080
+      OPENCRAB_DB_PATH: /app/data/opencrab.db
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "18080:8080"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: opencrab-web
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+    ports:
+      - "13000:3000"
