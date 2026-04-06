@@ -1,7 +1,11 @@
 import { PageContainer } from "@/components/layout/page-container";
+import { ChannelTestDialog } from "@/app/(console)/channels/channel-test-dialog";
+import { EditChannelDrawer } from "@/app/(console)/channels/edit-channel-drawer";
+import { NewChannelForm } from "@/app/(console)/channels/new-channel-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { FilterBar } from "@/components/shared/filter-bar";
+import { ProviderBrandIcon } from "@/components/shared/provider-brand-icon";
 import { SectionCard } from "@/components/shared/section-card";
 import { StaticTable, type StaticTableColumn } from "@/components/shared/static-table";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -13,7 +17,12 @@ import { channels } from "@/lib/mock/console-data";
 const columns: StaticTableColumn<(typeof channels)[number]>[] = [
   {
     header: "渠道名",
-    cell: (row) => <span className="font-medium text-foreground">{row.name}</span>
+    cell: (row) => (
+      <span className="inline-flex items-center gap-3 font-medium text-foreground">
+        <ProviderBrandIcon provider={row.provider.replace(" Compatible", "").replace("Anthropic", "Claude").replace("Gemini", "Gemini")} />
+        <span>{row.name}</span>
+      </span>
+    )
   },
   {
     header: "类型",
@@ -51,24 +60,7 @@ export default async function ChannelsPage() {
             triggerLabel={t("common.create")}
             trigger={<Button>{t("common.create")}</Button>}
           >
-            <div className="space-y-4 text-sm text-muted-foreground">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">渠道名称</label>
-                <input className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-out-smooth)] focus:border-ring focus:ring-2 focus:ring-ring/15" defaultValue="new-channel" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">兼容类型</label>
-                <input className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-out-smooth)] focus:border-ring focus:ring-2 focus:ring-ring/15" defaultValue="OpenAI Compatible" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">请求地址</label>
-                <input className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-out-smooth)] focus:border-ring focus:ring-2 focus:ring-ring/15" defaultValue="https://api.example.com/v1" />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline">测试连接</Button>
-                <Button>保存渠道</Button>
-              </div>
-            </div>
+            <NewChannelForm />
           </DetailDrawer>
         }
       />
@@ -77,7 +69,6 @@ export default async function ChannelsPage() {
         <FilterBar
           placeholder="搜索渠道名或地址"
           chips={[{ label: "全部状态" }, { label: "全部 Provider" }, { label: "最近更新" }]}
-          trailingAction={<Button variant="secondary">测试连通性</Button>}
         />
         <div className="mt-4">
           <StaticTable
@@ -86,37 +77,39 @@ export default async function ChannelsPage() {
             emptyTitle="暂无渠道"
             emptyDescription="添加第一个渠道后，这里会展示可接入的上游 provider。"
             rowAction={(row) => (
-              <DetailDrawer title={row.name} description="这里会承载渠道编辑表单、密钥配置和测试连接操作。" triggerLabel="查看详情">
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">基本信息</h3>
-                    <div className="mt-3 rounded-xl border border-border bg-card">
-                      <dl className="divide-y divide-border text-sm">
-                        <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-muted-foreground">渠道类型</dt>
-                          <dd className="col-span-2 text-foreground">{row.provider}</dd>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-muted-foreground">请求地址</dt>
-                          <dd className="col-span-2 font-mono text-foreground">{row.endpoint}</dd>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-muted-foreground">当前状态</dt>
-                          <dd className="col-span-2"><StatusBadge status={row.status} /></dd>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 px-4 py-3">
-                          <dt className="font-medium text-muted-foreground">覆盖模型数</dt>
-                          <dd className="col-span-2 text-foreground">{row.models}</dd>
-                        </div>
-                      </dl>
+              <div className="flex items-center justify-end gap-2">
+                <ChannelTestDialog row={row} />
+                <DetailDrawer title={row.name} description="这里会承载渠道编辑表单、密钥配置和测试连接操作。" triggerLabel="查看详情">
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-sm font-medium text-foreground">基本信息</h3>
+                      <div className="mt-3 rounded-xl border border-border bg-card">
+                        <dl className="divide-y divide-border text-sm">
+                          <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                            <dt className="font-medium text-muted-foreground">渠道类型</dt>
+                            <dd className="col-span-2 text-foreground">{row.provider}</dd>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                            <dt className="font-medium text-muted-foreground">请求地址</dt>
+                            <dd className="col-span-2 font-mono text-foreground">{row.endpoint}</dd>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                            <dt className="font-medium text-muted-foreground">当前状态</dt>
+                            <dd className="col-span-2"><StatusBadge status={row.status} /></dd>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                            <dt className="font-medium text-muted-foreground">覆盖模型数</dt>
+                            <dd className="col-span-2 text-foreground">{row.models}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <EditChannelDrawer row={row} />
                     </div>
                   </div>
-                  <div className="flex justify-end gap-3">
-                    <Button variant="outline">测试连接</Button>
-                    <Button>编辑配置</Button>
-                  </div>
-                </div>
-              </DetailDrawer>
+                </DetailDrawer>
+              </div>
             )}
           />
         </div>

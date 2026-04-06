@@ -11,7 +11,15 @@ import { I18nProvider } from "@/components/i18n-provider";
 // 当前先放最基础的标题与描述，后续会再根据页面和品牌完善 SEO 与图标配置。
 export const metadata: Metadata = {
   title: "OpenCrab 控制台",
-  description: "面向个人部署的大模型聚合 API 管理台"
+  description: "面向个人部署的大模型聚合 API 管理台",
+  icons: {
+    icon: [
+      { url: "/logo.png", type: "image/png", sizes: "32x32" },
+      { url: "/logo.png", type: "image/png", sizes: "192x192" }
+    ],
+    shortcut: "/logo.png",
+    apple: "/logo.png"
+  }
 };
 
 // RootLayout 是前端所有页面共享的根布局。

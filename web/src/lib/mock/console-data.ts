@@ -68,9 +68,30 @@ export const dashboardRecentLogs = [
 ];
 
 export const channels = [
-  { name: "openai-main", provider: "OpenAI Compatible", status: "启用", endpoint: "https://api.openai.com/v1", models: 12 },
-  { name: "anthropic-proxy", provider: "Anthropic Compatible", status: "启用", endpoint: "https://proxy.example.com/anthropic", models: 5 },
-  { name: "google-bridge", provider: "Gemini Compatible", status: "待验证", endpoint: "https://proxy.example.com/gemini", models: 4 }
+  {
+    name: "openai-main",
+    provider: "OpenAI Compatible",
+    status: "启用",
+    endpoint: "https://api.openai.com/v1",
+    models: 12,
+    modelIds: ["gpt-4.1", "gpt-4.1-mini", "o3-mini", "text-embedding-3-large"]
+  },
+  {
+    name: "anthropic-proxy",
+    provider: "Anthropic Compatible",
+    status: "启用",
+    endpoint: "https://proxy.example.com/anthropic",
+    models: 5,
+    modelIds: ["claude-3.7-sonnet", "claude-3.5-haiku", "claude-3-opus"]
+  },
+  {
+    name: "google-bridge",
+    provider: "Gemini Compatible",
+    status: "待验证",
+    endpoint: "https://proxy.example.com/gemini",
+    models: 4,
+    modelIds: ["gemini-2.5-pro", "gemini-2.0-flash", "embedding-001"]
+  }
 ];
 
 export const modelRoutes = [
@@ -80,9 +101,9 @@ export const modelRoutes = [
 ];
 
 export const apiKeys = [
-  { name: "web-console", preview: "sk-opencrab-12••••89", status: "启用", usage: "3,842 请求", lastUsed: "刚刚" },
-  { name: "obs-bot", preview: "sk-opencrab-45••••33", status: "禁用", usage: "0 请求", lastUsed: "2 天前" },
-  { name: "local-client", preview: "sk-opencrab-98••••17", status: "启用", usage: "1,220 请求", lastUsed: "12 分钟前" }
+  { name: "web-console", rawKey: "sk-opencrab-web-console-12ab34cd56ef78gh", preview: "sk-opencrab-12••••89", status: "启用", usage: "3,842 请求", lastUsed: "刚刚" },
+  { name: "obs-bot", rawKey: "sk-opencrab-obs-bot-45xy67zt89uv33aa", preview: "sk-opencrab-45••••33", status: "禁用", usage: "0 请求", lastUsed: "2 天前" },
+  { name: "local-client", rawKey: "sk-opencrab-local-client-98mn45pq17rs22tt", preview: "sk-opencrab-98••••17", status: "启用", usage: "1,220 请求", lastUsed: "12 分钟前" }
 ];
 
 export const logRows = [

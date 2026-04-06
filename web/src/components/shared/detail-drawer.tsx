@@ -11,16 +11,20 @@ export function DetailDrawer({
   description,
   triggerLabel,
   trigger,
+  open,
+  onOpenChange,
   children
 }: {
   title: string;
   description: string;
   triggerLabel: string;
   trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 }) {
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Trigger asChild>
         {trigger ?? <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 hover:text-primary">{triggerLabel}</Button>}
       </Dialog.Trigger>

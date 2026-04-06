@@ -168,6 +168,28 @@ body {
   }
 }
 
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 16px)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes modal-pop-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 16px)) scale(0.96);
+  }
+}
+
 .animate-overlay[data-state="open"] {
   animation: overlay-fade-in 180ms var(--ease-out-smooth);
 }
@@ -182,6 +204,44 @@ body {
 
 .animate-drawer[data-state="closed"] {
   animation: drawer-slide-out 220ms var(--ease-out-smooth);
+}
+
+.animate-modal[data-state="open"] {
+  animation: modal-pop-in 220ms var(--ease-emphasized);
+}
+
+.animate-modal[data-state="closed"] {
+  animation: modal-pop-out 180ms var(--ease-out-smooth);
+}
+
+@keyframes select-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes select-pop-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+.animate-select[data-state="open"] {
+  animation: select-pop-in 160ms var(--ease-out-smooth);
+}
+
+.animate-select[data-state="closed"] {
+  animation: select-pop-out 120ms var(--ease-out-smooth);
 }
 
 a {
