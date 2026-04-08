@@ -36,12 +36,16 @@ type Dependencies struct {
 	ListModels       func(ctx context.Context) ([]domain.ModelMapping, error)
 	ListModelRoutes  func(ctx context.Context) ([]domain.ModelRoute, error)
 	ListRequestLogs  func(ctx context.Context) ([]domain.RequestLog, error)
+	ClearRequestLogs func(ctx context.Context) error
+	ListSettings     func(ctx context.Context) ([]domain.SystemSettingGroup, error)
 	CreateChannel    func(ctx context.Context, input domain.CreateChannelInput) (domain.Channel, error)
 	UpdateChannel    func(ctx context.Context, id int64, input domain.UpdateChannelInput) error
 	DeleteChannel    func(ctx context.Context, id int64) error
+	TestChannel      func(ctx context.Context, id int64, model string) (domain.ChannelTestResult, error)
 	CreateAPIKey     func(ctx context.Context, input domain.CreateAPIKeyInput) (domain.CreatedAPIKey, error)
 	UpdateAPIKey     func(ctx context.Context, id int64, input domain.UpdateAPIKeyInput) error
 	DeleteAPIKey     func(ctx context.Context, id int64) error
+	UpdateSetting    func(ctx context.Context, input domain.UpdateSystemSettingInput) (domain.SystemSetting, error)
 	CreateModel      func(ctx context.Context, input domain.CreateModelMappingInput) (domain.ModelMapping, error)
 	UpdateModel      func(ctx context.Context, id int64, input domain.UpdateModelMappingInput) error
 	DeleteModel      func(ctx context.Context, id int64) error
@@ -51,8 +55,8 @@ type Dependencies struct {
 	VerifyAPIKey     func(ctx context.Context, rawKey string) (bool, error)
 	CreateRequestLog func(ctx context.Context, item domain.RequestLog) error
 	CheckRateLimit   func(key string) bool
-	ProxyChat        func(ctx context.Context, body []byte) (*http.Response, error)
-	CopyProxy        func(w http.ResponseWriter, resp *http.Response) error
+	ProxyChat        func(ctx context.Context, body []byte) (*domain.ProxyResponse, error)
+	CopyProxy        func(w http.ResponseWriter, resp *domain.ProxyResponse) error
 	RenderProxyError func(w http.ResponseWriter, err error)
 }
 
@@ -153,6 +157,10 @@ func NewRouter(deps Dependencies) http.Handler {
 				http.Error(w, "请求体格式不正确", http.StatusBadRequest)
 				return
 			}
+			if err := validateUpdateChannelInput(input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			if err := deps.UpdateChannel(req.Context(), id, input); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -175,6 +183,80 @@ func NewRouter(deps Dependencies) http.Handler {
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		})
+
+		admin.Post("/channels/{id}/test", func(w http.ResponseWriter, req *http.Request) {
+			if deps.TestChannel == nil {
+				http.Error(w, "channel test handler not configured", http.StatusNotImplemented)
+				return
+			}
+			id, err := parseInt64Param(req, "id")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			var input struct {
+				Model string `json:"model"`
+			}
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+					http.Error(w, "请求体格式不正确", http.StatusBadRequest)
+					return
+				}
+			}
+
+			startedAt := time.Now()
+			result, err := deps.TestChannel(req.Context(), id, strings.TrimSpace(input.Model))
+			if err != nil {
+				if deps.CreateRequestLog != nil {
+					details := marshalLogDetails(map[string]any{
+						"request_path": req.URL.Path,
+						"provider":     result.Provider,
+						"channel":      fallbackLogChannel(result.Channel, id),
+						"model":        fallbackLogModel(result.Model, input.Model),
+						"message":      result.Message,
+						"test_mode":    true,
+					})
+					_ = deps.CreateRequestLog(req.Context(), domain.RequestLog{
+						RequestID:    middleware.GetReqID(req.Context()),
+						Model:        fallbackLogModel(result.Model, input.Model),
+						Channel:      fallbackLogChannel(result.Channel, id),
+						StatusCode:   fallbackStatusCode(result.StatusCode),
+						LatencyMs:    time.Since(startedAt).Milliseconds(),
+						RequestBody:  truncateLogBody(marshalLogDetails(map[string]any{"model": strings.TrimSpace(input.Model), "test_mode": true})),
+						ResponseBody: truncateLogBody(result.Message),
+						Details:      details,
+						CreatedAt:    time.Now().Format(time.RFC3339),
+					})
+				}
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+
+			if deps.CreateRequestLog != nil {
+				details := marshalLogDetails(map[string]any{
+					"request_path": req.URL.Path,
+					"provider":     result.Provider,
+					"channel":      fallbackLogChannel(result.Channel, id),
+					"model":        fallbackLogModel(result.Model, input.Model),
+					"message":      result.Message,
+					"test_mode":    true,
+				})
+				_ = deps.CreateRequestLog(req.Context(), domain.RequestLog{
+					RequestID:    middleware.GetReqID(req.Context()),
+					Model:        fallbackLogModel(result.Model, input.Model),
+					Channel:      fallbackLogChannel(result.Channel, id),
+					StatusCode:   result.StatusCode,
+					LatencyMs:    time.Since(startedAt).Milliseconds(),
+					RequestBody:  truncateLogBody(marshalLogDetails(map[string]any{"model": strings.TrimSpace(input.Model), "test_mode": true})),
+					ResponseBody: truncateLogBody(result.Message),
+					Details:      details,
+					CreatedAt:    time.Now().Format(time.RFC3339),
+				})
+			}
+
+			writeJSON(w, http.StatusOK, result)
 		})
 
 		admin.Get("/api-keys", func(w http.ResponseWriter, req *http.Request) {
@@ -426,6 +508,60 @@ func NewRouter(deps Dependencies) http.Handler {
 
 			writeJSON(w, http.StatusOK, map[string]any{"items": items})
 		})
+
+		admin.Delete("/logs", func(w http.ResponseWriter, req *http.Request) {
+			if deps.ClearRequestLogs == nil {
+				http.Error(w, "logs clear handler not configured", http.StatusNotImplemented)
+				return
+			}
+
+			if err := deps.ClearRequestLogs(req.Context()); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		})
+
+		admin.Get("/settings", func(w http.ResponseWriter, req *http.Request) {
+			if deps.ListSettings == nil {
+				http.Error(w, "settings handler not configured", http.StatusNotImplemented)
+				return
+			}
+
+			items, err := deps.ListSettings(req.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		})
+
+		admin.Put("/settings", func(w http.ResponseWriter, req *http.Request) {
+			if deps.UpdateSetting == nil {
+				http.Error(w, "settings update handler not configured", http.StatusNotImplemented)
+				return
+			}
+
+			var input domain.UpdateSystemSettingInput
+			if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+				http.Error(w, "请求体格式不正确", http.StatusBadRequest)
+				return
+			}
+			if strings.TrimSpace(input.Key) == "" {
+				http.Error(w, "设置项 key 不能为空", http.StatusBadRequest)
+				return
+			}
+
+			updated, err := deps.UpdateSetting(req.Context(), input)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			writeJSON(w, http.StatusOK, updated)
+		})
 	})
 
 	r.Post("/v1/chat/completions", func(w http.ResponseWriter, req *http.Request) {
@@ -477,12 +613,14 @@ func NewRouter(deps Dependencies) http.Handler {
 			return
 		}
 
-		channelName := resp.Header.Get("X-Opencrab-Channel")
+		channelName := firstHeaderValue(resp.Headers, "X-Opencrab-Channel")
 		if channelName == "" {
 			channelName = "default-channel"
 		}
 
 		modelName := extractModel(body)
+		usage := extractUsageMetrics(resp.Body)
+		responseBody := truncateLogBody(string(resp.Body))
 
 		if err := deps.CopyProxy(w, resp); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -490,13 +628,33 @@ func NewRouter(deps Dependencies) http.Handler {
 		}
 
 		if deps.CreateRequestLog != nil {
+			details := marshalLogDetails(map[string]any{
+				"request_path":      req.URL.Path,
+				"channel":           channelName,
+				"model":             modelName,
+				"request_body":      truncateLogBody(string(body)),
+				"response_body":     responseBody,
+				"response_status":   resp.StatusCode,
+				"prompt_tokens":     usage.PromptTokens,
+				"completion_tokens": usage.CompletionTokens,
+				"total_tokens":      usage.TotalTokens,
+				"cache_hit":         usage.CacheHit,
+				"test_mode":         false,
+			})
 			_ = deps.CreateRequestLog(req.Context(), domain.RequestLog{
-				RequestID:  middleware.GetReqID(req.Context()),
-				Model:      modelName,
-				Channel:    channelName,
-				StatusCode: resp.StatusCode,
-				LatencyMs:  time.Since(startedAt).Milliseconds(),
-				CreatedAt:  time.Now().Format(time.RFC3339),
+				RequestID:        middleware.GetReqID(req.Context()),
+				Model:            modelName,
+				Channel:          channelName,
+				StatusCode:       resp.StatusCode,
+				LatencyMs:        time.Since(startedAt).Milliseconds(),
+				PromptTokens:     usage.PromptTokens,
+				CompletionTokens: usage.CompletionTokens,
+				TotalTokens:      usage.TotalTokens,
+				CacheHit:         usage.CacheHit,
+				RequestBody:      truncateLogBody(string(body)),
+				ResponseBody:     responseBody,
+				Details:          details,
+				CreatedAt:        time.Now().Format(time.RFC3339),
 			})
 		}
 	})
@@ -521,17 +679,39 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 }
 
 func validateCreateChannelInput(input domain.CreateChannelInput) error {
-	if strings.TrimSpace(input.Name) == "" {
+	return validateChannelInput(input.Name, input.Provider, input.Endpoint, input.APIKey, input.ModelIDs, true)
+}
+
+func validateUpdateChannelInput(input domain.UpdateChannelInput) error {
+	return validateChannelInput(input.Name, input.Provider, input.Endpoint, input.APIKey, input.ModelIDs, false)
+}
+
+func validateChannelInput(name string, provider string, endpoint string, apiKey string, modelIDs []string, requireAPIKey bool) error {
+	if strings.TrimSpace(name) == "" {
 		return fmt.Errorf("渠道名称不能为空")
 	}
-	if strings.TrimSpace(input.Provider) == "" {
+	if strings.TrimSpace(provider) == "" {
 		return fmt.Errorf("渠道类型不能为空")
 	}
-	if strings.TrimSpace(input.Endpoint) == "" {
+	if strings.TrimSpace(endpoint) == "" {
 		return fmt.Errorf("请求地址不能为空")
 	}
-	if strings.TrimSpace(input.APIKey) == "" {
+	if requireAPIKey && strings.TrimSpace(apiKey) == "" {
 		return fmt.Errorf("API Key 不能为空")
+	}
+	if len(modelIDs) == 0 {
+		return fmt.Errorf("至少添加一个模型 ID")
+	}
+	seen := make(map[string]struct{}, len(modelIDs))
+	for _, modelID := range modelIDs {
+		normalized := strings.TrimSpace(modelID)
+		if normalized == "" {
+			return fmt.Errorf("模型 ID 不能为空")
+		}
+		if _, exists := seen[normalized]; exists {
+			return fmt.Errorf("模型 ID 不能重复")
+		}
+		seen[normalized] = struct{}{}
 	}
 	return nil
 }
@@ -553,6 +733,94 @@ func extractModel(body []byte) string {
 		return "unknown-model"
 	}
 	return model
+}
+
+func fallbackLogModel(resultModel string, inputModel string) string {
+	if strings.TrimSpace(resultModel) != "" {
+		return resultModel
+	}
+	if strings.TrimSpace(inputModel) != "" {
+		return strings.TrimSpace(inputModel)
+	}
+	return "unknown-model"
+}
+
+func fallbackLogChannel(resultChannel string, id int64) string {
+	if strings.TrimSpace(resultChannel) != "" {
+		return resultChannel
+	}
+	return fmt.Sprintf("channel-%d", id)
+}
+
+func fallbackStatusCode(statusCode int) int {
+	if statusCode > 0 {
+		return statusCode
+	}
+	return http.StatusBadGateway
+}
+
+func marshalLogDetails(payload map[string]any) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func truncateLogBody(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) <= 1200 {
+		return trimmed
+	}
+	return trimmed[:1200] + "..."
+}
+
+func firstHeaderValue(headers map[string][]string, key string) string {
+	values := headers[key]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+type usageMetrics struct {
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+	CacheHit         bool
+}
+
+func extractUsageMetrics(body []byte) usageMetrics {
+	var payload struct {
+		Usage struct {
+			PromptTokens         int64 `json:"prompt_tokens"`
+			CompletionTokens     int64 `json:"completion_tokens"`
+			TotalTokens          int64 `json:"total_tokens"`
+			PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
+			PromptTokensDetails  struct {
+				CachedTokens int64 `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return usageMetrics{}
+	}
+
+	totalTokens := payload.Usage.TotalTokens
+	if totalTokens == 0 {
+		totalTokens = payload.Usage.PromptTokens + payload.Usage.CompletionTokens
+	}
+
+	return usageMetrics{
+		PromptTokens:     payload.Usage.PromptTokens,
+		CompletionTokens: payload.Usage.CompletionTokens,
+		TotalTokens:      totalTokens,
+		CacheHit:         payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0,
+	}
 }
 
 func parseInt64Param(req *http.Request, key string) (int64, error) {

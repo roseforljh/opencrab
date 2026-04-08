@@ -2,16 +2,9 @@
 
 import { ProviderBrandIcon } from "@/components/shared/provider-brand-icon";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CHANNEL_PROVIDERS } from "@/lib/channel-provider";
 
-const providers = [
-  { value: "Gemini" },
-  { value: "OpenAI" },
-  { value: "Claude" },
-  { value: "GLM" },
-  { value: "KIMI" },
-  { value: "MiniMAX" },
-  { value: "OpenRouter" }
-] as const;
+const providers = CHANNEL_PROVIDERS.map((value) => ({ value }));
 
 export function ProviderSelect({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
   const active = providers.find((item) => item.value === value) ?? providers[1];

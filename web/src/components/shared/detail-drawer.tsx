@@ -42,7 +42,7 @@ export function DetailDrawer({
               </button>
             </Dialog.Close>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-6">{children}</div>
+          <div className="flex-1 overflow-y-auto px-6 py-6 [scrollbar-gutter:stable_both-edges]">{children}</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
 import { StatusSelect } from "@/app/(console)/api-keys/status-select";
 import { Button } from "@/components/ui/button";
@@ -9,66 +8,33 @@ import { Input } from "@/components/ui/input";
 
 export type NewApiKeyDraft = {
   name: string;
-  status: string;
-  rawKey: string;
-  preview: string;
+  enabled: boolean;
 };
-
-function generateApiKey() {
-  const randomPart = Array.from({ length: 24 }, () => Math.floor(Math.random() * 36).toString(36)).join("");
-  return `sk-opencrab-${randomPart}`;
-}
-
-function toPreview(rawKey: string) {
-  const head = rawKey.slice(0, 14);
-  const tail = rawKey.slice(-4);
-  return `${head}••••${tail}`;
-}
 
 export function NewApiKeyForm({
   onCreate,
   onCancel
 }: {
-  onCreate: (draft: NewApiKeyDraft) => void;
+  onCreate: (draft: NewApiKeyDraft) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState("new-api-key");
   const [status, setStatus] = useState("启用");
-  const [generatedKey, setGeneratedKey] = useState(generateApiKey());
-  const [copied, setCopied] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const preview = useMemo(() => toPreview(generatedKey), [generatedKey]);
-
-  const handleGenerate = () => {
-    const next = generateApiKey();
-    setGeneratedKey(next);
-    setCopied(false);
-    onCreate({
-      name: name.trim() || "new-api-key",
-      status,
-      rawKey: next,
-      preview: toPreview(next)
-    });
-  };
-
-  const handleRegeneratePreview = () => {
-    setIsRegenerating(true);
-    window.setTimeout(() => {
-      setGeneratedKey(generateApiKey());
-      setCopied(false);
-      setIsRegenerating(false);
-    }, 480);
-  };
-
-  const handleCopy = async () => {
+  const handleCreate = async () => {
+    setError(null);
+    setIsCreating(true);
     try {
-      await navigator.clipboard.writeText(generatedKey);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      setCopied(false);
+      await onCreate({
+        name: name.trim() || "new-api-key",
+        enabled: status === "启用"
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "创建失败");
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -84,53 +50,17 @@ export function NewApiKeyForm({
         <StatusSelect value={status} onValueChange={setStatus} />
       </div>
 
-      <div className="rounded-2xl border border-border bg-card/60 p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">密钥预览</h3>
-            <p className="mt-1 text-sm text-muted-foreground">可以重新生成、显示完整内容或复制到剪贴板。</p>
-          </div>
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">{status}</span>
-        </div>
-
-        <div className="mt-4 flex gap-2">
-          <Input readOnly value={visible ? generatedKey : preview} className="font-mono" />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => setVisible((current) => !current)}
-            title={visible ? "隐藏 Key" : "显示 Key"}
-            className={visible ? "border-primary/30 bg-primary/10 text-primary" : ""}
-          >
-            {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={handleRegeneratePreview}
-            title="重新生成"
-            className={isRegenerating ? "border-primary/30 bg-primary/10 text-primary" : ""}
-          >
-            <RefreshCw className={`h-4 w-4 ${isRegenerating ? "animate-smooth-spin" : ""}`} />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => void handleCopy()}
-            title={copied ? "已复制" : "复制 Key"}
-            className={copied ? "border-success/30 bg-success/10 text-success" : ""}
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
+      <div className="rounded-2xl border border-border bg-card/60 p-4 text-sm leading-6 text-muted-foreground">
+        后端会在创建成功时返回一次完整密钥，控制台只会保留本次创建拿到的原文，刷新页面后不再展示。
       </div>
+
+      {error ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div> : null}
 
       <div className="flex justify-end gap-3 pt-2">
         <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
-        <Button type="button" onClick={handleGenerate}>生成密钥</Button>
+        <Button type="button" onClick={handleCreate} className={isCreating ? "pointer-events-none" : ""}>
+          {isCreating ? "生成中..." : "生成密钥"}
+        </Button>
       </div>
     </div>
   );

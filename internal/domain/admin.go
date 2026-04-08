@@ -1,11 +1,20 @@
 package domain
 
 type Channel struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
-	Endpoint string `json:"endpoint"`
-	Enabled  bool   `json:"enabled"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Provider  string `json:"provider"`
+	Endpoint  string `json:"endpoint"`
+	Enabled   bool   `json:"enabled"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ChannelTestResult struct {
+	Channel    string `json:"channel,omitempty"`
+	Provider   string `json:"provider"`
+	Model      string `json:"model"`
+	StatusCode int    `json:"status_code"`
+	Message    string `json:"message"`
 }
 
 type APIKey struct {
@@ -29,29 +38,56 @@ type ModelRoute struct {
 }
 
 type RequestLog struct {
-	ID         int64  `json:"id"`
-	RequestID  string `json:"request_id"`
-	Model      string `json:"model"`
-	Channel    string `json:"channel"`
-	StatusCode int    `json:"status_code"`
-	LatencyMs  int64  `json:"latency_ms"`
-	CreatedAt  string `json:"created_at"`
+	ID               int64  `json:"id"`
+	RequestID        string `json:"request_id"`
+	Model            string `json:"model"`
+	Channel          string `json:"channel"`
+	StatusCode       int    `json:"status_code"`
+	LatencyMs        int64  `json:"latency_ms"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+	TotalTokens      int64  `json:"total_tokens"`
+	CacheHit         bool   `json:"cache_hit"`
+	RequestBody      string `json:"request_body"`
+	ResponseBody     string `json:"response_body"`
+	Details          string `json:"details"`
+	CreatedAt        string `json:"created_at"`
+}
+
+type SystemSetting struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type SystemSettingItem struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Value       string `json:"value"`
+}
+
+type SystemSettingGroup struct {
+	Title string              `json:"title"`
+	Items []SystemSettingItem `json:"items"`
 }
 
 type CreateChannelInput struct {
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
-	Endpoint string `json:"endpoint"`
-	APIKey   string `json:"api_key"`
-	Enabled  bool   `json:"enabled"`
+	Name     string   `json:"name"`
+	Provider string   `json:"provider"`
+	Endpoint string   `json:"endpoint"`
+	APIKey   string   `json:"api_key"`
+	Enabled  bool     `json:"enabled"`
+	ModelIDs []string `json:"model_ids"`
 }
 
 type UpdateChannelInput struct {
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
-	Endpoint string `json:"endpoint"`
-	APIKey   string `json:"api_key"`
-	Enabled  bool   `json:"enabled"`
+	Name     string   `json:"name"`
+	Provider string   `json:"provider"`
+	Endpoint string   `json:"endpoint"`
+	APIKey   string   `json:"api_key"`
+	Enabled  bool     `json:"enabled"`
+	ModelIDs []string `json:"model_ids"`
 }
 
 type CreateAPIKeyInput struct {
@@ -61,6 +97,11 @@ type CreateAPIKeyInput struct {
 
 type UpdateAPIKeyInput struct {
 	Enabled bool `json:"enabled"`
+}
+
+type UpdateSystemSettingInput struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type CreateModelMappingInput struct {

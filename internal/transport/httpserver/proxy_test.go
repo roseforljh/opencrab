@@ -3,10 +3,11 @@ package httpserver
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"opencrab/internal/domain"
 )
 
 func TestProxyChatCompletionsCopiesResponse(t *testing.T) {
@@ -14,22 +15,21 @@ func TestProxyChatCompletionsCopiesResponse(t *testing.T) {
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) {
 			return true, nil
 		},
-		ProxyChat: func(ctx context.Context, body []byte) (*http.Response, error) {
-			upstream := httptest.NewRecorder()
-			upstream.Header().Set("Content-Type", "application/json")
-			upstream.WriteHeader(http.StatusOK)
-			_, _ = upstream.WriteString(`{"id":"chatcmpl-test"}`)
-			return upstream.Result(), nil
+		ProxyChat: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
+			return &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"application/json"}},
+				Body:       []byte(`{"id":"chatcmpl-test"}`),
+			}, nil
 		},
-		CopyProxy: func(w http.ResponseWriter, resp *http.Response) error {
-			defer resp.Body.Close()
-			for key, values := range resp.Header {
+		CopyProxy: func(w http.ResponseWriter, resp *domain.ProxyResponse) error {
+			for key, values := range resp.Headers {
 				for _, value := range values {
 					w.Header().Add(key, value)
 				}
 			}
 			w.WriteHeader(resp.StatusCode)
-			_, err := io.Copy(w, resp.Body)
+			_, err := w.Write(resp.Body)
 			return err
 		},
 	})
@@ -54,23 +54,21 @@ func TestProxyChatCompletionsCopiesStreamResponse(t *testing.T) {
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) {
 			return true, nil
 		},
-		ProxyChat: func(ctx context.Context, body []byte) (*http.Response, error) {
-			upstream := httptest.NewRecorder()
-			upstream.Header().Set("Content-Type", "text/event-stream")
-			upstream.WriteHeader(http.StatusOK)
-			_, _ = upstream.WriteString("data: {\"id\":\"chunk-1\"}\n\n")
-			_, _ = upstream.WriteString("data: [DONE]\n\n")
-			return upstream.Result(), nil
+		ProxyChat: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
+			return &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"text/event-stream"}},
+				Body:       []byte("data: {\"id\":\"chunk-1\"}\n\ndata: [DONE]\n\n"),
+			}, nil
 		},
-		CopyProxy: func(w http.ResponseWriter, resp *http.Response) error {
-			defer resp.Body.Close()
-			for key, values := range resp.Header {
+		CopyProxy: func(w http.ResponseWriter, resp *domain.ProxyResponse) error {
+			for key, values := range resp.Headers {
 				for _, value := range values {
 					w.Header().Add(key, value)
 				}
 			}
 			w.WriteHeader(resp.StatusCode)
-			_, err := io.Copy(w, resp.Body)
+			_, err := w.Write(resp.Body)
 			return err
 		},
 	})

@@ -1,0 +1,1 @@
+ALTER TABLE request_logs ADD COLUMN details TEXT NOT NULL DEFAULT '';

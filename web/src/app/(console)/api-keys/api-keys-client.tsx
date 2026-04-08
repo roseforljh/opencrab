@@ -15,13 +15,21 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 
 type ApiKeyRow = {
+	id: number;
   name: string;
-  rawKey: string;
-  preview: string;
+  rawKey?: string;
   status: string;
-  usage: string;
-  lastUsed: string;
 };
+
+function toPreview(rawKey?: string) {
+  if (!rawKey) {
+    return "仅创建时展示";
+  }
+
+  const head = rawKey.slice(0, 14);
+  const tail = rawKey.slice(-4);
+  return `${head}••••${tail}`;
+}
 
 export function ApiKeysClient({
   eyebrow,
@@ -50,39 +58,44 @@ export function ApiKeysClient({
     },
     {
       header: "预览",
-      cell: (row) => <span className="font-mono text-xs text-muted-foreground">{row.preview}</span>
+      cell: (row) => <span className="font-mono text-xs text-muted-foreground">{toPreview(row.rawKey)}</span>
     },
     {
       header: "状态",
       cell: (row) => <StatusBadge status={row.status} />
     },
     {
-      header: "用量",
-      cell: (row) => row.usage
-    },
-    {
-      header: "最近使用",
-      cell: (row) => row.lastUsed
+      header: "编号",
+      cell: (row) => row.id
     }
   ];
 
-  const handleCreate = (draft: NewApiKeyDraft) => {
-    setRows((current) => [
-      {
-        name: draft.name,
-        rawKey: draft.rawKey,
-        preview: draft.preview,
-        status: draft.status,
-        usage: "0 请求",
-        lastUsed: "刚刚创建"
-      },
-      ...current
-    ]);
+  const handleCreate = async (draft: NewApiKeyDraft) => {
+    const response = await fetch("/api/admin/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: draft.name.trim(), enabled: draft.enabled })
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const created = (await response.json()) as { id: number; name: string; raw_key: string; enabled: boolean };
+    setRows((current) => [{ id: created.id, name: created.name, rawKey: created.raw_key, status: created.enabled ? "启用" : "禁用" }, ...current]);
     setCreateOpen(false);
   };
 
-  const handleStatusChange = (name: string, status: string) => {
-    setRows((current) => current.map((row) => (row.name === name ? { ...row, status } : row)));
+  const handleStatusChange = async (id: number, status: string) => {
+    const response = await fetch(`/api/admin/api-keys/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: status === "启用" })
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, status } : row)));
   };
 
   return (
@@ -121,7 +134,7 @@ export function ApiKeysClient({
             emptyDescription="创建第一个密钥后，这里会展示调用状态和最近使用时间。"
             rowAction={(row) => (
               <DetailDrawer title={row.name} description="这里会承载复制、禁用、重置和查看权限等操作。" triggerLabel="管理">
-                <ApiKeyManager row={row} onStatusChange={(status) => handleStatusChange(row.name, status)} />
+                <ApiKeyManager row={row} onStatusChange={(status) => handleStatusChange(row.id, status)} />
               </DetailDrawer>
             )}
           />

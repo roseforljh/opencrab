@@ -23,5 +23,6 @@ services:
       - api
     environment:
       NODE_ENV: production
+      OPENCRAB_ADMIN_API_BASE: http://api:8080
     ports:
       - "13000:3000"

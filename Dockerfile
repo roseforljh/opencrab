@@ -16,7 +16,10 @@ WORKDIR /app
 COPY --from=builder /opencrab-api /usr/local/bin/opencrab-api
 COPY .env.example /app/.env.example
 
-RUN mkdir -p /app/data
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& mkdir -p /app/data
 
 EXPOSE 8080
 

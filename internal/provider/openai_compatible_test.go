@@ -21,3 +21,44 @@ func TestBuildChatCompletionsURL(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildClaudeMessagesURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		expect   string
+	}{
+		{name: "base endpoint", endpoint: "https://api.anthropic.com", expect: "https://api.anthropic.com/v1/messages"},
+		{name: "v1 endpoint", endpoint: "https://api.anthropic.com/v1", expect: "https://api.anthropic.com/v1/messages"},
+		{name: "full endpoint", endpoint: "https://api.anthropic.com/v1/messages", expect: "https://api.anthropic.com/v1/messages"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildClaudeMessagesURL(tt.endpoint); got != tt.expect {
+				t.Fatalf("expected %s, got %s", tt.expect, got)
+			}
+		})
+	}
+}
+
+func TestBuildGeminiGenerateContentURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		model    string
+		expect   string
+	}{
+		{name: "base endpoint", endpoint: "https://generativelanguage.googleapis.com", model: "gemini-2.0-flash", expect: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"},
+		{name: "version endpoint", endpoint: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-2.0-flash", expect: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"},
+		{name: "model endpoint", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash", model: "gemini-2.0-flash", expect: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildGeminiGenerateContentURL(tt.endpoint, tt.model); got != tt.expect {
+				t.Fatalf("expected %s, got %s", tt.expect, got)
+			}
+		})
+	}
+}

@@ -90,6 +90,39 @@ body {
   scrollbar-gutter: stable;
 }
 
+html {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, currentColor 8%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, currentColor 7%, transparent);
+  border: 0 solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, currentColor 11%, transparent);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.dark {
+  scrollbar-color: color-mix(in srgb, white 10%, transparent) transparent;
+}
+
 body {
   text-rendering: optimizeLegibility;
   background-image:

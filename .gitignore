@@ -36,3 +36,5 @@ tmp/
 Thumbs.db
 .idea/
 .vscode/
+AGENTS.md
+.gstack/

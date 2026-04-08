@@ -87,7 +87,7 @@ export function AppSidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                prefetch={true}
+                prefetch={false}
                 ref={(node) => {
                   navRefs.current[item.href] = node;
                 }}

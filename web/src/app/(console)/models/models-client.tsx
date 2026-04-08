@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, Plus, ArrowRight, Settings2 } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
@@ -9,19 +9,38 @@ import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { modelRoutes } from "@/lib/mock/console-data";
+
+type ModelRouteRow = {
+  id: number;
+  modelId?: number;
+  alias: string;
+  target: string;
+  channel: string;
+  priority: string;
+  fallback: string;
+};
 
 export function ModelsClient({
   eyebrow,
   title,
-  description
+  description,
+  initialRoutes,
+  channelNames
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  initialRoutes: ModelRouteRow[];
+  channelNames: string[];
 }) {
-  const [selectedAlias, setSelectedAlias] = useState(modelRoutes[0].alias);
-  const selectedRoute = modelRoutes.find((route) => route.alias === selectedAlias) ?? modelRoutes[0];
+  const [selectedAlias, setSelectedAlias] = useState(initialRoutes[0]?.alias ?? "");
+  const [keyword, setKeyword] = useState("");
+
+  const filteredRoutes = useMemo(
+    () => initialRoutes.filter((route) => route.alias.toLowerCase().includes(keyword.toLowerCase()) || route.target.toLowerCase().includes(keyword.toLowerCase())),
+    [initialRoutes, keyword]
+  );
+  const selectedRoute = filteredRoutes.find((route) => route.alias === selectedAlias) ?? filteredRoutes[0];
 
   return (
     <PageContainer>
@@ -32,7 +51,7 @@ export function ModelsClient({
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="搜索别名..." className="pl-9 bg-card" />
+              <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索别名..." className="bg-card pl-9" />
             </div>
             <Button size="icon" variant="outline" className="shrink-0">
               <Plus className="h-4 w-4" />
@@ -40,7 +59,7 @@ export function ModelsClient({
           </div>
 
           <div className="flex flex-col gap-2">
-            {modelRoutes.map((route) => (
+            {filteredRoutes.map((route) => (
               <button
                 key={route.alias}
                 onClick={() => setSelectedAlias(route.alias)}
@@ -69,43 +88,52 @@ export function ModelsClient({
             title="路由配置"
             description="当前选中别名的主路由规则。"
             action={
-              <DetailDrawer title="编辑路由规则" description="修改模型别名的目标渠道和优先级。" triggerLabel="编辑">
-                <div className="space-y-4 text-sm text-muted-foreground">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">目标模型</label>
-                    <Input defaultValue={selectedRoute.target} />
+              selectedRoute ? (
+                <DetailDrawer title="编辑路由规则" description="修改模型别名的目标渠道和优先级。" triggerLabel="编辑">
+                  <div className="space-y-4 text-sm text-muted-foreground">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">目标模型</label>
+                      <Input defaultValue={selectedRoute.target} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">目标渠道</label>
+                      <Input defaultValue={selectedRoute.channel} list="channel-options" />
+                      <datalist id="channel-options">
+                        {channelNames.map((channel) => <option key={channel} value={channel} />)}
+                      </datalist>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">优先级</label>
+                      <Input defaultValue={selectedRoute.priority} />
+                    </div>
+                    <Button className="w-full">保存更改</Button>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">目标渠道</label>
-                    <Input defaultValue={selectedRoute.channel} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">优先级</label>
-                    <Input defaultValue={selectedRoute.priority} />
-                  </div>
-                  <Button className="w-full">保存更改</Button>
-                </div>
-              </DetailDrawer>
+                </DetailDrawer>
+              ) : null
             }
           >
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">对外别名 (Alias)</span>
-                <p className="text-base font-medium text-foreground">{selectedRoute.alias}</p>
+            {selectedRoute ? (
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-1">
+                  <span className="text-sm font-medium text-muted-foreground">对外别名 (Alias)</span>
+                  <p className="text-base font-medium text-foreground">{selectedRoute.alias}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm font-medium text-muted-foreground">优先级</span>
+                  <p className="text-base font-medium text-foreground">{selectedRoute.priority}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm font-medium text-muted-foreground">目标模型 (Target)</span>
+                  <p className="text-base font-medium text-foreground">{selectedRoute.target}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm font-medium text-muted-foreground">目标渠道 (Channel)</span>
+                  <p className="text-base font-medium text-foreground">{selectedRoute.channel}</p>
+                </div>
               </div>
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">优先级</span>
-                <p className="text-base font-medium text-foreground">{selectedRoute.priority}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">目标模型 (Target)</span>
-                <p className="text-base font-medium text-foreground">{selectedRoute.target}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">目标渠道 (Channel)</span>
-                <p className="text-base font-medium text-foreground">{selectedRoute.channel}</p>
-              </div>
-            </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">暂无模型路由数据。</div>
+            )}
           </SectionCard>
 
           <SectionCard
@@ -118,15 +146,19 @@ export function ModelsClient({
               </Button>
             }
           >
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">默认回退模型</p>
-                  <p className="mt-1 text-sm text-muted-foreground">当前配置为 {selectedRoute.fallback}</p>
+            {selectedRoute ? (
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">默认回退模型</p>
+                    <p className="mt-1 text-sm text-muted-foreground">当前配置为 {selectedRoute.fallback || "未配置"}</p>
+                  </div>
+                  <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success ring-1 ring-inset ring-success/20">已配置</span>
                 </div>
-                <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success ring-1 ring-inset ring-success/20">已启用</span>
               </div>
-            </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">暂无回退策略。</div>
+            )}
           </SectionCard>
         </div>
       </section>

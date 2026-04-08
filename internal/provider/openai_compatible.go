@@ -87,17 +87,15 @@ func DumpRequest(req *http.Request) string {
 	return string(dump)
 }
 
-func CopyResponse(w http.ResponseWriter, resp *http.Response) error {
-	defer resp.Body.Close()
-
-	for key, values := range resp.Header {
+func CopyResponse(w http.ResponseWriter, resp *domain.ProxyResponse) error {
+	for key, values := range resp.Headers {
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
 
-	if _, err := io.Copy(w, resp.Body); err != nil {
+	if _, err := w.Write(resp.Body); err != nil {
 		return fmt.Errorf("写入代理响应失败: %w", err)
 	}
 
@@ -109,7 +107,7 @@ func buildChatCompletionsURL(endpoint string) string {
 	if strings.HasSuffix(trimmed, "/chat/completions") {
 		return trimmed
 	}
-	if strings.HasSuffix(trimmed, "/v1") {
+	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v4") {
 		return trimmed + "/chat/completions"
 	}
 	return trimmed + "/v1/chat/completions"

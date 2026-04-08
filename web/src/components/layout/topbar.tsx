@@ -35,11 +35,6 @@ export function Topbar() {
           <span className="flex h-2.5 w-2.5 rounded-full bg-success shadow-[0_0_12px_rgba(34,197,94,0.45)]"></span>
           <span className="text-muted-foreground">{t("topbar.system_normal")}</span>
         </div>
-
-        <span className="hidden rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground sm:inline-flex">
-          {t("topbar.demo_data")}
-        </span>
-
         <button
           onClick={() => setLanguage(language === "zh-CN" ? "en-US" : "zh-CN")}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-muted-foreground transition-[background-color,color,border-color,transform] duration-200 ease-[var(--ease-out-smooth)] hover:-translate-y-0.5 hover:bg-accent hover:text-foreground"

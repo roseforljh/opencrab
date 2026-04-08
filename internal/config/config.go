@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -10,6 +11,7 @@ type Config struct {
 	App  AppConfig
 	DB   DBConfig
 	HTTP HTTPConfig
+	TLS  TLSConfig
 }
 
 type AppConfig struct {
@@ -25,6 +27,10 @@ type DBConfig struct {
 	Path string
 }
 
+type TLSConfig struct {
+	UpstreamInsecureSkipVerify bool
+}
+
 func Load() Config {
 	return Config{
 		App: AppConfig{
@@ -36,6 +42,9 @@ func Load() Config {
 		},
 		HTTP: HTTPConfig{
 			Address: getEnv("OPENCRAB_HTTP_ADDR", ":8080"),
+		},
+		TLS: TLSConfig{
+			UpstreamInsecureSkipVerify: getEnvBool("OPENCRAB_UPSTREAM_TLS_INSECURE_SKIP_VERIFY", false),
 		},
 	}
 }
@@ -79,4 +88,18 @@ func getEnv(key, fallback string) string {
 	}
 
 	return value
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }

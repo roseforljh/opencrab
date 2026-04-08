@@ -1,11 +1,10 @@
 package app
 
 import (
-	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -60,9 +59,15 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: appConfig.TLS.UpstreamInsecureSkipVerify},
+		},
+	}
 	rateLimiter := usecase.NewRateLimiter(5, 10)
 	chatProvider := provider.NewOpenAICompatibleProvider(client)
+	channelTester := provider.NewChannelTester(client)
 
 	router := httpserver.NewRouter(httpserver.Dependencies{
 		Logger: logger,
@@ -81,6 +86,13 @@ func New() (*App, error) {
 		ListModelRoutes: func(ctx context.Context) ([]domain.ModelRoute, error) {
 			return store.ListModelRoutes(ctx, db)
 		},
+		ListSettings: func(ctx context.Context) ([]domain.SystemSettingGroup, error) {
+			items, err := store.ListSystemSettings(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			return buildSystemSettingGroups(appConfig, items), nil
+		},
 		CreateChannel: func(ctx context.Context, input domain.CreateChannelInput) (domain.Channel, error) {
 			return store.CreateChannel(ctx, db, input)
 		},
@@ -90,6 +102,13 @@ func New() (*App, error) {
 		DeleteChannel: func(ctx context.Context, id int64) error {
 			return store.DeleteChannel(ctx, db, id)
 		},
+		TestChannel: func(ctx context.Context, id int64, model string) (domain.ChannelTestResult, error) {
+			channel, err := store.GetChannelByID(ctx, db, id)
+			if err != nil {
+				return domain.ChannelTestResult{}, err
+			}
+			return channelTester.TestChannel(ctx, channel, model)
+		},
 		CreateAPIKey: func(ctx context.Context, input domain.CreateAPIKeyInput) (domain.CreatedAPIKey, error) {
 			return store.CreateAPIKey(ctx, db, input)
 		},
@@ -98,6 +117,9 @@ func New() (*App, error) {
 		},
 		DeleteAPIKey: func(ctx context.Context, id int64) error {
 			return store.DeleteAPIKey(ctx, db, id)
+		},
+		UpdateSetting: func(ctx context.Context, input domain.UpdateSystemSettingInput) (domain.SystemSetting, error) {
+			return store.UpsertSystemSetting(ctx, db, input)
 		},
 		CreateModel: func(ctx context.Context, input domain.CreateModelMappingInput) (domain.ModelMapping, error) {
 			return store.CreateModelMapping(ctx, db, input)
@@ -120,6 +142,9 @@ func New() (*App, error) {
 		ListRequestLogs: func(ctx context.Context) ([]domain.RequestLog, error) {
 			return store.ListRequestLogs(ctx, db)
 		},
+		ClearRequestLogs: func(ctx context.Context) error {
+			return store.ClearRequestLogs(ctx, db)
+		},
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) {
 			return store.VerifyAPIKey(ctx, db, rawKey)
 		},
@@ -129,7 +154,7 @@ func New() (*App, error) {
 		CheckRateLimit: func(key string) bool {
 			return rateLimiter.Allow(key)
 		},
-		ProxyChat: func(ctx context.Context, body []byte) (*http.Response, error) {
+		ProxyChat: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
 			_ = chatProvider
 			channel, err := store.GetFirstEnabledChannel(ctx, db)
 			if err != nil {
@@ -139,17 +164,8 @@ func New() (*App, error) {
 			if err != nil {
 				return nil, err
 			}
-
-			rec := &http.Response{
-				StatusCode: proxyResp.StatusCode,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(bytes.NewReader(proxyResp.Body)),
-			}
-			for key, values := range proxyResp.Headers {
-				rec.Header[key] = append([]string(nil), values...)
-			}
-			rec.Header.Set("X-Opencrab-Channel", channel.Name)
-			return rec, nil
+			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
+			return proxyResp, nil
 		},
 		CopyProxy:        provider.CopyResponse,
 		RenderProxyError: provider.RenderProxyError,
@@ -182,4 +198,38 @@ func (a *App) Run() error {
 	)
 	fmt.Printf("%s 后端服务启动中，环境: %s，监听地址: %s\n", a.config.App.Name, a.config.App.Environment, a.config.HTTP.Address)
 	return a.server.ListenAndServe()
+}
+
+func buildSystemSettingGroups(appConfig config.Config, items []domain.SystemSetting) []domain.SystemSettingGroup {
+	values := make(map[string]string, len(items))
+	for _, item := range items {
+		values[item.Key] = item.Value
+	}
+
+	readValue := func(key string, fallback string) string {
+		if value, ok := values[key]; ok && value != "" {
+			return value
+		}
+		return fallback
+	}
+
+	return []domain.SystemSettingGroup{
+		{
+			Title: "基础设置",
+			Items: []domain.SystemSettingItem{
+				{Key: "service_name", Label: "服务名称", Description: "控制台展示名称。", Value: readValue("service_name", appConfig.App.Name)},
+				{Key: "runtime_environment", Label: "运行环境", Description: "当前后端运行环境标识。", Value: readValue("runtime_environment", appConfig.App.Environment)},
+				{Key: "default_timeout", Label: "默认超时", Description: "上游请求默认超时。", Value: readValue("default_timeout", "60 秒")},
+				{Key: "log_retention", Label: "默认日志保留", Description: "请求日志默认保留时长。", Value: readValue("log_retention", "7 天")},
+			},
+		},
+		{
+			Title: "运行策略",
+			Items: []domain.SystemSettingItem{
+				{Key: "max_concurrency", Label: "最大并发数", Description: "控制全局并发阈值。", Value: readValue("max_concurrency", "128")},
+				{Key: "stream_release", Label: "流式中断释放", Description: "中断后是否立即回收资源。", Value: readValue("stream_release", "启用")},
+				{Key: "error_redaction", Label: "错误脱敏", Description: "是否在日志中脱敏敏感错误信息。", Value: readValue("error_redaction", "启用")},
+			},
+		},
+	}
 }

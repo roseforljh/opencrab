@@ -11,7 +11,7 @@ export default function ConsoleLayout({ children }: { children: ReactNode }) {
           <AppSidebar />
           <div className="flex min-w-0 flex-1 flex-col bg-background">
             <Topbar />
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">{children}</div>
           </div>
         </section>
       </main>

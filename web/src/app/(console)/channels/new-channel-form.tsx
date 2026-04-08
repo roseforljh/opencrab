@@ -1,56 +1,89 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Copy, Eye, EyeOff, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, EyeOff, Plus, X } from "lucide-react";
 
 import { ProviderSelect } from "@/app/(console)/channels/provider-select";
+import { StatusSelect } from "@/app/(console)/api-keys/status-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-const presetModels = [
-  "gpt-4.1",
-  "gpt-4.1-mini",
-  "o3-mini",
-  "claude-3.7-sonnet",
-  "gemini-2.5-pro"
-];
+import { getDefaultEndpointForProvider } from "@/lib/channel-provider";
 
 export function NewChannelForm() {
   const [keyVisible, setKeyVisible] = useState(false);
   const [provider, setProvider] = useState("OpenAI");
-  const [copiedModel, setCopiedModel] = useState<string | null>(null);
+  const [status, setStatus] = useState("启用");
+  const [name, setName] = useState("");
+  const [endpoint, setEndpoint] = useState(getDefaultEndpointForProvider("OpenAI"));
+  const [apiKey, setApiKey] = useState("");
   const [customModel, setCustomModel] = useState("");
-  const [models, setModels] = useState<string[]>(presetModels);
+  const [modelIds, setModelIds] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const previousProviderRef = useRef(provider);
+
+  useEffect(() => {
+    const previousProvider = previousProviderRef.current;
+    const previousDefaultEndpoint = getDefaultEndpointForProvider(previousProvider);
+    const nextDefaultEndpoint = getDefaultEndpointForProvider(provider);
+
+    setEndpoint((current) => {
+      const trimmed = current.trim();
+      if (trimmed === "" || trimmed === previousDefaultEndpoint) {
+        return nextDefaultEndpoint;
+      }
+      return current;
+    });
+
+    previousProviderRef.current = provider;
+  }, [provider]);
 
   const canAddModel = useMemo(() => {
     const normalized = customModel.trim();
-    return normalized.length > 0 && !models.includes(normalized);
-  }, [customModel, models]);
-
-  const handleCopy = async (model: string) => {
-    try {
-      await navigator.clipboard.writeText(model);
-      setCopiedModel(model);
-      window.setTimeout(() => setCopiedModel((current) => (current === model ? null : current)), 1200);
-    } catch {
-      setCopiedModel(null);
-    }
-  };
+    return normalized.length > 0 && !modelIds.includes(normalized);
+  }, [customModel, modelIds]);
 
   const handleAddModel = () => {
     const normalized = customModel.trim();
-    if (!normalized || models.includes(normalized)) {
+    if (!normalized || modelIds.includes(normalized)) {
       return;
     }
-
-    setModels((current) => [...current, normalized]);
+    setModelIds((current) => [...current, normalized]);
     setCustomModel("");
   };
 
-  const handleRemoveModel = (model: string) => {
-    setModels((current) => current.filter((item) => item !== model));
-    if (copiedModel === model) {
-      setCopiedModel(null);
+  const handleRemoveModel = (modelId: string) => {
+    setModelIds((current) => current.filter((item) => item !== modelId));
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (modelIds.length === 0) {
+      setError("至少添加一个模型 ID");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/admin/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          provider: provider.trim(),
+          endpoint: endpoint.trim(),
+          api_key: apiKey.trim(),
+          enabled: status === "启用",
+          model_ids: modelIds
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      window.location.reload();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "创建失败");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -59,7 +92,7 @@ export function NewChannelForm() {
       <div className="grid gap-4">
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">渠道名称</label>
-          <Input defaultValue="openai-main" />
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：openai-main" />
         </div>
 
         <div className="space-y-2">
@@ -69,7 +102,12 @@ export function NewChannelForm() {
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">请求地址</label>
-          <Input defaultValue="https://api.example.com/v1" />
+          <Input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder={getDefaultEndpointForProvider(provider)} />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">状态</label>
+          <StatusSelect value={status} onValueChange={setStatus} />
         </div>
 
         <div className="space-y-2">
@@ -77,7 +115,8 @@ export function NewChannelForm() {
           <div className="flex gap-2">
             <Input
               type={keyVisible ? "text" : "password"}
-              defaultValue="sk-example-key"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
               placeholder="填写上游渠道使用的 API Key"
               className="font-mono"
             />
@@ -97,11 +136,11 @@ export function NewChannelForm() {
       <div className="rounded-2xl border border-border bg-card/60 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">模型列表</h3>
-            <p className="mt-1 text-sm text-muted-foreground">一个渠道通常会承载多个模型。单击任意模型名称可直接复制。</p>
+            <h3 className="text-sm font-semibold text-foreground">模型 ID</h3>
+            <p className="mt-1 text-sm text-muted-foreground">创建渠道时一并录入该渠道承载的上游模型 ID。</p>
           </div>
           <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-            {models.length} 个模型
+            {modelIds.length} 个模型
           </span>
         </div>
 
@@ -109,77 +148,43 @@ export function NewChannelForm() {
           <Input
             value={customModel}
             onChange={(event) => setCustomModel(event.target.value)}
-            placeholder="输入新的模型 ID，例如：deepseek-chat"
+            placeholder="输入模型 ID，例如：gpt-4.1"
             className="font-mono"
           />
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleAddModel}
-            disabled={!canAddModel}
-            className="shrink-0 rounded-xl px-4"
-          >
+          <Button type="button" variant="secondary" onClick={handleAddModel} disabled={!canAddModel} className="shrink-0 rounded-xl px-4">
             <Plus className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {models.map((model) => {
-            const copied = copiedModel === model;
-
-            return (
-              <button
-                key={model}
-                type="button"
-                onClick={() => void handleCopy(model)}
-                className={`group inline-flex items-center gap-2 rounded-xl border px-3 py-2 font-mono text-xs transition-all duration-200 ease-[var(--ease-out-smooth)] ${
-                  copied
-                    ? "border-primary/40 bg-primary/10 text-primary shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
-                    : "border-border bg-background text-foreground hover:-translate-y-0.5 hover:border-primary/30 hover:bg-muted"
-                }`}
-              >
-                <Copy className="h-3.5 w-3.5" />
-                <span>{model}</span>
-                {copied ? <span className="text-[10px] text-primary">已复制</span> : null}
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleRemoveModel(model);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleRemoveModel(model);
-                    }
-                  }}
-                  className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-danger opacity-0 transition-opacity duration-200 ease-[var(--ease-out-smooth)] hover:bg-danger/10 group-hover:opacity-100"
-                  title="删除模型"
-                >
-                  <X className="h-3 w-3" />
-                </span>
+          {modelIds.map((modelId) => (
+            <span key={modelId} className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 font-mono text-xs text-foreground">
+              <span>{modelId}</span>
+              <button type="button" onClick={() => handleRemoveModel(modelId)} className="inline-flex h-4 w-4 items-center justify-center rounded-full text-danger hover:bg-danger/10" title="删除模型">
+                <X className="h-3 w-3" />
               </button>
-            );
-          })}
+            </span>
+          ))}
         </div>
       </div>
 
       <div className="grid gap-4 rounded-2xl border border-border bg-card/60 p-4 md:grid-cols-2">
         <div>
           <div className="text-sm font-semibold text-foreground">认证与安全</div>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">后续可以在这里扩展组织 ID、请求头覆盖、请求体脱敏、超时策略等更细的渠道控制项。</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">渠道创建完成后，后端会直接把这些真实配置写入数据库。</p>
         </div>
         <div>
-          <div className="text-sm font-semibold text-foreground">模型映射提示</div>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">模型 ID 会在路由配置页被进一步映射为公开别名，因此这里应该尽量填写上游真实模型名。</p>
+          <div className="text-sm font-semibold text-foreground">模型创建说明</div>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">提交后会为每个模型 ID 自动创建同名模型映射，并绑定到当前渠道。</p>
         </div>
       </div>
 
+      {error ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div> : null}
+
       <div className="flex justify-end gap-3 pt-2">
-        <Button variant="outline">测试连接</Button>
-        <Button>保存渠道</Button>
+        <Button type="button" onClick={handleSubmit} className={isSaving ? "pointer-events-none" : ""}>
+          {isSaving ? "保存中..." : "保存渠道"}
+        </Button>
       </div>
     </div>
   );
