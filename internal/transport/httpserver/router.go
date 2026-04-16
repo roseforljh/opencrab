@@ -54,6 +54,8 @@ type Dependencies struct {
 	CreateRequestLog func(ctx context.Context, item domain.RequestLog) error
 	CheckRateLimit   func(key string) bool
 	ProxyChat        func(ctx context.Context, body []byte) (*domain.ProxyResponse, error)
+	ProxyClaude      func(ctx context.Context, body []byte) (*domain.ProxyResponse, error)
+	ProxyGemini      func(ctx context.Context, model string, body []byte, stream bool) (*domain.ProxyResponse, error)
 	CopyProxy        func(w http.ResponseWriter, resp *domain.ProxyResponse) error
 	RenderProxyError func(w http.ResponseWriter, err error)
 }
@@ -563,5 +565,8 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 
 	r.Post("/v1/chat/completions", HandleGatewayChatCompletions(deps))
+	r.Post("/v1/messages", HandleClaudeMessages(deps))
+	r.Post("/v1beta/models/{model}:generateContent", HandleGeminiGenerateContent(deps, false))
+	r.Post("/v1beta/models/{model}:streamGenerateContent", HandleGeminiGenerateContent(deps, true))
 	return r
 }

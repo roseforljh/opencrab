@@ -62,3 +62,24 @@ func TestBuildGeminiGenerateContentURL(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildGeminiStreamGenerateContentURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		model    string
+		expect   string
+	}{
+		{name: "base endpoint", endpoint: "https://generativelanguage.googleapis.com", model: "gemini-2.0-flash", expect: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"},
+		{name: "version endpoint", endpoint: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-2.0-flash", expect: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"},
+		{name: "model endpoint", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash", model: "gemini-2.0-flash", expect: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildGeminiStreamGenerateContentURL(tt.endpoint, tt.model); got != tt.expect {
+				t.Fatalf("expected %s, got %s", tt.expect, got)
+			}
+		})
+	}
+}

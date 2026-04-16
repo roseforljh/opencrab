@@ -106,39 +106,12 @@ func buildClaudeExecutionBody(input domain.ExecutorRequest) ([]byte, error) {
 		return nil, domain.NewExecutionError(fmt.Errorf("Claude 暂不支持工具调用转换"), 0, false, false)
 	}
 
-	systemParts := make([]string, 0)
-	messages := make([]map[string]any, 0, len(input.Request.Messages))
-	for _, message := range input.Request.Messages {
-		role := strings.TrimSpace(strings.ToLower(message.Role))
-		if role == "tool" {
-			return nil, domain.NewExecutionError(fmt.Errorf("Claude 暂不支持 tool 消息转换"), 0, false, false)
-		}
-		if role == "system" {
-			systemParts = append(systemParts, message.Text)
-			continue
-		}
-		messages = append(messages, map[string]any{
-			"role": role,
-			"content": []map[string]string{{
-				"type": "text",
-				"text": message.Text,
-			}},
-		})
-	}
-	if len(messages) == 0 {
-		return nil, domain.NewExecutionError(fmt.Errorf("Claude 请求至少需要一条非 system 文本消息"), 0, false, false)
-	}
-
-	payload := map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"model":      input.UpstreamModel,
 		"max_tokens": 1024,
 		"stream":     input.Request.Stream,
-		"messages":   messages,
-	}
-	if len(systemParts) > 0 {
-		payload["system"] = strings.Join(systemParts, "\n\n")
-	}
-	body, err := json.Marshal(payload)
+		"messages":   toOpenAIMessages(input.Request.Messages),
+	})
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Claude 请求失败: %w", err), 0, false, false)
 	}
@@ -153,41 +126,24 @@ func buildGeminiExecutionBody(input domain.ExecutorRequest) ([]byte, error) {
 		return nil, domain.NewExecutionError(fmt.Errorf("Gemini 暂不支持工具调用转换"), 0, false, false)
 	}
 
-	systemParts := make([]map[string]string, 0)
 	contents := make([]map[string]any, 0, len(input.Request.Messages))
 	for _, message := range input.Request.Messages {
-		role := strings.TrimSpace(strings.ToLower(message.Role))
-		switch role {
-		case "system":
-			systemParts = append(systemParts, map[string]string{"text": message.Text})
-		case "user":
-			contents = append(contents, map[string]any{
-				"role":  "user",
-				"parts": []map[string]string{{"text": message.Text}},
-			})
-		case "assistant":
-			contents = append(contents, map[string]any{
-				"role":  "model",
-				"parts": []map[string]string{{"text": message.Text}},
-			})
-		default:
-			return nil, domain.NewExecutionError(fmt.Errorf("Gemini 暂不支持 %s 消息转换", message.Role), 0, false, false)
+		role := "user"
+		if strings.EqualFold(strings.TrimSpace(message.Role), "assistant") {
+			role = "model"
 		}
-	}
-	if len(contents) == 0 {
-		return nil, domain.NewExecutionError(fmt.Errorf("Gemini 请求至少需要一条 user 或 assistant 文本消息"), 0, false, false)
+		contents = append(contents, map[string]any{
+			"role":  role,
+			"parts": []map[string]string{{"text": message.Text}},
+		})
 	}
 
-	payload := map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"contents": contents,
 		"generationConfig": map[string]any{
 			"candidateCount": 1,
 		},
-	}
-	if len(systemParts) > 0 {
-		payload["system_instruction"] = map[string]any{"parts": systemParts}
-	}
-	body, err := json.Marshal(payload)
+	})
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Gemini 请求失败: %w", err), 0, false, false)
 	}

@@ -72,17 +72,6 @@ func (e *GatewayError) Error() string {
 	return e.Message
 }
 
-type GatewayAttemptLog struct {
-	Channel    string                     `json:"channel,omitempty"`
-	Protocol   Protocol                   `json:"protocol"`
-	Model      string                     `json:"model,omitempty"`
-	Success    bool                       `json:"success"`
-	StatusCode int                        `json:"status_code,omitempty"`
-	LatencyMs  int64                      `json:"latency_ms,omitempty"`
-	Error      *GatewayError              `json:"error,omitempty"`
-	Metadata   map[string]json.RawMessage `json:"metadata,omitempty"`
-}
-
 func (r UnifiedChatRequest) ValidateCore() error {
 	if strings.TrimSpace(r.Model) == "" {
 		return fmt.Errorf("model 不能为空")

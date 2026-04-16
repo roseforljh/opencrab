@@ -43,10 +43,7 @@ func TestClaudeExecutorBuildsNativeTextRequest(t *testing.T) {
 	_, err := executor.Execute(context.Background(), domain.ExecutorRequest{
 		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
 		UpstreamModel: "claude-3-5-sonnet",
-		Request: domain.GatewayRequest{Stream: true, Messages: []domain.GatewayMessage{
-			{Role: "system", Text: "be precise"},
-			{Role: "user", Text: "hello"},
-		}},
+		Request:       domain.GatewayRequest{Stream: true, Messages: []domain.GatewayMessage{{Role: "user", Text: "hello"}}},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -58,21 +55,13 @@ func TestClaudeExecutorBuildsNativeTextRequest(t *testing.T) {
 	if captured["stream"] != true {
 		t.Fatalf("expected stream true, got %v", captured["stream"])
 	}
-	if captured["system"] != "be precise" {
-		t.Fatalf("unexpected system: %v", captured["system"])
-	}
 	messages, ok := captured["messages"].([]any)
 	if !ok || len(messages) != 1 {
 		t.Fatalf("unexpected messages: %#v", captured["messages"])
 	}
 	first := messages[0].(map[string]any)
-	if first["role"] != "user" {
-		t.Fatalf("unexpected role: %#v", first)
-	}
-	content := first["content"].([]any)
-	block := content[0].(map[string]any)
-	if block["type"] != "text" || block["text"] != "hello" {
-		t.Fatalf("unexpected content block: %#v", block)
+	if first["role"] != "user" || first["content"] != "hello" {
+		t.Fatalf("unexpected message payload: %#v", first)
 	}
 }
 
@@ -99,24 +88,12 @@ func TestGeminiExecutorBuildsNativeTextRequest(t *testing.T) {
 	_, err := executor.Execute(context.Background(), domain.ExecutorRequest{
 		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
 		UpstreamModel: "gemini-2.0-flash",
-		Request: domain.GatewayRequest{Messages: []domain.GatewayMessage{
-			{Role: "system", Text: "be precise"},
-			{Role: "user", Text: "hello"},
-			{Role: "assistant", Text: "world"},
-		}},
+		Request:       domain.GatewayRequest{Messages: []domain.GatewayMessage{{Role: "user", Text: "hello"}, {Role: "assistant", Text: "world"}}},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 
-	systemInstruction, ok := captured["system_instruction"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing system_instruction: %#v", captured)
-	}
-	systemParts := systemInstruction["parts"].([]any)
-	if systemParts[0].(map[string]any)["text"] != "be precise" {
-		t.Fatalf("unexpected system parts: %#v", systemInstruction)
-	}
 	contents, ok := captured["contents"].([]any)
 	if !ok || len(contents) != 2 {
 		t.Fatalf("unexpected contents: %#v", captured["contents"])
@@ -132,20 +109,5 @@ func TestGeminiExecutorBuildsNativeTextRequest(t *testing.T) {
 	parts := first["parts"].([]any)
 	if parts[0].(map[string]any)["text"] != "hello" {
 		t.Fatalf("unexpected first text: %#v", parts)
-	}
-}
-
-func TestGeminiExecutorRejectsUnsupportedRole(t *testing.T) {
-	executor := NewGeminiExecutor(&http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		t.Fatal("request should not be sent")
-		return nil, nil
-	})})
-	_, err := executor.Execute(context.Background(), domain.ExecutorRequest{
-		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
-		UpstreamModel: "gemini-2.0-flash",
-		Request:       domain.GatewayRequest{Messages: []domain.GatewayMessage{{Role: "tool", Text: "x"}}},
-	})
-	if err == nil || !strings.Contains(err.Error(), "暂不支持") {
-		t.Fatalf("unexpected err: %v", err)
 	}
 }

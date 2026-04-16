@@ -8,6 +8,7 @@ import (
 
 	"opencrab/internal/domain"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -20,8 +21,39 @@ import (
 // 4. 调用上游转发。
 // 5. 记录请求日志（包含 Token 消耗）。
 func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
+	return handleGatewayProxy(deps, "/v1/chat/completions", func(_ *http.Request, body []byte) string {
+		return extractModel(body)
+	}, func(req *http.Request, body []byte) (*domain.ProxyResponse, error) {
+		return deps.ProxyChat(req.Context(), body)
+	})
+}
+
+func HandleClaudeMessages(deps Dependencies) http.HandlerFunc {
+	return handleGatewayProxy(deps, "/v1/messages", func(_ *http.Request, body []byte) string {
+		return extractModel(body)
+	}, func(req *http.Request, body []byte) (*domain.ProxyResponse, error) {
+		return deps.ProxyClaude(req.Context(), body)
+	})
+}
+
+func HandleGeminiGenerateContent(deps Dependencies, stream bool) http.HandlerFunc {
+	requestPath := "/v1beta/models/{model}:generateContent"
+	if stream {
+		requestPath = "/v1beta/models/{model}:streamGenerateContent"
+	}
+	return handleGatewayProxy(deps, requestPath, extractGeminiModel, func(req *http.Request, body []byte) (*domain.ProxyResponse, error) {
+		return deps.ProxyGemini(req.Context(), chi.URLParam(req, "model"), body, stream)
+	})
+}
+
+func handleGatewayProxy(
+	deps Dependencies,
+	fallbackPath string,
+	extractModelName func(req *http.Request, body []byte) string,
+	proxy func(req *http.Request, body []byte) (*domain.ProxyResponse, error),
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if deps.ProxyChat == nil || deps.CopyProxy == nil {
+		if proxy == nil || deps.CopyProxy == nil {
 			http.Error(w, "proxy handler not configured", http.StatusNotImplemented)
 			return
 		}
@@ -31,9 +63,9 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 			return
 		}
 
-		rawKey := strings.TrimSpace(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
+		rawKey := extractGatewayAPIKey(req)
 		if rawKey == "" {
-			http.Error(w, "缺少 Authorization Bearer Token", http.StatusUnauthorized)
+			http.Error(w, "缺少 API Key", http.StatusUnauthorized)
 			return
 		}
 
@@ -59,7 +91,7 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 			return
 		}
 
-		resp, err := deps.ProxyChat(req.Context(), body)
+		resp, err := proxy(req, body)
 		if err != nil {
 			if deps.RenderProxyError != nil {
 				deps.RenderProxyError(w, err)
@@ -73,8 +105,11 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 		if channelName == "" {
 			channelName = "default-channel"
 		}
-
-		modelName := extractModel(body)
+		requestPath := req.URL.Path
+		if requestPath == "" {
+			requestPath = fallbackPath
+		}
+		modelName := extractModelName(req, body)
 		usage := extractUsageMetrics(resp.Body)
 		responseBody := truncateLogBody(string(resp.Body))
 
@@ -85,7 +120,7 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 
 		if deps.CreateRequestLog != nil {
 			details := marshalLogDetails(map[string]any{
-				"request_path":      req.URL.Path,
+				"request_path":      requestPath,
 				"channel":           channelName,
 				"model":             modelName,
 				"request_body":      truncateLogBody(string(body)),
@@ -114,4 +149,12 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 			})
 		}
 	}
+}
+
+func extractGeminiModel(req *http.Request, body []byte) string {
+	model := strings.TrimSpace(chi.URLParam(req, "model"))
+	if model != "" {
+		return model
+	}
+	return extractModel(body)
 }

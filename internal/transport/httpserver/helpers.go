@@ -147,6 +147,33 @@ func firstHeaderValue(headers map[string][]string, key string) string {
 	return values[0]
 }
 
+func extractGatewayAPIKey(req *http.Request) string {
+	if req == nil {
+		return ""
+	}
+
+	if value := strings.TrimSpace(req.Header.Get("Authorization")); value != "" {
+		const bearerPrefix = "Bearer "
+		if strings.HasPrefix(strings.ToLower(value), strings.ToLower(bearerPrefix)) {
+			return strings.TrimSpace(value[len(bearerPrefix):])
+		}
+	}
+
+	if value := strings.TrimSpace(req.Header.Get("x-api-key")); value != "" {
+		return value
+	}
+
+	if value := strings.TrimSpace(req.Header.Get("x-goog-api-key")); value != "" {
+		return value
+	}
+
+	if value := strings.TrimSpace(req.URL.Query().Get("key")); value != "" {
+		return value
+	}
+
+	return ""
+}
+
 type usageMetrics struct {
 	PromptTokens     int64
 	CompletionTokens int64

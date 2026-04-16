@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -67,14 +66,10 @@ func New() (*App, error) {
 		},
 	}
 	rateLimiter := usecase.NewRateLimiter(5, 10)
+	chatProvider := provider.NewOpenAICompatibleProvider(client)
+	claudeProvider := provider.NewClaudeNativeProvider(client)
+	geminiProvider := provider.NewGeminiNativeProvider(client)
 	channelTester := provider.NewChannelTester(client)
-	gatewayRouteStore := store.NewGatewayStore(db)
-	attemptLogger := store.NewGatewayAttemptLogStore(db)
-	gatewayService := usecase.NewGatewayService(gatewayRouteStore, map[string]domain.Executor{
-		"openai": provider.NewOpenAIExecutor(client),
-		"claude": provider.NewClaudeExecutor(client),
-		"gemini": provider.NewGeminiExecutor(client),
-	}, attemptLogger)
 
 	router := httpserver.NewRouter(httpserver.Dependencies{
 		Logger: logger,
@@ -162,12 +157,40 @@ func New() (*App, error) {
 			return rateLimiter.Allow(key)
 		},
 		ProxyChat: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
-			requestID := fmt.Sprintf("gw-%d", time.Now().UnixNano())
-			gatewayReq, err := buildGatewayRequest(body)
+			channel, err := store.GetFirstEnabledChannel(ctx, db)
 			if err != nil {
 				return nil, err
 			}
-			return gatewayService.Execute(ctx, requestID, gatewayReq)
+			proxyResp, err := chatProvider.ForwardChatCompletions(ctx, channel, body)
+			if err != nil {
+				return nil, err
+			}
+			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
+			return proxyResp, nil
+		},
+		ProxyClaude: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
+			channel, err := store.GetFirstEnabledChannel(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			proxyResp, err := claudeProvider.ForwardMessages(ctx, channel, body)
+			if err != nil {
+				return nil, err
+			}
+			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
+			return proxyResp, nil
+		},
+		ProxyGemini: func(ctx context.Context, model string, body []byte, stream bool) (*domain.ProxyResponse, error) {
+			channel, err := store.GetFirstEnabledChannel(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			proxyResp, err := geminiProvider.ForwardGenerateContent(ctx, channel, model, body, stream)
+			if err != nil {
+				return nil, err
+			}
+			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
+			return proxyResp, nil
 		},
 		CopyProxy:        provider.CopyResponse,
 		RenderProxyError: provider.RenderProxyError,
@@ -200,22 +223,6 @@ func (a *App) Run() error {
 	)
 	fmt.Printf("%s 后端服务启动中，环境: %s，监听地址: %s\n", a.config.App.Name, a.config.App.Environment, a.config.HTTP.Address)
 	return a.server.ListenAndServe()
-}
-
-func buildGatewayRequest(body []byte) (domain.GatewayRequest, error) {
-	var payload domain.ChatCompletionsRequest
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return domain.GatewayRequest{}, fmt.Errorf("解析请求体失败: %w", err)
-	}
-	model := payload.Model
-	if model == "" {
-		return domain.GatewayRequest{}, fmt.Errorf("请求缺少 model")
-	}
-	messages := make([]domain.GatewayMessage, 0, len(payload.Messages))
-	for _, message := range payload.Messages {
-		messages = append(messages, domain.GatewayMessage{Role: message.Role, Text: message.Content})
-	}
-	return domain.GatewayRequest{Model: model, Stream: payload.Stream, Messages: messages, ToolCallPolicy: domain.GatewayToolCallReject}, nil
 }
 
 func buildSystemSettingGroups(appConfig config.Config, items []domain.SystemSetting) []domain.SystemSettingGroup {
