@@ -17,6 +17,44 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+type trackingReadCloser struct {
+	reader    *strings.Reader
+	readCalls int
+}
+
+func (r *trackingReadCloser) Read(p []byte) (int, error) {
+	r.readCalls++
+	return r.reader.Read(p)
+}
+
+func (r *trackingReadCloser) Close() error { return nil }
+
+func testGatewayMessage(role string, parts ...domain.UnifiedPart) domain.GatewayMessage {
+	return domain.GatewayMessage{Role: role, Parts: parts}
+}
+
+func TestOpenAIExecutorReturnsStreamResultWhenStreamEnabled(t *testing.T) {
+	body := &trackingReadCloser{reader: strings.NewReader("data: hello\n\n")}
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: body}, nil
+	})}
+
+	result, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request:       domain.GatewayRequest{Model: "gpt-4o", Stream: true, Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if result.Stream == nil || result.Response != nil {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if body.readCalls != 0 {
+		t.Fatalf("expected no pre-read for stream body, got %d", body.readCalls)
+	}
+}
+
 func TestClaudeExecutorBuildsNativeTextRequest(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -43,7 +81,7 @@ func TestClaudeExecutorBuildsNativeTextRequest(t *testing.T) {
 	_, err := executor.Execute(context.Background(), domain.ExecutorRequest{
 		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
 		UpstreamModel: "claude-3-5-sonnet",
-		Request:       domain.GatewayRequest{Stream: true, Messages: []domain.GatewayMessage{{Role: "user", Text: "hello"}}},
+		Request:       domain.GatewayRequest{Stream: true, Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})}},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -60,8 +98,13 @@ func TestClaudeExecutorBuildsNativeTextRequest(t *testing.T) {
 		t.Fatalf("unexpected messages: %#v", captured["messages"])
 	}
 	first := messages[0].(map[string]any)
-	if first["role"] != "user" || first["content"] != "hello" {
+	if first["role"] != "user" {
 		t.Fatalf("unexpected message payload: %#v", first)
+	}
+	content := first["content"].([]any)
+	block := content[0].(map[string]any)
+	if block["type"] != "text" || block["text"] != "hello" {
+		t.Fatalf("unexpected content block: %#v", block)
 	}
 }
 
@@ -88,7 +131,7 @@ func TestGeminiExecutorBuildsNativeTextRequest(t *testing.T) {
 	_, err := executor.Execute(context.Background(), domain.ExecutorRequest{
 		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
 		UpstreamModel: "gemini-2.0-flash",
-		Request:       domain.GatewayRequest{Messages: []domain.GatewayMessage{{Role: "user", Text: "hello"}, {Role: "assistant", Text: "world"}}},
+		Request:       domain.GatewayRequest{Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"}), testGatewayMessage("assistant", domain.UnifiedPart{Type: "text", Text: "world"})}},
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -109,5 +152,53 @@ func TestGeminiExecutorBuildsNativeTextRequest(t *testing.T) {
 	parts := first["parts"].([]any)
 	if parts[0].(map[string]any)["text"] != "hello" {
 		t.Fatalf("unexpected first text: %#v", parts)
+	}
+}
+
+func TestClaudeExecutorBuildsMultimodalRequest(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+	_, err := NewClaudeExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
+		UpstreamModel: "claude-3-5-sonnet",
+		Request: domain.GatewayRequest{Messages: []domain.GatewayMessage{testGatewayMessage("user",
+			domain.UnifiedPart{Type: "image", Metadata: map[string]json.RawMessage{"mime_type": json.RawMessage(`"image/png"`), "data": json.RawMessage(`"abc"`)}},
+			domain.UnifiedPart{Type: "text", Text: "describe"},
+		)}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	messages := captured["messages"].([]any)
+	content := messages[0].(map[string]any)["content"].([]any)
+	if content[0].(map[string]any)["type"] != "image" {
+		t.Fatalf("unexpected multimodal payload: %#v", content)
+	}
+}
+
+func TestGeminiExecutorUsesStreamGenerateContentURLWhenStreamEnabled(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse" {
+			t.Fatalf("unexpected url: %s", req.URL.String())
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	})}
+
+	result, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request:       domain.GatewayRequest{Model: "gpt-4o", Stream: true, Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if result.Stream == nil {
+		t.Fatalf("expected stream result: %#v", result)
 	}
 }

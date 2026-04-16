@@ -18,7 +18,7 @@ func NewGatewayStore(db *sql.DB) *GatewayStore {
 
 func (s *GatewayStore) ListEnabledRoutesByModel(ctx context.Context, model string) ([]domain.GatewayRoute, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT mr.model_alias, m.upstream_model, c.name, c.provider, c.endpoint, c.api_key, mr.priority
+SELECT mr.model_alias, m.upstream_model, c.name, c.provider, c.endpoint, c.api_key, mr.invocation_mode, mr.priority
 FROM model_routes mr
 JOIN models m ON m.alias = mr.model_alias
 JOIN channels c ON c.name = mr.channel_name
@@ -32,7 +32,7 @@ ORDER BY mr.priority ASC, mr.id ASC`, model)
 	routes := make([]domain.GatewayRoute, 0)
 	for rows.Next() {
 		var route domain.GatewayRoute
-		if err := rows.Scan(&route.ModelAlias, &route.UpstreamModel, &route.Channel.Name, &route.Channel.Provider, &route.Channel.Endpoint, &route.Channel.APIKey, &route.Priority); err != nil {
+		if err := rows.Scan(&route.ModelAlias, &route.UpstreamModel, &route.Channel.Name, &route.Channel.Provider, &route.Channel.Endpoint, &route.Channel.APIKey, &route.InvocationMode, &route.Priority); err != nil {
 			return nil, fmt.Errorf("读取执行路由失败: %w", err)
 		}
 		routes = append(routes, route)

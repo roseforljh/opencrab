@@ -38,4 +38,5 @@ Thumbs.db
 .vscode/
 AGENTS.md
 .gstack/
-.worktrees/
+.claude/worktrees/
+

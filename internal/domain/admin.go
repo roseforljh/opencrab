@@ -30,11 +30,12 @@ type ModelMapping struct {
 }
 
 type ModelRoute struct {
-	ID            int64  `json:"id"`
-	ModelAlias    string `json:"model_alias"`
-	ChannelName   string `json:"channel_name"`
-	Priority      int    `json:"priority"`
-	FallbackModel string `json:"fallback_model"`
+	ID             int64  `json:"id"`
+	ModelAlias     string `json:"model_alias"`
+	ChannelName    string `json:"channel_name"`
+	InvocationMode string `json:"invocation_mode,omitempty"`
+	Priority       int    `json:"priority"`
+	FallbackModel  string `json:"fallback_model"`
 }
 
 type RequestLog struct {
@@ -115,17 +116,19 @@ type UpdateModelMappingInput struct {
 }
 
 type CreateModelRouteInput struct {
-	ModelAlias    string `json:"model_alias"`
-	ChannelName   string `json:"channel_name"`
-	Priority      int    `json:"priority"`
-	FallbackModel string `json:"fallback_model"`
+	ModelAlias     string `json:"model_alias"`
+	ChannelName    string `json:"channel_name"`
+	InvocationMode string `json:"invocation_mode,omitempty"`
+	Priority       int    `json:"priority"`
+	FallbackModel  string `json:"fallback_model"`
 }
 
 type UpdateModelRouteInput struct {
-	ModelAlias    string `json:"model_alias"`
-	ChannelName   string `json:"channel_name"`
-	Priority      int    `json:"priority"`
-	FallbackModel string `json:"fallback_model"`
+	ModelAlias     string `json:"model_alias"`
+	ChannelName    string `json:"channel_name"`
+	InvocationMode string `json:"invocation_mode,omitempty"`
+	Priority       int    `json:"priority"`
+	FallbackModel  string `json:"fallback_model"`
 }
 
 type CreatedAPIKey struct {

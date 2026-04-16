@@ -102,6 +102,35 @@ func CopyResponse(w http.ResponseWriter, resp *domain.ProxyResponse) error {
 	return nil
 }
 
+func CopyStreamResponse(w http.ResponseWriter, stream *domain.StreamResult) error {
+	defer stream.Body.Close()
+	for key, values := range stream.Headers {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(stream.StatusCode)
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 1024)
+	for {
+		n, err := stream.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return fmt.Errorf("写入流式代理响应失败: %w", writeErr)
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("读取流式上游响应失败: %w", err)
+		}
+	}
+}
+
 func buildChatCompletionsURL(endpoint string) string {
 	trimmed := strings.TrimRight(endpoint, "/")
 	if strings.HasSuffix(trimmed, "/chat/completions") {

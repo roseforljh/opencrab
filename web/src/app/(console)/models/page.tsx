@@ -19,6 +19,7 @@ export default async function ModelsPage() {
 			alias: route.model_alias,
 			target: mapping?.upstream_model ?? route.model_alias,
 			channel: route.channel_name,
+			invocationMode: route.invocation_mode || "auto",
 			priority: `P${route.priority}`,
 			fallback: route.fallback_model
 		};

@@ -25,7 +25,17 @@ func EncodeGeminiChatRequest(req domain.UnifiedChatRequest) ([]byte, error) {
 	if req.Stream {
 		payload["stream"] = true
 	}
-	payload["contents"] = encodeGeminiMessages(req.Messages)
+	if len(req.Tools) > 0 {
+		payload["tools"] = rawMessagesToAny(req.Tools)
+	}
+	systemInstruction, contents, err := encodeGeminiMessages(req.Messages)
+	if err != nil {
+		return nil, err
+	}
+	if systemInstruction != nil {
+		payload["system_instruction"] = systemInstruction
+	}
+	payload["contents"] = contents
 	return json.Marshal(payload)
 }
 
@@ -36,8 +46,7 @@ func DecodeGeminiChatRequest(body []byte, pathModel string) (domain.UnifiedChatR
 	}
 
 	req := domain.UnifiedChatRequest{Protocol: domain.ProtocolGemini}
-	req.Metadata = collectUnknownFields(raw, "model", "stream", "contents", "generationConfig")
-
+	req.Metadata = collectUnknownFields(raw, "model", "stream", "contents", "generationConfig", "system_instruction", "systemInstruction", "tools")
 	var bodyModel string
 	_ = decodeRawString(raw, "model", &bodyModel, false)
 	resolvedModel, err := resolveGeminiModel(pathModel, bodyModel)
@@ -47,6 +56,31 @@ func DecodeGeminiChatRequest(body []byte, pathModel string) (domain.UnifiedChatR
 	req.Model = resolvedModel
 	_ = decodeRawBool(raw, "stream", &req.Stream)
 
+	if toolsRaw, ok := raw["tools"]; ok {
+		var tools []json.RawMessage
+		if err := json.Unmarshal(toolsRaw, &tools); err != nil {
+			return domain.UnifiedChatRequest{}, fmt.Errorf("tools 格式非法: %w", err)
+		}
+		req.Tools = tools
+	}
+	if configRaw, ok := raw["generationConfig"]; ok {
+		if req.Metadata == nil {
+			req.Metadata = map[string]json.RawMessage{}
+		}
+		req.Metadata["generationConfig"] = append(json.RawMessage(nil), configRaw...)
+	}
+
+	for _, key := range []string{"system_instruction", "systemInstruction"} {
+		if systemRaw, ok := raw[key]; ok {
+			message, err := decodeGeminiSystemInstruction(systemRaw)
+			if err != nil {
+				return domain.UnifiedChatRequest{}, err
+			}
+			req.Messages = append(req.Messages, message)
+			break
+		}
+	}
+
 	var contentsRaw []map[string]json.RawMessage
 	if err := decodeRaw(raw, "contents", &contentsRaw, true); err != nil {
 		return domain.UnifiedChatRequest{}, err
@@ -55,14 +89,7 @@ func DecodeGeminiChatRequest(body []byte, pathModel string) (domain.UnifiedChatR
 	if err != nil {
 		return domain.UnifiedChatRequest{}, err
 	}
-	req.Messages = messages
-
-	if configRaw, ok := raw["generationConfig"]; ok {
-		if req.Metadata == nil {
-			req.Metadata = map[string]json.RawMessage{}
-		}
-		req.Metadata["generationConfig"] = append(json.RawMessage(nil), configRaw...)
-	}
+	req.Messages = append(req.Messages, messages...)
 
 	if err := req.ValidateCore(); err != nil {
 		return domain.UnifiedChatRequest{}, err
@@ -110,16 +137,105 @@ func DecodeGeminiChatResponse(body []byte) (domain.UnifiedChatResponse, error) {
 	return resp, nil
 }
 
-func encodeGeminiMessages(messages []domain.UnifiedMessage) []map[string]any {
+func EncodeGeminiChatResponse(resp domain.UnifiedChatResponse) ([]byte, error) {
+	payload := map[string]any{}
+	mergeRawFields(payload, resp.Metadata)
+	if resp.Model != "" {
+		payload["modelVersion"] = resp.Model
+	}
+	parts, err := encodeGeminiParts(resp.Message.Parts)
+	if err != nil {
+		return nil, err
+	}
+	payload["candidates"] = []map[string]any{{
+		"content": map[string]any{
+			"role":  "model",
+			"parts": parts,
+		},
+		"finishReason": resp.FinishReason,
+	}}
+	if len(resp.Usage) > 0 {
+		payload["usageMetadata"] = map[string]any{
+			"promptTokenCount":     resp.Usage["prompt_tokens"],
+			"candidatesTokenCount": resp.Usage["completion_tokens"],
+			"totalTokenCount":      resp.Usage["total_tokens"],
+		}
+	}
+	return json.Marshal(payload)
+}
+
+func encodeGeminiMessages(messages []domain.UnifiedMessage) (map[string]any, []map[string]any, error) {
+	var systemInstruction map[string]any
 	out := make([]map[string]any, 0, len(messages))
-	for _, message := range messages {
+	for i, message := range messages {
+		parts, err := encodeGeminiParts(message.Parts)
+		if err != nil {
+			return nil, nil, fmt.Errorf("messages[%d]: %w", i, err)
+		}
+		if strings.EqualFold(strings.TrimSpace(message.Role), "system") {
+			systemInstruction = map[string]any{"parts": parts}
+			continue
+		}
 		item := map[string]any{}
 		mergeRawFields(item, message.Metadata)
 		item["role"] = geminiRoleFromUnified(message.Role)
-		item["parts"] = []map[string]any{{"text": message.Parts[0].Text}}
+		if strings.EqualFold(strings.TrimSpace(message.Role), "tool") {
+			item["role"] = "user"
+		}
+		item["parts"] = parts
 		out = append(out, item)
 	}
-	return out
+	if len(out) == 0 {
+		return nil, nil, fmt.Errorf("Gemini 请求至少需要一条非 system 消息")
+	}
+	return systemInstruction, out, nil
+}
+
+func encodeGeminiParts(parts []domain.UnifiedPart) ([]map[string]any, error) {
+	out := make([]map[string]any, 0, len(parts))
+	for i, part := range parts {
+		item, err := encodeGeminiPart(part)
+		if err != nil {
+			return nil, fmt.Errorf("parts[%d]: %w", i, err)
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {
+	item := map[string]any{}
+	mergeRawFields(item, part.Metadata)
+	desc := extractMediaDescriptor(part)
+	switch part.Type {
+	case "text":
+		item["text"] = part.Text
+	case "function_call":
+		item["functionCall"] = map[string]any{"id": decodeStringRaw(part.Metadata["id"]), "name": decodeStringRaw(part.Metadata["name"]), "args": rawJSONToAny(part.Metadata["arguments"])}
+	case "function_response":
+		item["functionResponse"] = map[string]any{"id": decodeStringRaw(part.Metadata["id"]), "name": decodeStringRaw(part.Metadata["name"]), "response": rawJSONToAny(part.Metadata["response"])}
+	case "image", "audio", "video", "document", "file":
+		if _, ok := item["inlineData"]; !ok {
+			if _, exists := item["fileData"]; !exists {
+				switch {
+				case desc.Data != "":
+					item["inlineData"] = map[string]any{"mimeType": desc.MimeType, "data": desc.Data}
+				case desc.FileURI != "":
+					item["fileData"] = map[string]any{"mimeType": desc.MimeType, "fileUri": desc.FileURI}
+				case desc.URL != "":
+					item["fileData"] = map[string]any{"mimeType": desc.MimeType, "fileUri": desc.URL}
+				default:
+					return nil, fmt.Errorf("%s part 缺少 inlineData/fileData", part.Type)
+				}
+			}
+		}
+	default:
+		if len(item) > 0 {
+			return item, nil
+		}
+		return nil, fmt.Errorf("Gemini 暂不支持 part 类型: %s", part.Type)
+	}
+	return item, nil
 }
 
 func decodeGeminiMessages(items []map[string]json.RawMessage) ([]domain.UnifiedMessage, error) {
@@ -147,27 +263,105 @@ func decodeGeminiContent(content map[string]json.RawMessage) (domain.UnifiedMess
 	_ = decodeRawString(content, "role", &role, false)
 	unifiedRole := unifiedRoleFromGemini(role)
 
-	var parts []map[string]json.RawMessage
-	if err := decodeRaw(content, "parts", &parts, true); err != nil {
+	var partsRaw []map[string]json.RawMessage
+	if err := decodeRaw(content, "parts", &partsRaw, true); err != nil {
 		return domain.UnifiedMessage{}, fmt.Errorf("parts: %w", err)
 	}
-	if len(parts) != 1 {
-		return domain.UnifiedMessage{}, fmt.Errorf("当前仅支持单个 Gemini text part")
+	parts := make([]domain.UnifiedPart, 0, len(partsRaw))
+	toolCalls := make([]domain.UnifiedToolCall, 0)
+	toolResultMode := false
+	for i, raw := range partsRaw {
+		part, err := decodeGeminiPart(raw)
+		if err != nil {
+			return domain.UnifiedMessage{}, fmt.Errorf("parts[%d]: %w", i, err)
+		}
+		if part.Type == "function_call" {
+			toolCalls = append(toolCalls, domain.UnifiedToolCall{ID: decodeStringRaw(part.Metadata["id"]), Name: decodeStringRaw(part.Metadata["name"]), Arguments: append(json.RawMessage(nil), part.Metadata["arguments"]...), Metadata: collectUnknownFields(part.Metadata, "id", "name", "arguments")})
+			continue
+		}
+		if part.Type == "function_response" {
+			toolResultMode = true
+			part = domain.UnifiedPart{Type: "text", Text: string(part.Metadata["response"]), Metadata: map[string]json.RawMessage{"tool_call_id": append(json.RawMessage(nil), part.Metadata["id"]...), "tool_name": append(json.RawMessage(nil), part.Metadata["name"]...)}}
+		}
+		parts = append(parts, part)
 	}
+	if toolResultMode {
+		unifiedRole = "tool"
+	}
+	return domain.UnifiedMessage{Role: unifiedRole, Parts: parts, ToolCalls: toolCalls, Metadata: collectUnknownFields(content, "role", "parts")}, nil
+}
 
-	var text string
-	if err := decodeRawString(parts[0], "text", &text, true); err != nil {
-		return domain.UnifiedMessage{}, fmt.Errorf("parts[0].text: %w", err)
+func decodeGeminiSystemInstruction(systemRaw json.RawMessage) (domain.UnifiedMessage, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(systemRaw, &payload); err != nil {
+		return domain.UnifiedMessage{}, fmt.Errorf("system_instruction 格式非法: %w", err)
 	}
-	if len(collectUnknownFields(parts[0], "text")) > 0 {
-		return domain.UnifiedMessage{}, fmt.Errorf("当前仅支持 text-only 主链路，Gemini part metadata 暂不支持")
+	var partsRaw []map[string]json.RawMessage
+	if err := decodeRaw(payload, "parts", &partsRaw, true); err != nil {
+		return domain.UnifiedMessage{}, fmt.Errorf("system_instruction.parts: %w", err)
 	}
+	parts := make([]domain.UnifiedPart, 0, len(partsRaw))
+	for i, raw := range partsRaw {
+		part, err := decodeGeminiPart(raw)
+		if err != nil {
+			return domain.UnifiedMessage{}, fmt.Errorf("system_instruction.parts[%d]: %w", i, err)
+		}
+		parts = append(parts, part)
+	}
+	return domain.UnifiedMessage{Role: "system", Parts: parts, Metadata: collectUnknownFields(payload, "parts")}, nil
+}
 
-	return domain.UnifiedMessage{
-		Role:     unifiedRole,
-		Parts:    []domain.UnifiedPart{{Type: "text", Text: text}},
-		Metadata: collectUnknownFields(content, "role", "parts"),
-	}, nil
+func decodeGeminiPart(raw map[string]json.RawMessage) (domain.UnifiedPart, error) {
+	if textRaw, ok := raw["text"]; ok {
+		var text string
+		if err := json.Unmarshal(textRaw, &text); err != nil {
+			return domain.UnifiedPart{}, fmt.Errorf("text 格式非法: %w", err)
+		}
+		return domain.UnifiedPart{Type: "text", Text: text, Metadata: collectUnknownFields(raw, "text")}, nil
+	}
+	metadata := collectUnknownFields(raw)
+	if functionCallRaw, ok := raw["functionCall"]; ok {
+		metadata = cloneRawMap(metadata)
+		metadata["functionCall"] = append(json.RawMessage(nil), functionCallRaw...)
+		var call map[string]json.RawMessage
+		if err := json.Unmarshal(functionCallRaw, &call); err != nil {
+			return domain.UnifiedPart{}, fmt.Errorf("functionCall 格式非法: %w", err)
+		}
+		metadata["id"] = append(json.RawMessage(nil), call["id"]...)
+		metadata["name"] = append(json.RawMessage(nil), call["name"]...)
+		metadata["arguments"] = append(json.RawMessage(nil), call["args"]...)
+		return domain.UnifiedPart{Type: "function_call", Metadata: metadata}, nil
+	}
+	if functionResponseRaw, ok := raw["functionResponse"]; ok {
+		metadata = cloneRawMap(metadata)
+		metadata["functionResponse"] = append(json.RawMessage(nil), functionResponseRaw...)
+		var response map[string]json.RawMessage
+		if err := json.Unmarshal(functionResponseRaw, &response); err != nil {
+			return domain.UnifiedPart{}, fmt.Errorf("functionResponse 格式非法: %w", err)
+		}
+		metadata["id"] = append(json.RawMessage(nil), response["id"]...)
+		metadata["name"] = append(json.RawMessage(nil), response["name"]...)
+		metadata["response"] = append(json.RawMessage(nil), response["response"]...)
+		return domain.UnifiedPart{Type: "function_response", Metadata: metadata}, nil
+	}
+	if inlineRaw, ok := raw["inlineData"]; ok {
+		metadata = cloneRawMap(metadata)
+		metadata["inlineData"] = append(json.RawMessage(nil), inlineRaw...)
+		desc := extractMediaDescriptor(domain.UnifiedPart{Metadata: metadata})
+		partType := partTypeFromMime(desc.MimeType)
+		metadata = enrichPartMetadata(partType, metadata, desc)
+		return domain.UnifiedPart{Type: partType, Metadata: metadata}, nil
+	}
+	if fileRaw, ok := raw["fileData"]; ok {
+		metadata = cloneRawMap(metadata)
+		metadata["fileData"] = append(json.RawMessage(nil), fileRaw...)
+		desc := extractMediaDescriptor(domain.UnifiedPart{Metadata: metadata})
+		partType := partTypeFromMime(desc.MimeType)
+		metadata = enrichPartMetadata(partType, metadata, desc)
+		return domain.UnifiedPart{Type: partType, Metadata: metadata}, nil
+	}
+	metadata = cloneRawMap(raw)
+	return domain.UnifiedPart{Type: "file", Metadata: metadata}, nil
 }
 
 func resolveGeminiModel(pathModel string, bodyModel string) (string, error) {

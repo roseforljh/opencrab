@@ -16,6 +16,7 @@ type ModelRouteRow = {
   alias: string;
   target: string;
   channel: string;
+  invocationMode: string;
   priority: string;
   fallback: string;
 };
@@ -106,6 +107,10 @@ export function ModelsClient({
                       <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">优先级</label>
                       <Input defaultValue={selectedRoute.priority} />
                     </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">调用方式</label>
+                      <Input defaultValue={selectedRoute.invocationMode} />
+                    </div>
                     <Button className="w-full">保存更改</Button>
                   </div>
                 </DetailDrawer>
@@ -129,6 +134,10 @@ export function ModelsClient({
                 <div className="space-y-1">
                   <span className="text-sm font-medium text-muted-foreground">目标渠道 (Channel)</span>
                   <p className="text-base font-medium text-foreground">{selectedRoute.channel}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm font-medium text-muted-foreground">调用方式 (Invocation Mode)</span>
+                  <p className="text-base font-medium text-foreground">{selectedRoute.invocationMode}</p>
                 </div>
               </div>
             ) : (

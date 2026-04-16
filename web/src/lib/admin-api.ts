@@ -36,6 +36,7 @@ export type AdminModelRoute = {
   id: number;
   model_alias: string;
   channel_name: string;
+  invocation_mode?: string;
   priority: number;
   fallback_model: string;
 };

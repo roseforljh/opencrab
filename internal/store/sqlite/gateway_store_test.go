@@ -24,9 +24,9 @@ INSERT INTO channels(name, provider, endpoint, api_key, enabled, created_at, upd
 ('gemini-b', 'gemini', 'https://generativelanguage.googleapis.com', 'k2', 0, 'now', 'now');
 INSERT INTO models(alias, upstream_model, created_at, updated_at) VALUES
 ('gpt-4o', 'claude-3-5-sonnet', 'now', 'now');
-INSERT INTO model_routes(model_alias, channel_name, priority, fallback_model, created_at, updated_at) VALUES
-('gpt-4o', 'claude-a', 1, 'ignored-model', 'now', 'now'),
-('gpt-4o', 'gemini-b', 2, 'also-ignored', 'now', 'now');`)
+INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, fallback_model, created_at, updated_at) VALUES
+('gpt-4o', 'claude-a', 'claude', 1, 'ignored-model', 'now', 'now'),
+('gpt-4o', 'gemini-b', 'gemini', 2, 'also-ignored', 'now', 'now');`)
 	if err != nil {
 		t.Fatalf("seed db: %v", err)
 	}
@@ -41,6 +41,9 @@ INSERT INTO model_routes(model_alias, channel_name, priority, fallback_model, cr
 	}
 	if routes[0].Channel.Name != "claude-a" || routes[0].UpstreamModel != "claude-3-5-sonnet" {
 		t.Fatalf("unexpected route: %#v", routes[0])
+	}
+	if routes[0].InvocationMode != "claude" {
+		t.Fatalf("unexpected invocation mode: %#v", routes[0])
 	}
 }
 
@@ -81,7 +84,7 @@ func TestGatewayAttemptLogStoreLogGatewayAttempt(t *testing.T) {
 	if items[0].Channel != "claude-a" || items[0].StatusCode != 503 {
 		t.Fatalf("unexpected log item: %#v", items[0])
 	}
-	if !strings.Contains(items[0].Details, `"log_type":"gateway_attempt"`) || !strings.Contains(items[0].Details, `"attempt":1`) {
+	if !strings.Contains(items[0].Details, `"log_type":"gateway_attempt"`) || !strings.Contains(items[0].Details, `"attempt":1`) || !strings.Contains(items[0].Details, `"routing_strategy"`) {
 		t.Fatalf("unexpected details: %s", items[0].Details)
 	}
 }
@@ -131,5 +134,54 @@ func TestRequestLogStoreCreateListAndClear(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("expected 0 log after clear, got %d", len(items))
+	}
+}
+
+func TestRoutingConfigStoreDefaultsToSequential(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	strategy, err := NewRoutingConfigStore(db).GetRoutingStrategy(context.Background())
+	if err != nil {
+		t.Fatalf("get routing strategy: %v", err)
+	}
+	if strategy != domain.RoutingStrategySequential {
+		t.Fatalf("unexpected strategy: %s", strategy)
+	}
+}
+
+func TestRoutingCursorStoreReadAndAdvance(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	store := NewRoutingCursorStore(db)
+	value, err := store.GetRoutingCursor(context.Background(), "gpt-4o|openai|matched|1")
+	if err != nil {
+		t.Fatalf("get cursor: %v", err)
+	}
+	if value != 0 {
+		t.Fatalf("expected zero default cursor, got %d", value)
+	}
+	if err := store.AdvanceRoutingCursor(context.Background(), "gpt-4o|openai|matched|1", 3, 1); err != nil {
+		t.Fatalf("advance cursor: %v", err)
+	}
+	value, err = store.GetRoutingCursor(context.Background(), "gpt-4o|openai|matched|1")
+	if err != nil {
+		t.Fatalf("get cursor after advance: %v", err)
+	}
+	if value != 2 {
+		t.Fatalf("expected cursor 2, got %d", value)
 	}
 }

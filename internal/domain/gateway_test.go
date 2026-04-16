@@ -45,7 +45,7 @@ func TestUnifiedChatRequestValidateCore(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "reject non text part",
+			name: "allow non text part",
 			request: UnifiedChatRequest{
 				Model: "gpt-4o-mini",
 				Messages: []UnifiedMessage{{
@@ -53,7 +53,6 @@ func TestUnifiedChatRequestValidateCore(t *testing.T) {
 					Parts: []UnifiedPart{{Type: "image_url", Text: "ignored"}},
 				}},
 			},
-			wantErr: true,
 		},
 		{
 			name: "reject empty text",
@@ -67,7 +66,7 @@ func TestUnifiedChatRequestValidateCore(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "reject tools in first version",
+			name: "allow tools payload",
 			request: UnifiedChatRequest{
 				Model: "gpt-4o-mini",
 				Messages: []UnifiedMessage{{
@@ -76,10 +75,9 @@ func TestUnifiedChatRequestValidateCore(t *testing.T) {
 				}},
 				Tools: []json.RawMessage{toolRaw},
 			},
-			wantErr: true,
 		},
 		{
-			name: "reject part metadata in first version",
+			name: "allow part metadata",
 			request: UnifiedChatRequest{
 				Model: "gpt-4o-mini",
 				Messages: []UnifiedMessage{{
@@ -91,7 +89,6 @@ func TestUnifiedChatRequestValidateCore(t *testing.T) {
 					}},
 				}},
 			},
-			wantErr: true,
 		},
 	}
 

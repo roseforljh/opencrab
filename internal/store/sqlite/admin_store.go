@@ -87,7 +87,7 @@ func ListModelMappings(ctx context.Context, db *sql.DB) ([]domain.ModelMapping, 
 }
 
 func ListModelRoutes(ctx context.Context, db *sql.DB) ([]domain.ModelRoute, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, model_alias, channel_name, priority, fallback_model FROM model_routes ORDER BY priority ASC, id DESC`)
+	rows, err := db.QueryContext(ctx, `SELECT id, model_alias, channel_name, invocation_mode, priority, fallback_model FROM model_routes ORDER BY priority ASC, id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("查询 model_routes 失败: %w", err)
 	}
@@ -96,7 +96,7 @@ func ListModelRoutes(ctx context.Context, db *sql.DB) ([]domain.ModelRoute, erro
 	items := make([]domain.ModelRoute, 0)
 	for rows.Next() {
 		var item domain.ModelRoute
-		if err := rows.Scan(&item.ID, &item.ModelAlias, &item.ChannelName, &item.Priority, &item.FallbackModel); err != nil {
+		if err := rows.Scan(&item.ID, &item.ModelAlias, &item.ChannelName, &item.InvocationMode, &item.Priority, &item.FallbackModel); err != nil {
 			return nil, fmt.Errorf("读取 model_route 失败: %w", err)
 		}
 		items = append(items, item)
@@ -263,9 +263,10 @@ func CreateChannel(ctx context.Context, db *sql.DB, input domain.CreateChannelIn
 
 		if _, err := tx.ExecContext(
 			ctx,
-			`INSERT INTO model_routes(model_alias, channel_name, priority, fallback_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, fallback_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			normalized,
 			input.Name,
+			"",
 			index+1,
 			"",
 			now,
@@ -337,7 +338,7 @@ func UpdateChannel(ctx context.Context, db *sql.DB, id int64, input domain.Updat
 				return fmt.Errorf("写入 model 失败: %w", err)
 			}
 
-			if _, err := tx.ExecContext(ctx, `INSERT INTO model_routes(model_alias, channel_name, priority, fallback_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, normalized, input.Name, index+1, "", now, now); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, fallback_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, normalized, input.Name, "", index+1, "", now, now); err != nil {
 				return fmt.Errorf("写入 model_route 失败: %w", err)
 			}
 		}
@@ -480,7 +481,7 @@ func DeleteModelMapping(ctx context.Context, db *sql.DB, id int64) error {
 
 func CreateModelRoute(ctx context.Context, db *sql.DB, input domain.CreateModelRouteInput) (domain.ModelRoute, error) {
 	now := time.Now().Format(time.RFC3339)
-	result, err := db.ExecContext(ctx, `INSERT INTO model_routes(model_alias, channel_name, priority, fallback_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, input.ModelAlias, input.ChannelName, input.Priority, input.FallbackModel, now, now)
+	result, err := db.ExecContext(ctx, `INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, fallback_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, input.ModelAlias, input.ChannelName, input.InvocationMode, input.Priority, input.FallbackModel, now, now)
 	if err != nil {
 		return domain.ModelRoute{}, fmt.Errorf("创建 model_route 失败: %w", err)
 	}
@@ -488,11 +489,11 @@ func CreateModelRoute(ctx context.Context, db *sql.DB, input domain.CreateModelR
 	if err != nil {
 		return domain.ModelRoute{}, fmt.Errorf("读取 model_route id 失败: %w", err)
 	}
-	return domain.ModelRoute{ID: id, ModelAlias: input.ModelAlias, ChannelName: input.ChannelName, Priority: input.Priority, FallbackModel: input.FallbackModel}, nil
+	return domain.ModelRoute{ID: id, ModelAlias: input.ModelAlias, ChannelName: input.ChannelName, InvocationMode: input.InvocationMode, Priority: input.Priority, FallbackModel: input.FallbackModel}, nil
 }
 
 func UpdateModelRoute(ctx context.Context, db *sql.DB, id int64, input domain.UpdateModelRouteInput) error {
-	_, err := db.ExecContext(ctx, `UPDATE model_routes SET model_alias = ?, channel_name = ?, priority = ?, fallback_model = ?, updated_at = ? WHERE id = ?`, input.ModelAlias, input.ChannelName, input.Priority, input.FallbackModel, time.Now().Format(time.RFC3339), id)
+	_, err := db.ExecContext(ctx, `UPDATE model_routes SET model_alias = ?, channel_name = ?, invocation_mode = ?, priority = ?, fallback_model = ?, updated_at = ? WHERE id = ?`, input.ModelAlias, input.ChannelName, input.InvocationMode, input.Priority, input.FallbackModel, time.Now().Format(time.RFC3339), id)
 	if err != nil {
 		return fmt.Errorf("更新 model_route 失败: %w", err)
 	}

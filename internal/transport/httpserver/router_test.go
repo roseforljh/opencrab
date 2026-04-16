@@ -132,3 +132,24 @@ func TestUpdateChannelAcceptsModelIDs(t *testing.T) {
 		t.Fatalf("unexpected model ids: %#v", captured.ModelIDs)
 	}
 }
+
+func TestCreateModelRouteAcceptsInvocationMode(t *testing.T) {
+	var captured domain.CreateModelRouteInput
+	router := NewRouter(Dependencies{
+		CreateModelRoute: func(ctx context.Context, input domain.CreateModelRouteInput) (domain.ModelRoute, error) {
+			captured = input
+			return domain.ModelRoute{ID: 1, ModelAlias: input.ModelAlias, ChannelName: input.ChannelName, InvocationMode: input.InvocationMode, Priority: input.Priority, FallbackModel: input.FallbackModel}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/model-routes", strings.NewReader(`{"model_alias":"gpt-4o","channel_name":"claude-a","invocation_mode":"claude","priority":10,"fallback_model":""}`))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+	if captured.InvocationMode != "claude" {
+		t.Fatalf("unexpected invocation mode: %#v", captured)
+	}
+}

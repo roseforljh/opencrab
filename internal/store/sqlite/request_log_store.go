@@ -83,14 +83,19 @@ func (s *RequestLogStore) Clear(ctx context.Context) error {
 
 func (s *GatewayAttemptLogStore) LogGatewayAttempt(ctx context.Context, item domain.GatewayAttemptLog) error {
 	details, err := json.Marshal(map[string]any{
-		"log_type":       "gateway_attempt",
-		"provider":       item.Provider,
-		"attempt":        item.Attempt,
-		"retryable":      item.Retryable,
-		"stream_started": item.StreamStarted,
-		"success":        item.Success,
-		"error_message":  item.ErrorMessage,
-		"upstream_model": item.UpstreamModel,
+		"log_type":          "gateway_attempt",
+		"provider":          item.Provider,
+		"routing_strategy":  item.RoutingStrategy,
+		"invocation_bucket": item.InvocationBucket,
+		"priority_tier":     item.PriorityTier,
+		"candidate_count":   item.CandidateCount,
+		"selected_index":    item.SelectedIndex,
+		"attempt":           item.Attempt,
+		"retryable":         item.Retryable,
+		"stream_started":    item.StreamStarted,
+		"success":           item.Success,
+		"error_message":     item.ErrorMessage,
+		"upstream_model":    item.UpstreamModel,
 	})
 	if err != nil {
 		return fmt.Errorf("序列化 attempt 日志失败: %w", err)

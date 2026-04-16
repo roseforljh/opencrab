@@ -148,6 +148,57 @@ func TestGeminiCodecRoundTripConflictAndMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenAICodecToolCalls(t *testing.T) {
+	decoded, err := DecodeOpenAIChatResponse([]byte(`{"id":"chatcmpl-tool","choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"opencode","arguments":"{\"prompt\":\"ping\"}"}}]}}]}`))
+	if err != nil {
+		t.Fatalf("decode openai tool call response: %v", err)
+	}
+	if len(decoded.Message.ToolCalls) != 1 || decoded.Message.ToolCalls[0].Name != "opencode" {
+		t.Fatalf("unexpected tool calls: %+v", decoded.Message.ToolCalls)
+	}
+	data, err := EncodeOpenAIChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolOpenAI, Model: "gpt-4o-mini", Messages: []domain.UnifiedMessage{{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}}}}})
+	if err != nil {
+		t.Fatalf("encode openai tool request: %v", err)
+	}
+	if !strings.Contains(string(data), `"tool_calls"`) {
+		t.Fatalf("expected tool_calls in payload: %s", string(data))
+	}
+}
+
+func TestClaudeCodecToolUseAndResult(t *testing.T) {
+	decoded, err := DecodeClaudeChatResponse([]byte(`{"id":"msg_tool","model":"claude-sonnet","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"opencode","input":{"prompt":"ping"}}],"stop_reason":"tool_use"}`))
+	if err != nil {
+		t.Fatalf("decode claude tool_use response: %v", err)
+	}
+	if len(decoded.Message.ToolCalls) != 1 || decoded.Message.ToolCalls[0].Name != "opencode" {
+		t.Fatalf("unexpected claude tool calls: %+v", decoded.Message.ToolCalls)
+	}
+	data, err := EncodeClaudeChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolClaude, Model: "claude-sonnet", Messages: []domain.UnifiedMessage{{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: `{"ok":true}`}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"toolu_1"`)}}}, Tools: []json.RawMessage{json.RawMessage(`{"name":"opencode","input_schema":{"type":"object"}}`)}})
+	if err != nil {
+		t.Fatalf("encode claude tool_result request: %v", err)
+	}
+	if !strings.Contains(string(data), `"tool_result"`) || !strings.Contains(string(data), `"tools"`) {
+		t.Fatalf("unexpected claude payload: %s", string(data))
+	}
+}
+
+func TestGeminiCodecFunctionCallAndResponse(t *testing.T) {
+	decoded, err := DecodeGeminiChatResponse([]byte(`{"modelVersion":"gemini-2.0-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[{"functionCall":{"id":"fc_1","name":"opencode","args":{"prompt":"ping"}}}]}}]}`))
+	if err != nil {
+		t.Fatalf("decode gemini functionCall response: %v", err)
+	}
+	if len(decoded.Message.ToolCalls) != 1 || decoded.Message.ToolCalls[0].Name != "opencode" {
+		t.Fatalf("unexpected gemini tool calls: %+v", decoded.Message.ToolCalls)
+	}
+	data, err := EncodeGeminiChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolGemini, Model: "gemini-2.0-flash", Messages: []domain.UnifiedMessage{{Role: "tool", Parts: []domain.UnifiedPart{{Type: "function_response", Metadata: map[string]json.RawMessage{"id": json.RawMessage(`"fc_1"`), "name": json.RawMessage(`"opencode"`), "response": json.RawMessage(`{"ok":true}`)}}}}}, Tools: []json.RawMessage{json.RawMessage(`{"functionDeclarations":[{"name":"opencode"}]}`)}})
+	if err != nil {
+		t.Fatalf("encode gemini functionResponse request: %v", err)
+	}
+	if !strings.Contains(string(data), `"functionResponse"`) || !strings.Contains(string(data), `"tools"`) {
+		t.Fatalf("unexpected gemini payload: %s", string(data))
+	}
+}
+
 func TestCodecBoundaryErrors(t *testing.T) {
 	_, err := DecodeOpenAIChatRequest([]byte(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":123}]}`))
 	if err == nil {
@@ -155,12 +206,12 @@ func TestCodecBoundaryErrors(t *testing.T) {
 	}
 
 	_, err = DecodeClaudeChatRequest([]byte(`{"model":"claude-3-5-haiku-latest","messages":[{"role":"user","content":[{"type":"image","source":{}}]}]}`))
-	if err == nil {
-		t.Fatalf("expected claude non-text error")
+	if err != nil {
+		t.Fatalf("unexpected claude image decode error: %v", err)
 	}
 
 	_, err = DecodeGeminiChatRequest([]byte(`{"model":"gemini-2.0-flash","contents":[{"parts":[{"text":"ping","inlineData":{}}]}]}`), "")
-	if err == nil {
-		t.Fatalf("expected gemini metadata boundary error")
+	if err != nil {
+		t.Fatalf("unexpected gemini inlineData decode error: %v", err)
 	}
 }

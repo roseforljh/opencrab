@@ -10,7 +10,13 @@ import { FilterBar } from "@/components/shared/filter-bar";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { AdminSettingGroup } from "@/lib/admin-api";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { AdminSettingGroup, AdminSettingItem } from "@/lib/admin-api";
+
+const routingStrategyOptions = [
+  { value: "sequential", label: "顺序" },
+  { value: "round_robin", label: "轮询" }
+];
 
 export function SettingsClient({
   eyebrow,
@@ -56,6 +62,27 @@ export function SettingsClient({
     }
   };
 
+  const renderField = (groupTitle: string, item: AdminSettingItem) => {
+    if (item.key === "gateway.routing_strategy") {
+      return (
+        <Select value={item.value} onValueChange={(value) => handleChange(groupTitle, item.key, value)}>
+          <SelectTrigger className="bg-muted/30">
+            <SelectValue placeholder="选择路由策略" />
+          </SelectTrigger>
+          <SelectContent>
+            {routingStrategyOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    return <Input value={item.value} onChange={(event) => handleChange(groupTitle, item.key, event.target.value)} className="bg-muted/30" />;
+  };
+
   return (
     <PageContainer>
       <PageHeader eyebrow={eyebrow} title={title} description={description} />
@@ -75,7 +102,7 @@ export function SettingsClient({
                     <div className="text-sm text-muted-foreground">{item.description}</div>
                   </div>
                   <div className="flex items-center gap-3 sm:w-72">
-                    <Input value={item.value} onChange={(event) => handleChange(group.title, item.key, event.target.value)} className="bg-muted/30" />
+                    {renderField(group.title, item)}
                     <Button variant="outline" className="shrink-0" onClick={() => void handleSave(item.key, item.value)}>
                       {savingKey === item.key ? "保存中..." : "保存"}
                     </Button>

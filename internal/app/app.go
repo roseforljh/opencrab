@@ -66,10 +66,20 @@ func New() (*App, error) {
 		},
 	}
 	rateLimiter := usecase.NewRateLimiter(5, 10)
-	chatProvider := provider.NewOpenAICompatibleProvider(client)
-	claudeProvider := provider.NewClaudeNativeProvider(client)
-	geminiProvider := provider.NewGeminiNativeProvider(client)
 	channelTester := provider.NewChannelTester(client)
+	routingConfigStore := store.NewRoutingConfigStore(db)
+	routingCursorStore := store.NewRoutingCursorStore(db)
+	gatewayService := usecase.NewGatewayService(
+		store.NewGatewayStore(db),
+		map[string]domain.Executor{
+			"openai": provider.NewOpenAIExecutor(client),
+			"claude": provider.NewClaudeExecutor(client),
+			"gemini": provider.NewGeminiExecutor(client),
+		},
+		store.NewGatewayAttemptLogStore(db),
+		routingConfigStore,
+		routingCursorStore,
+	)
 
 	router := httpserver.NewRouter(httpserver.Dependencies{
 		Logger: logger,
@@ -156,43 +166,11 @@ func New() (*App, error) {
 		CheckRateLimit: func(key string) bool {
 			return rateLimiter.Allow(key)
 		},
-		ProxyChat: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
-			channel, err := store.GetFirstEnabledChannel(ctx, db)
-			if err != nil {
-				return nil, err
-			}
-			proxyResp, err := chatProvider.ForwardChatCompletions(ctx, channel, body)
-			if err != nil {
-				return nil, err
-			}
-			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
-			return proxyResp, nil
-		},
-		ProxyClaude: func(ctx context.Context, body []byte) (*domain.ProxyResponse, error) {
-			channel, err := store.GetFirstEnabledChannel(ctx, db)
-			if err != nil {
-				return nil, err
-			}
-			proxyResp, err := claudeProvider.ForwardMessages(ctx, channel, body)
-			if err != nil {
-				return nil, err
-			}
-			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
-			return proxyResp, nil
-		},
-		ProxyGemini: func(ctx context.Context, model string, body []byte, stream bool) (*domain.ProxyResponse, error) {
-			channel, err := store.GetFirstEnabledChannel(ctx, db)
-			if err != nil {
-				return nil, err
-			}
-			proxyResp, err := geminiProvider.ForwardGenerateContent(ctx, channel, model, body, stream)
-			if err != nil {
-				return nil, err
-			}
-			proxyResp.Headers["X-Opencrab-Channel"] = []string{channel.Name}
-			return proxyResp, nil
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return gatewayService.Execute(ctx, requestID, req)
 		},
 		CopyProxy:        provider.CopyResponse,
+		CopyStream:       provider.CopyStreamResponse,
 		RenderProxyError: provider.RenderProxyError,
 	})
 
@@ -251,6 +229,7 @@ func buildSystemSettingGroups(appConfig config.Config, items []domain.SystemSett
 		{
 			Title: "运行策略",
 			Items: []domain.SystemSettingItem{
+				{Key: "gateway.routing_strategy", Label: "模型路由策略", Description: "同模型多渠道时使用顺序或轮询策略。可选值：sequential / round_robin。", Value: readValue("gateway.routing_strategy", string(domain.RoutingStrategySequential))},
 				{Key: "max_concurrency", Label: "最大并发数", Description: "控制全局并发阈值。", Value: readValue("max_concurrency", "128")},
 				{Key: "stream_release", Label: "流式中断释放", Description: "中断后是否立即回收资源。", Value: readValue("stream_release", "启用")},
 				{Key: "error_redaction", Label: "错误脱敏", Description: "是否在日志中脱敏敏感错误信息。", Value: readValue("error_redaction", "启用")},

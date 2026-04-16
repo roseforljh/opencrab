@@ -25,9 +25,10 @@ type UnifiedChatRequest struct {
 }
 
 type UnifiedMessage struct {
-	Role     string                     `json:"role"`
-	Parts    []UnifiedPart              `json:"parts"`
-	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
+	Role      string                     `json:"role"`
+	Parts     []UnifiedPart              `json:"parts"`
+	ToolCalls []UnifiedToolCall          `json:"tool_calls,omitempty"`
+	Metadata  map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 type UnifiedPart struct {
@@ -44,6 +45,13 @@ type UnifiedChatResponse struct {
 	Message      UnifiedMessage             `json:"message"`
 	Usage        map[string]int64           `json:"usage,omitempty"`
 	Metadata     map[string]json.RawMessage `json:"metadata,omitempty"`
+}
+
+type UnifiedToolCall struct {
+	ID        string                     `json:"id,omitempty"`
+	Name      string                     `json:"name"`
+	Arguments json.RawMessage            `json:"arguments,omitempty"`
+	Metadata  map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 type UnifiedStreamEvent struct {
@@ -79,9 +87,6 @@ func (r UnifiedChatRequest) ValidateCore() error {
 	if len(r.Messages) == 0 {
 		return fmt.Errorf("messages 不能为空")
 	}
-	if len(r.Tools) > 0 {
-		return fmt.Errorf("当前仅支持 text-only 主链路，tools 暂不支持")
-	}
 
 	for i, message := range r.Messages {
 		switch strings.TrimSpace(message.Role) {
@@ -91,21 +96,23 @@ func (r UnifiedChatRequest) ValidateCore() error {
 		}
 
 		if len(message.Parts) == 0 {
-			return fmt.Errorf("messages[%d].parts 不能为空", i)
+			if len(message.ToolCalls) == 0 {
+				return fmt.Errorf("messages[%d].parts 不能为空", i)
+			}
 		}
 
 		for j, part := range message.Parts {
 			if strings.TrimSpace(part.Type) == "" {
 				return fmt.Errorf("messages[%d].parts[%d].type 不能为空", i, j)
 			}
-			if strings.TrimSpace(part.Type) != "text" {
-				return fmt.Errorf("messages[%d].parts[%d] 当前仅支持 text part", i, j)
-			}
-			if strings.TrimSpace(part.Text) == "" {
+			if strings.TrimSpace(part.Type) == "text" && strings.TrimSpace(part.Text) == "" {
 				return fmt.Errorf("messages[%d].parts[%d].text 不能为空", i, j)
 			}
-			if len(part.Metadata) > 0 {
-				return fmt.Errorf("messages[%d].parts[%d] 当前仅支持 text-only 主链路，part metadata 暂不支持", i, j)
+		}
+
+		for j, toolCall := range message.ToolCalls {
+			if strings.TrimSpace(toolCall.Name) == "" {
+				return fmt.Errorf("messages[%d].tool_calls[%d].name 不能为空", i, j)
 			}
 		}
 	}

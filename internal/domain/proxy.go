@@ -2,8 +2,10 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -52,13 +54,21 @@ type ProxyResponse struct {
 	Body       []byte
 }
 
+type StreamResult struct {
+	StatusCode int
+	Headers    map[string][]string
+	Body       io.ReadCloser
+}
+
 type ChatProvider interface {
 	ForwardChatCompletions(ctx context.Context, channel UpstreamChannel, body []byte) (*ProxyResponse, error)
 }
 
 type GatewayMessage struct {
-	Role string `json:"role"`
-	Text string `json:"text"`
+	Role      string                     `json:"role"`
+	Parts     []UnifiedPart              `json:"parts"`
+	ToolCalls []UnifiedToolCall          `json:"tool_calls,omitempty"`
+	Metadata  map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 type GatewayToolCallPolicy string
@@ -68,10 +78,38 @@ const (
 )
 
 type GatewayRequest struct {
-	Model          string                `json:"model"`
-	Stream         bool                  `json:"stream,omitempty"`
-	Messages       []GatewayMessage      `json:"messages"`
-	ToolCallPolicy GatewayToolCallPolicy `json:"tool_call_policy,omitempty"`
+	Protocol       Protocol                   `json:"protocol,omitempty"`
+	Model          string                     `json:"model"`
+	Stream         bool                       `json:"stream,omitempty"`
+	Messages       []GatewayMessage           `json:"messages"`
+	Tools          []json.RawMessage          `json:"tools,omitempty"`
+	Metadata       map[string]json.RawMessage `json:"metadata,omitempty"`
+	ToolCallPolicy GatewayToolCallPolicy      `json:"tool_call_policy,omitempty"`
+}
+
+type RoutingStrategy string
+
+const (
+	RoutingStrategySequential RoutingStrategy = "sequential"
+	RoutingStrategyRoundRobin RoutingStrategy = "round_robin"
+)
+
+func NormalizeRoutingStrategy(value string) RoutingStrategy {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "round_robin", "round-robin", "roundrobin", "rr":
+		return RoutingStrategyRoundRobin
+	default:
+		return RoutingStrategySequential
+	}
+}
+
+type RoutingStrategyStore interface {
+	GetRoutingStrategy(ctx context.Context) (RoutingStrategy, error)
+}
+
+type RoutingCursorStore interface {
+	GetRoutingCursor(ctx context.Context, routeKey string) (int, error)
+	AdvanceRoutingCursor(ctx context.Context, routeKey string, candidateCount int, selectedIndex int) error
 }
 
 type ExecutorRequest struct {
@@ -82,6 +120,7 @@ type ExecutorRequest struct {
 
 type ExecutionResult struct {
 	Response *ProxyResponse
+	Stream   *StreamResult
 }
 
 type ExecutionError struct {
@@ -131,10 +170,11 @@ type Executor interface {
 }
 
 type GatewayRoute struct {
-	ModelAlias    string
-	UpstreamModel string
-	Channel       UpstreamChannel
-	Priority      int
+	ModelAlias     string
+	UpstreamModel  string
+	Channel        UpstreamChannel
+	InvocationMode string
+	Priority       int
 }
 
 type GatewayRouteStore interface {
@@ -142,19 +182,24 @@ type GatewayRouteStore interface {
 }
 
 type GatewayAttemptLog struct {
-	RequestID     string
-	Model         string
-	UpstreamModel string
-	Channel       string
-	Provider      string
-	Attempt       int
-	StatusCode    int
-	Retryable     bool
-	StreamStarted bool
-	Success       bool
-	ErrorMessage  string
-	RequestBody   string
-	ResponseBody  string
+	RequestID        string
+	Model            string
+	UpstreamModel    string
+	Channel          string
+	Provider         string
+	RoutingStrategy  string
+	InvocationBucket string
+	PriorityTier     int
+	CandidateCount   int
+	SelectedIndex    int
+	Attempt          int
+	StatusCode       int
+	Retryable        bool
+	StreamStarted    bool
+	Success          bool
+	ErrorMessage     string
+	RequestBody      string
+	ResponseBody     string
 }
 
 type GatewayAttemptLogger interface {
