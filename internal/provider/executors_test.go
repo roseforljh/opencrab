@@ -108,6 +108,75 @@ func TestClaudeExecutorBuildsNativeTextRequest(t *testing.T) {
 	}
 }
 
+func TestClaudeExecutorPassesThroughAnthropicBetaHeader(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Header.Get("anthropic-beta") != "tools-2024-04-04" {
+			t.Fatalf("unexpected anthropic-beta: %s", req.Header.Get("anthropic-beta"))
+		}
+		if req.Header.Get("anthropic-dangerous-direct-browser-access") != "true" {
+			t.Fatalf("unexpected dangerous browser header: %s", req.Header.Get("anthropic-dangerous-direct-browser-access"))
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+	_, err := NewClaudeExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
+		UpstreamModel: "claude-3-5-sonnet",
+		Request:       domain.GatewayRequest{Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})}, RequestHeaders: map[string]string{"anthropic-beta": "tools-2024-04-04", "anthropic-dangerous-direct-browser-access": "true"}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestOpenAIExecutorPassesThroughCustomHeaders(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Header.Get("OpenAI-Beta") != "responses=v1" {
+			t.Fatalf("unexpected OpenAI-Beta: %s", req.Header.Get("OpenAI-Beta"))
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request:       domain.GatewayRequest{Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})}, RequestHeaders: map[string]string{"OpenAI-Beta": "responses=v1"}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestOpenAIExecutorStripsResponsesOnlyFields(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})}, Metadata: map[string]json.RawMessage{
+			"previous_response_id": json.RawMessage(`"resp_1"`),
+			"include":              json.RawMessage(`["reasoning.encrypted_content"]`),
+			"store":                json.RawMessage(`false`),
+			"reasoning":            json.RawMessage(`{"effort":"medium"}`),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, key := range []string{"previous_response_id", "include", "store", "reasoning"} {
+		if _, exists := captured[key]; exists {
+			t.Fatalf("unexpected leaked key %s in payload: %#v", key, captured)
+		}
+	}
+}
+
 func TestGeminiExecutorBuildsNativeTextRequest(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

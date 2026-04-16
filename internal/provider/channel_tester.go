@@ -198,6 +198,20 @@ func buildClaudeMessagesURL(endpoint string) string {
 	return trimmed + "/v1/messages"
 }
 
+func buildClaudeCountTokensURL(endpoint string) string {
+	trimmed := strings.TrimRight(endpoint, "/")
+	if strings.HasSuffix(trimmed, "/messages/count_tokens") {
+		return trimmed
+	}
+	if strings.HasSuffix(trimmed, "/messages") {
+		return trimmed + "/count_tokens"
+	}
+	if strings.HasSuffix(trimmed, "/v1") {
+		return trimmed + "/messages/count_tokens"
+	}
+	return trimmed + "/v1/messages/count_tokens"
+}
+
 func buildGeminiGenerateContentURL(endpoint string, model string) string {
 	trimmed := strings.TrimRight(endpoint, "/")
 	escapedModel := url.PathEscape(model)

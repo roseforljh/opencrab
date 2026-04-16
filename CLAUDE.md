@@ -57,14 +57,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 打开 SQLite 数据库
   - 自动执行 `internal/store/sqlite/migrations/*.sql`
   - 构造 `http.Client`
-  - 创建 rate limiter、channel tester、OpenAI-compatible provider
+	- 创建 rate limiter、channel tester 与多 provider executor
   - 通过 `httpserver.Dependencies` 注入路由层
 
 ### 路由与接口
 - 路由定义集中在 `internal/transport/httpserver/router.go`。
 - 健康检查接口：`/healthz`、`/readyz`
 - 管理接口统一挂在 `/api/admin/*`，覆盖 channels、models、model-routes、api-keys、logs、settings。
-- 代理接口是 `POST /v1/chat/completions`。
+- 代理接口覆盖 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1beta/models/{model}:generateContent`、`POST /v1beta/models/{model}:streamGenerateContent`。
 
 ### 数据与分层
 - 持久化只有 SQLite。
@@ -74,13 +74,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `0002_request_logs_details.sql`
   - `0003_request_logs_usage.sql`
 - `internal/domain` 放领域对象和输入输出结构。
-- `internal/usecase/usecase.go` 目前基本为空，不要假设仓库已经形成完整 usecase 层。当前实际在用的 usecase 逻辑主要是 rate limiter。
+- `internal/usecase/usecase.go` 目前基本为空，不要假设仓库已经形成完整 usecase 层。当前实际在用的 usecase 逻辑包括 rate limiter 与 `GatewayService` 的运行时路由。
 
 ### 当前运行时事实
-- 实际代理转发使用 `provider.NewOpenAICompatibleProvider(client)`。
-- `POST /v1/chat/completions` 目前不是按 `models` 或 `model_routes` 做真实运行时路由。
-- 当前实现会从数据库里取第一个启用的 channel 进行转发。
-- `model_routes.priority` 当前主要影响后台展示顺序，不是线上真实请求路由策略。
+- 实际代理转发按 `models`、`model_routes`、`gateway.routing_strategy`、`routing_cursors` 做真实运行时路由。
+- `POST /v1/chat/completions` 会先做 invocation bucket 分段，再做 priority 分层，并在层内应用顺序或轮询策略。
+- 当前实现已接入 cooldown 过滤、`fallback_model` alias 重入、sticky routing 与运行时决策日志。
+- `model_routes.priority` 是线上真实请求路由策略的一部分，不只是后台展示顺序。
 - API Key 只在创建时返回一次明文，数据库里保存的是哈希值。
 
 ## 前端架构
@@ -90,7 +90,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 导航定义在 `web/src/lib/navigation.ts`，当前控制台入口包括：`/`、`/channels`、`/models`、`/api-keys`、`/logs`、`/settings`。
 
 ### 数据流
-- 服务端页面直接通过 `web/src/lib/admin-api.ts` 调后端管理接口，默认 `cache: "no-store"`。
+- 服务端页面直接通过 `web/src/lib/admin-api-server.ts` 调后端管理接口，默认 `cache: "no-store"`。
 - 浏览器端的增删改请求走 `web/src/app/api/admin/[...path]/route.ts`，由 Next.js Route Handler 反向代理到后端。
 - 控制台页面普遍依赖真实后端数据，`web/src/lib/mock/console-data.ts` 不应再回填业务 mock 数据。
 

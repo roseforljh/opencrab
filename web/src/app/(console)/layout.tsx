@@ -1,9 +1,20 @@
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ShellProvider } from "@/components/layout/shell-provider";
 import { Topbar } from "@/components/layout/topbar";
-export default function ConsoleLayout({ children }: { children: ReactNode }) {
+import { getAdminAuthStatus } from "@/lib/admin-api-server";
+
+export default async function ConsoleLayout({ children }: { children: ReactNode }) {
+	const authStatus = await getAdminAuthStatus();
+	if (!authStatus.initialized) {
+		redirect("/init");
+	}
+	if (!authStatus.authenticated) {
+		redirect("/login");
+	}
+
   return (
     <ShellProvider>
       <main className="h-screen overflow-hidden bg-background text-foreground">

@@ -11,27 +11,75 @@ import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { AdminSettingGroup, AdminSettingItem } from "@/lib/admin-api";
+import type { AdminSecondarySecurityState, AdminSettingGroup, AdminSettingItem } from "@/lib/admin-api";
 
 const routingStrategyOptions = [
   { value: "sequential", label: "顺序" },
   { value: "round_robin", label: "轮询" }
 ];
 
+const stickyEnabledOptions = [
+  { value: "true", label: "启用" },
+  { value: "false", label: "禁用" }
+];
+
+const stickyKeySourceOptions = [
+  { value: "auto", label: "自动" },
+  { value: "header", label: "Header" },
+  { value: "metadata", label: "Metadata" }
+];
+
+const booleanSettingKeys = new Set([
+  "gateway.sticky_enabled",
+  "dispatch.redis_enabled",
+  "dispatch.redis_tls_enabled",
+  "dispatch.pause_dispatch",
+  "dispatch.dead_letter_enabled",
+  "dispatch.metrics_enabled",
+  "dispatch.show_worker_status",
+  "dispatch.show_queue_depth",
+  "dispatch.show_retry_rate"
+]);
+
+const queueModeOptions = [
+  { value: "single", label: "单队列" },
+  { value: "priority", label: "优先级队列" }
+];
+
+const backoffModeOptions = [
+  { value: "fixed", label: "固定退避" },
+  { value: "exponential", label: "指数退避" }
+];
+
 export function SettingsClient({
   eyebrow,
   title,
   description,
-  initialGroups
+  initialGroups,
+  initialSecurityState
 }: {
   eyebrow: string;
   title: string;
   description: string;
   initialGroups: AdminSettingGroup[];
+  initialSecurityState: AdminSecondarySecurityState;
 }) {
   const [groups, setGroups] = useState(initialGroups);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [securityState, setSecurityState] = useState(initialSecurityState);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [secondaryEnabled, setSecondaryEnabled] = useState(initialSecurityState.enabled ? "enabled" : "disabled");
+  const [currentAdminPassword, setCurrentAdminPassword] = useState("");
+  const [currentSecondaryPassword, setCurrentSecondaryPassword] = useState("");
+  const [secondaryPassword, setSecondaryPassword] = useState("");
+  const [secondaryConfirmPassword, setSecondaryConfirmPassword] = useState("");
+  const [secondarySaving, setSecondarySaving] = useState(false);
+  const [secondaryMessage, setSecondaryMessage] = useState<string | null>(null);
 
   const handleChange = (groupTitle: string, key: string, value: string) => {
     setGroups((current) =>
@@ -44,6 +92,10 @@ export function SettingsClient({
   };
 
   const handleSave = async (key: string, value: string) => {
+    const currentItem = groups.flatMap((group) => group.items).find((item) => item.key === key);
+    if (currentItem?.sensitive && value.trim() === "") {
+      return;
+    }
     setError(null);
     setSavingKey(key);
     try {
@@ -80,7 +132,149 @@ export function SettingsClient({
       );
     }
 
+    if (booleanSettingKeys.has(item.key)) {
+      return (
+        <Select value={item.value} onValueChange={(value) => handleChange(groupTitle, item.key, value)}>
+          <SelectTrigger className="bg-muted/30">
+            <SelectValue placeholder="选择状态" />
+          </SelectTrigger>
+          <SelectContent>
+            {stickyEnabledOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    if (item.key === "dispatch.queue_mode") {
+      return (
+        <Select value={item.value} onValueChange={(value) => handleChange(groupTitle, item.key, value)}>
+          <SelectTrigger className="bg-muted/30">
+            <SelectValue placeholder="选择队列模式" />
+          </SelectTrigger>
+          <SelectContent>
+            {queueModeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    if (item.key === "dispatch.backoff_mode") {
+      return (
+        <Select value={item.value} onValueChange={(value) => handleChange(groupTitle, item.key, value)}>
+          <SelectTrigger className="bg-muted/30">
+            <SelectValue placeholder="选择退避模式" />
+          </SelectTrigger>
+          <SelectContent>
+            {backoffModeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    if (item.key === "gateway.sticky_key_source") {
+      return (
+        <Select value={item.value} onValueChange={(value) => handleChange(groupTitle, item.key, value)}>
+          <SelectTrigger className="bg-muted/30">
+            <SelectValue placeholder="选择 sticky key 来源" />
+          </SelectTrigger>
+          <SelectContent>
+            {stickyKeySourceOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    if (item.sensitive) {
+      return (
+        <Input
+          type="password"
+          value={item.value}
+          onChange={(event) => handleChange(groupTitle, item.key, event.target.value)}
+          className="bg-muted/30"
+          placeholder={item.configured ? "已配置，留空表示不修改" : "未配置"}
+        />
+      );
+    }
+
     return <Input value={item.value} onChange={(event) => handleChange(groupTitle, item.key, event.target.value)} className="bg-muted/30" />;
+  };
+
+  const showSecondaryPasswordFields = secondaryEnabled === "enabled";
+
+  const handlePasswordChange = async () => {
+    setPasswordMessage(null);
+    setPasswordSaving(true);
+    try {
+      const response = await fetch("/api/admin/auth/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          confirm_password: confirmPassword
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      setPasswordMessage("主密码已更新，新会话已自动续期。")
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (requestError) {
+      setPasswordMessage(requestError instanceof Error ? requestError.message : "主密码修改失败");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const handleSecondarySave = async () => {
+    setSecondaryMessage(null);
+    setSecondarySaving(true);
+    try {
+      const response = await fetch("/api/admin/auth/secondary", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: secondaryEnabled === "enabled",
+          current_admin_password: currentAdminPassword,
+          current_secondary_password: currentSecondaryPassword,
+          new_password: secondaryPassword,
+          confirm_password: secondaryConfirmPassword
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const updated = (await response.json()) as AdminSecondarySecurityState;
+      setSecurityState(updated);
+      setSecondaryEnabled(updated.enabled ? "enabled" : "disabled");
+      setSecondaryMessage(updated.enabled ? "二级密码配置已更新。" : "二级密码已关闭。")
+      setCurrentAdminPassword("");
+      setCurrentSecondaryPassword("");
+      setSecondaryPassword("");
+      setSecondaryConfirmPassword("");
+    } catch (requestError) {
+      setSecondaryMessage(requestError instanceof Error ? requestError.message : "二级密码配置失败");
+    } finally {
+      setSecondarySaving(false);
+    }
   };
 
   return (
@@ -92,6 +286,85 @@ export function SettingsClient({
       {error ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div> : null}
 
       <div className="space-y-8">
+        <SectionCard title="认证与安全" description="管理管理员主密码和敏感操作所需的二级密码。">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <div className="text-sm font-medium text-foreground">修改管理员密码</div>
+                <div className="mt-1 text-sm text-muted-foreground">修改主密码前必须先输入当前密码，新密码需要输入两次并保持一致。</div>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">当前密码</label>
+                  <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">新密码</label>
+                  <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">确认新密码</label>
+                  <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+                </div>
+                {passwordMessage ? <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-foreground">{passwordMessage}</div> : null}
+                <div className="flex justify-end">
+                  <Button onClick={() => void handlePasswordChange()} disabled={passwordSaving}>{passwordSaving ? "保存中..." : "更新主密码"}</Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-foreground">二级密码</div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${securityState.enabled ? "bg-success/10 text-success ring-success/20" : "bg-muted text-muted-foreground ring-border"}`}>{securityState.enabled ? "已开启" : "已关闭"}</span>
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">用于创建或删除 API Key 的二次校验。首次开启必须设置，设置后可正常关闭和重新开启。</div>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">开关状态</label>
+                  <Select value={secondaryEnabled} onValueChange={setSecondaryEnabled}>
+                    <SelectTrigger className="bg-muted/30">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enabled">开启</SelectItem>
+                      <SelectItem value="disabled">关闭</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">当前管理员密码</label>
+                  <Input type="password" value={currentAdminPassword} onChange={(event) => setCurrentAdminPassword(event.target.value)} />
+                </div>
+                {securityState.configured && showSecondaryPasswordFields ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">当前二级密码</label>
+                    <Input type="password" value={currentSecondaryPassword} onChange={(event) => setCurrentSecondaryPassword(event.target.value)} placeholder="修改二级密码时需要输入，单独重新开启可留空" />
+                  </div>
+                ) : null}
+                {showSecondaryPasswordFields ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">新二级密码</label>
+                      <Input type="password" value={secondaryPassword} onChange={(event) => setSecondaryPassword(event.target.value)} placeholder={securityState.configured ? "留空表示仅重新开启，不修改二级密码" : "首次开启时必须设置"} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">确认新二级密码</label>
+                      <Input type="password" value={secondaryConfirmPassword} onChange={(event) => setSecondaryConfirmPassword(event.target.value)} />
+                    </div>
+                  </>
+                ) : null}
+                {secondaryMessage ? <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-foreground">{secondaryMessage}</div> : null}
+                <div className="flex justify-end">
+                  <Button onClick={() => void handleSecondarySave()} disabled={secondarySaving}>{secondarySaving ? "保存中..." : "保存二级密码设置"}</Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
         {groups.map((group) => (
           <SectionCard key={group.title} title={group.title} description={`管理${group.title}相关的配置项。`}>
             <div className="divide-y divide-border rounded-xl border border-border bg-card">

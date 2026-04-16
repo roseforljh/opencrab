@@ -84,6 +84,7 @@ func (s *RequestLogStore) Clear(ctx context.Context) error {
 func (s *GatewayAttemptLogStore) LogGatewayAttempt(ctx context.Context, item domain.GatewayAttemptLog) error {
 	details, err := json.Marshal(map[string]any{
 		"log_type":          "gateway_attempt",
+		"route_id":          item.RouteID,
 		"provider":          item.Provider,
 		"routing_strategy":  item.RoutingStrategy,
 		"invocation_bucket": item.InvocationBucket,
@@ -95,10 +96,27 @@ func (s *GatewayAttemptLogStore) LogGatewayAttempt(ctx context.Context, item dom
 		"stream_started":    item.StreamStarted,
 		"success":           item.Success,
 		"error_message":     item.ErrorMessage,
+		"decision_reason":   item.DecisionReason,
+		"fallback_stage":    item.FallbackStage,
+		"skip_reason":       item.SkipReason,
+		"cooldown_applied":  item.CooldownApplied,
+		"cooldown_until":    item.CooldownUntil,
+		"sticky_hit":        item.StickyHit,
+		"selected_channel":  item.SelectedChannel,
+		"affinity_key":      item.AffinityKey,
+		"fallback_chain":    item.FallbackChain,
+		"visited_aliases":   item.VisitedAliases,
 		"upstream_model":    item.UpstreamModel,
 	})
 	if err != nil {
 		return fmt.Errorf("序列化 attempt 日志失败: %w", err)
+	}
+
+	requestBody := item.RequestBody
+	responseBody := item.ResponseBody
+	if item.Success {
+		requestBody = ""
+		responseBody = ""
 	}
 
 	return s.requestLogs.Create(ctx, domain.RequestLog{
@@ -106,8 +124,8 @@ func (s *GatewayAttemptLogStore) LogGatewayAttempt(ctx context.Context, item dom
 		Model:        item.Model,
 		Channel:      item.Channel,
 		StatusCode:   item.StatusCode,
-		RequestBody:  item.RequestBody,
-		ResponseBody: item.ResponseBody,
+		RequestBody:  requestBody,
+		ResponseBody: responseBody,
 		Details:      string(details),
 		CreatedAt:    time.Now().Format(time.RFC3339),
 	})

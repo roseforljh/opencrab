@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"opencrab/internal/domain"
 )
@@ -44,6 +45,9 @@ INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, f
 	}
 	if routes[0].InvocationMode != "claude" {
 		t.Fatalf("unexpected invocation mode: %#v", routes[0])
+	}
+	if routes[0].FallbackModel != "ignored-model" {
+		t.Fatalf("expected fallback model to be loaded, got %#v", routes[0])
 	}
 }
 
@@ -86,6 +90,77 @@ func TestGatewayAttemptLogStoreLogGatewayAttempt(t *testing.T) {
 	}
 	if !strings.Contains(items[0].Details, `"log_type":"gateway_attempt"`) || !strings.Contains(items[0].Details, `"attempt":1`) || !strings.Contains(items[0].Details, `"routing_strategy"`) {
 		t.Fatalf("unexpected details: %s", items[0].Details)
+	}
+}
+
+func TestGatewayAttemptLogStoreOmitsBodiesOnSuccess(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	store := NewGatewayAttemptLogStore(db)
+	err = store.LogGatewayAttempt(context.Background(), domain.GatewayAttemptLog{
+		RequestID:    "req-success",
+		Model:        "gpt-4o",
+		Channel:      "claude-a",
+		Provider:     "claude",
+		Attempt:      1,
+		StatusCode:   200,
+		Success:      true,
+		RequestBody:  `{"model":"gpt-4o"}`,
+		ResponseBody: `{"ok":true}`,
+	})
+	if err != nil {
+		t.Fatalf("log success attempt: %v", err)
+	}
+
+	items, err := NewRequestLogStore(db).List(context.Background())
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(items))
+	}
+	if items[0].RequestBody != "" || items[0].ResponseBody != "" {
+		t.Fatalf("expected success attempt bodies to be omitted, got %#v", items[0])
+	}
+}
+
+func TestRoutingRuntimeAndStickyStores(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	runtimeStore := NewRoutingRuntimeStateStore(db)
+	until, err := runtimeStore.MarkCooldown(context.Background(), 12, time.Minute, "upstream 503")
+	if err != nil || until == "" {
+		t.Fatalf("mark cooldown: until=%s err=%v", until, err)
+	}
+	count, err := runtimeStore.CountActiveCooldowns(context.Background())
+	if err != nil || count != 1 {
+		t.Fatalf("count cooldowns: count=%d err=%v", count, err)
+	}
+	if err := runtimeStore.ClearCooldown(context.Background(), 12); err != nil {
+		t.Fatalf("clear cooldown: %v", err)
+	}
+
+	stickyStore := NewStickyRoutingStore(db)
+	if err := stickyStore.UpsertStickyBinding(context.Background(), "session-1", "gpt-4o", domain.ProtocolOpenAI, 12); err != nil {
+		t.Fatalf("upsert sticky binding: %v", err)
+	}
+	routeID, found, err := stickyStore.GetStickyBinding(context.Background(), "session-1", "gpt-4o", domain.ProtocolOpenAI)
+	if err != nil || !found || routeID != 12 {
+		t.Fatalf("get sticky binding: routeID=%d found=%v err=%v", routeID, found, err)
 	}
 }
 

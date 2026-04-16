@@ -39,6 +39,9 @@ func EncodeClaudeChatRequest(req domain.UnifiedChatRequest) ([]byte, error) {
 		payload["system"] = systemBlocks
 	}
 	payload["messages"] = messages
+	if err := normalizeClaudeCompatibilityPayload(payload); err != nil {
+		return nil, err
+	}
 	return json.Marshal(payload)
 }
 
@@ -362,4 +365,153 @@ func decodeClaudeContentBlock(raw map[string]json.RawMessage) (domain.UnifiedPar
 		metadata = cloneRawMap(raw)
 		return domain.UnifiedPart{Type: blockType, Metadata: metadata}, domain.UnifiedToolCall{}, false, nil
 	}
+}
+
+func normalizeClaudeCompatibilityPayload(payload map[string]any) error {
+	if payload == nil {
+		return nil
+	}
+	if thinking, ok := payload["thinking"]; ok {
+		if toolChoice, exists := payload["tool_choice"]; exists && claudeToolChoiceDisallowsThinking(toolChoice) {
+			delete(payload, "thinking")
+		} else if !claudeThinkingSupported(payload["model"], thinking) {
+			delete(payload, "thinking")
+		}
+	}
+	cacheControls := collectClaudeCacheControlTTLs(payload)
+	if len(cacheControls) > 4 {
+		return fmt.Errorf("Claude cache_control 断点不能超过 4 个")
+	}
+	seenFiveMinute := false
+	for _, ttl := range cacheControls {
+		if ttl == "5m" {
+			seenFiveMinute = true
+		}
+		if ttl == "1h" && seenFiveMinute {
+			return fmt.Errorf("Claude cache_control ttl 不能在 5m 之后再出现 1h")
+		}
+	}
+	if topLevelTTL, nestedHasFive := claudeTopLevelAndNestedCacheTTL(payload); topLevelTTL == "1h" && nestedHasFive {
+		return fmt.Errorf("Claude cache_control ttl 不能在 5m 之后再出现 1h")
+	}
+	return nil
+}
+
+func claudeToolChoiceDisallowsThinking(value any) bool {
+	choice, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	typeValue, _ := choice["type"].(string)
+	return typeValue == "any" || typeValue == "tool"
+}
+
+func claudeThinkingSupported(model any, value any) bool {
+	thinking, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	modelName, _ := model.(string)
+	typeValue, _ := thinking["type"].(string)
+	switch typeValue {
+	case "adaptive":
+		return true
+	case "enabled":
+		if strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "opus-4.7") {
+			return false
+		}
+		budget, ok := thinking["budget_tokens"].(float64)
+		return ok && budget > 0
+	default:
+		return false
+	}
+}
+
+func collectClaudeCacheControlTTLs(value any) []string {
+	ttls := make([]string, 0, 4)
+	collectClaudeCacheControlTTLsInto(value, &ttls)
+	return ttls
+}
+
+func collectClaudeCacheControlTTLsInto(value any, ttls *[]string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, key := range []string{"tools", "system", "messages", "content"} {
+			if child, ok := typed[key]; ok {
+				collectClaudeCacheControlTTLsInto(child, ttls)
+			}
+		}
+		if rawCache, ok := typed["cache_control"]; ok {
+			if cache, ok := rawCache.(map[string]any); ok {
+				ttl, _ := cache["ttl"].(string)
+				if ttl == "" {
+					ttl = "5m"
+				}
+				*ttls = append(*ttls, ttl)
+			}
+		}
+		for key, item := range typed {
+			switch key {
+			case "tools", "system", "messages", "content", "cache_control":
+				continue
+			default:
+				collectClaudeCacheControlTTLsInto(item, ttls)
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			collectClaudeCacheControlTTLsInto(item, ttls)
+		}
+	}
+}
+
+func claudeTopLevelAndNestedCacheTTL(payload map[string]any) (string, bool) {
+	topLevelTTL := ""
+	if rawCache, ok := payload["cache_control"]; ok {
+		if cache, ok := rawCache.(map[string]any); ok {
+			topLevelTTL, _ = cache["ttl"].(string)
+			if topLevelTTL == "" {
+				topLevelTTL = "5m"
+			}
+		}
+	}
+	var nestedHasFive bool
+	for _, key := range []string{"tools", "system", "messages"} {
+		if child, ok := payload[key]; ok {
+			if containsCacheTTL(child, "5m") {
+				nestedHasFive = true
+				break
+			}
+		}
+	}
+	return topLevelTTL, nestedHasFive
+}
+
+func containsCacheTTL(value any, expected string) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		if rawCache, ok := typed["cache_control"]; ok {
+			if cache, ok := rawCache.(map[string]any); ok {
+				ttl, _ := cache["ttl"].(string)
+				if ttl == "" {
+					ttl = "5m"
+				}
+				if ttl == expected {
+					return true
+				}
+			}
+		}
+		for _, item := range typed {
+			if containsCacheTTL(item, expected) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if containsCacheTTL(item, expected) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -77,6 +78,54 @@ func validateChannelInput(name string, provider string, endpoint string, apiKey 
 func validateCreateAPIKeyInput(input domain.CreateAPIKeyInput) error {
 	if strings.TrimSpace(input.Name) == "" {
 		return fmt.Errorf("密钥名称不能为空")
+	}
+	return nil
+}
+
+func validateUpdateSystemSettingInput(input *domain.UpdateSystemSettingInput) error {
+	input.Key = strings.TrimSpace(input.Key)
+	input.Value = strings.TrimSpace(input.Value)
+	if input.Key == "" {
+		return fmt.Errorf("设置项 key 不能为空")
+	}
+	if strings.HasPrefix(input.Key, "admin.") {
+		return fmt.Errorf("认证安全相关配置不能通过系统设置接口修改")
+	}
+	switch input.Key {
+	case "dispatch.redis_enabled", "dispatch.redis_tls_enabled", "dispatch.pause_dispatch", "dispatch.dead_letter_enabled", "dispatch.metrics_enabled", "dispatch.show_worker_status", "dispatch.show_queue_depth", "dispatch.show_retry_rate", "gateway.sticky_enabled":
+		lower := strings.ToLower(input.Value)
+		if lower != "true" && lower != "false" {
+			return fmt.Errorf("%s 只能是 true 或 false", input.Key)
+		}
+		input.Value = lower
+	case "dispatch.queue_mode":
+		if input.Value != "single" && input.Value != "priority" {
+			return fmt.Errorf("dispatch.queue_mode 只能是 single 或 priority")
+		}
+	case "dispatch.backoff_mode":
+		if input.Value != "fixed" && input.Value != "exponential" {
+			return fmt.Errorf("dispatch.backoff_mode 只能是 fixed 或 exponential")
+		}
+	case "gateway.routing_strategy":
+		if input.Value != "sequential" && input.Value != "round_robin" {
+			return fmt.Errorf("gateway.routing_strategy 只能是 sequential 或 round_robin")
+		}
+	case "gateway.sticky_key_source":
+		if input.Value != "auto" && input.Value != "header" && input.Value != "metadata" {
+			return fmt.Errorf("gateway.sticky_key_source 只能是 auto、header 或 metadata")
+		}
+	case "dispatch.redis_db", "dispatch.worker_concurrency", "dispatch.sync_hold_ms", "dispatch.backlog_cap", "dispatch.max_attempts", "dispatch.backoff_delay_ms", "dispatch.queue_ttl_s", "dispatch.long_wait_threshold_s", "gateway.cooldown_seconds":
+		parsed, err := strconv.Atoi(input.Value)
+		if err != nil || parsed < 0 {
+			return fmt.Errorf("%s 必须是非负整数", input.Key)
+		}
+		input.Value = strconv.Itoa(parsed)
+	case "dispatch.retry_reserve_ratio":
+		parsed, err := strconv.ParseFloat(input.Value, 64)
+		if err != nil || math.IsNaN(parsed) || parsed < 0 || parsed > 1 {
+			return fmt.Errorf("dispatch.retry_reserve_ratio 必须在 0 到 1 之间")
+		}
+		input.Value = strconv.FormatFloat(parsed, 'f', 2, 64)
 	}
 	return nil
 }
@@ -172,6 +221,61 @@ func extractGatewayAPIKey(req *http.Request) string {
 	}
 
 	return ""
+}
+
+func extractStringRawValue(value json.RawMessage) string {
+	if len(value) == 0 {
+		return ""
+	}
+	var direct string
+	if err := json.Unmarshal(value, &direct); err == nil {
+		return strings.TrimSpace(direct)
+	}
+	var wrapped struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(value, &wrapped); err == nil {
+		return strings.TrimSpace(wrapped.ID)
+	}
+	return ""
+}
+
+func extractSessionAffinityKey(req *http.Request, gatewayReq domain.GatewayRequest, settings domain.GatewayRuntimeSettings) string {
+	if req == nil || !settings.StickyEnabled {
+		return ""
+	}
+	readHeader := func() string {
+		return strings.TrimSpace(req.Header.Get("X-Session-ID"))
+	}
+	readMetadata := func() string {
+		for _, key := range []string{"session_id", "conversation_id", "user_id"} {
+			if gatewayReq.Metadata == nil {
+				continue
+			}
+			if value, ok := gatewayReq.Metadata[key]; ok {
+				if extracted := extractStringRawValue(value); extracted != "" {
+					return extracted
+				}
+			}
+		}
+		return ""
+	}
+
+	switch strings.ToLower(strings.TrimSpace(settings.StickyKeySource)) {
+	case "header":
+		return readHeader()
+	case "metadata":
+		return readMetadata()
+	default:
+		if value := readHeader(); value != "" {
+			return value
+		}
+		return readMetadata()
+	}
+}
+
+func ExtractSessionAffinityKey(req *http.Request, gatewayReq domain.GatewayRequest, settings domain.GatewayRuntimeSettings) string {
+	return extractSessionAffinityKey(req, gatewayReq, settings)
 }
 
 type usageMetrics struct {

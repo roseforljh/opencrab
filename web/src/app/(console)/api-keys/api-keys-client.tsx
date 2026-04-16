@@ -35,12 +35,14 @@ export function ApiKeysClient({
   eyebrow,
   title,
   description,
-  initialRows
+  initialRows,
+  requiresSecondaryPassword
 }: {
   eyebrow: string;
   title: string;
   description: string;
   initialRows: ApiKeyRow[];
+  requiresSecondaryPassword: boolean;
 }) {
   const [rows, setRows] = useState<ApiKeyRow[]>(initialRows);
   const [createOpen, setCreateOpen] = useState(false);
@@ -73,7 +75,7 @@ export function ApiKeysClient({
   const handleCreate = async (draft: NewApiKeyDraft) => {
     const response = await fetch("/api/admin/api-keys", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-OpenCrab-Secondary-Password": draft.secondaryPassword },
       body: JSON.stringify({ name: draft.name.trim(), enabled: draft.enabled })
     });
     if (!response.ok) {
@@ -98,6 +100,18 @@ export function ApiKeysClient({
     setRows((current) => current.map((row) => (row.id === id ? { ...row, status } : row)));
   };
 
+  const handleDelete = async (id: number, secondaryPassword: string) => {
+    const response = await fetch(`/api/admin/api-keys/${id}`, {
+      method: "DELETE",
+      headers: { "X-OpenCrab-Secondary-Password": secondaryPassword }
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    setRows((current) => current.filter((row) => row.id !== id));
+  };
+
   return (
     <PageContainer>
       <PageHeader
@@ -113,7 +127,7 @@ export function ApiKeysClient({
             open={createOpen}
             onOpenChange={setCreateOpen}
           >
-            <NewApiKeyForm onCreate={handleCreate} onCancel={() => setCreateOpen(false)} />
+            <NewApiKeyForm onCreate={handleCreate} onCancel={() => setCreateOpen(false)} requiresSecondaryPassword={requiresSecondaryPassword} />
           </DetailDrawer>
         }
       />
@@ -133,10 +147,10 @@ export function ApiKeysClient({
             emptyTitle="暂无访问密钥"
             emptyDescription="创建第一个密钥后，这里会展示调用状态和最近使用时间。"
             rowAction={(row) => (
-              <DetailDrawer title={row.name} description="这里会承载复制、禁用、重置和查看权限等操作。" triggerLabel="管理">
-                <ApiKeyManager row={row} onStatusChange={(status) => handleStatusChange(row.id, status)} />
-              </DetailDrawer>
-            )}
+                <DetailDrawer title={row.name} description="这里会承载复制、禁用、重置和查看权限等操作。" triggerLabel="管理">
+                  <ApiKeyManager row={row} onStatusChange={(status) => handleStatusChange(row.id, status)} onDelete={(secondaryPassword) => handleDelete(row.id, secondaryPassword)} requiresSecondaryPassword={requiresSecondaryPassword} />
+                </DetailDrawer>
+              )}
           />
         </div>
       </SectionCard>

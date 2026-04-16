@@ -5,12 +5,25 @@ const ADMIN_API_BASE = process.env.OPENCRAB_ADMIN_API_BASE ?? "http://127.0.0.1:
 async function proxy(request: NextRequest, params: { path: string[] }) {
   const upstreamUrl = new URL(`/api/admin/${params.path.join("/")}`, ADMIN_API_BASE);
   upstreamUrl.search = request.nextUrl.search;
+  const headers = new Headers({
+    "Content-Type": request.headers.get("content-type") ?? "application/json"
+  });
+  const cookie = request.headers.get("cookie");
+  if (cookie) {
+    headers.set("cookie", cookie);
+  }
+  const secondaryPassword = request.headers.get("x-opencrab-secondary-password");
+  if (secondaryPassword) {
+    headers.set("x-opencrab-secondary-password", secondaryPassword);
+  }
+  const forwardedProto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "");
+  if (forwardedProto) {
+    headers.set("x-forwarded-proto", forwardedProto);
+  }
 
   const init: RequestInit = {
     method: request.method,
-    headers: {
-      "Content-Type": request.headers.get("content-type") ?? "application/json"
-    },
+    headers,
     cache: "no-store"
   };
 
@@ -21,11 +34,17 @@ async function proxy(request: NextRequest, params: { path: string[] }) {
   const response = await fetch(upstreamUrl, init);
   const body = await response.text();
 
+  const responseHeaders = new Headers({
+    "Content-Type": response.headers.get("content-type") ?? "application/json; charset=utf-8"
+  });
+  const setCookie = response.headers.get("set-cookie");
+  if (setCookie) {
+    responseHeaders.set("set-cookie", setCookie);
+  }
+
   return new Response(body, {
     status: response.status,
-    headers: {
-      "Content-Type": response.headers.get("content-type") ?? "application/json; charset=utf-8"
-    }
+    headers: responseHeaders
   });
 }
 

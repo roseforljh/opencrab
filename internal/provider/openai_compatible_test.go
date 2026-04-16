@@ -42,6 +42,27 @@ func TestBuildClaudeMessagesURL(t *testing.T) {
 	}
 }
 
+func TestBuildClaudeCountTokensURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		expect   string
+	}{
+		{name: "base endpoint", endpoint: "https://api.anthropic.com", expect: "https://api.anthropic.com/v1/messages/count_tokens"},
+		{name: "v1 endpoint", endpoint: "https://api.anthropic.com/v1", expect: "https://api.anthropic.com/v1/messages/count_tokens"},
+		{name: "messages endpoint", endpoint: "https://api.anthropic.com/v1/messages", expect: "https://api.anthropic.com/v1/messages/count_tokens"},
+		{name: "full endpoint", endpoint: "https://api.anthropic.com/v1/messages/count_tokens", expect: "https://api.anthropic.com/v1/messages/count_tokens"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildClaudeCountTokensURL(tt.endpoint); got != tt.expect {
+				t.Fatalf("expected %s, got %s", tt.expect, got)
+			}
+		})
+	}
+}
+
 func TestBuildGeminiGenerateContentURL(t *testing.T) {
 	tests := []struct {
 		name     string

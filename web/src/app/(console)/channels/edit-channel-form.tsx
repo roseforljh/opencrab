@@ -16,6 +16,11 @@ type ChannelRow = {
   endpoint: string;
   status: string;
   modelIds: string[];
+  rpmLimit: number;
+  maxInflight: number;
+  safetyFactor: number;
+  enabledForAsync: boolean;
+  dispatchWeight: number;
 };
 
 export function EditChannelForm({
@@ -34,6 +39,11 @@ export function EditChannelForm({
   const [status, setStatus] = useState(row.status);
   const [customModel, setCustomModel] = useState("");
   const [modelIds, setModelIds] = useState(row.modelIds);
+  const [rpmLimit, setRpmLimit] = useState(String(row.rpmLimit));
+  const [maxInflight, setMaxInflight] = useState(String(row.maxInflight));
+  const [safetyFactor, setSafetyFactor] = useState(String(row.safetyFactor));
+  const [enabledForAsync, setEnabledForAsync] = useState(row.enabledForAsync ? "true" : "false");
+  const [dispatchWeight, setDispatchWeight] = useState(String(row.dispatchWeight));
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previousProviderRef = useRef(provider);
@@ -84,7 +94,12 @@ export function EditChannelForm({
           endpoint: endpoint.trim(),
           api_key: apiKey.trim(),
           enabled: status === "启用",
-          model_ids: modelIds
+          model_ids: modelIds,
+          rpm_limit: Number.parseInt(rpmLimit, 10),
+          max_inflight: Number.parseInt(maxInflight, 10),
+          safety_factor: Number.parseFloat(safetyFactor),
+          enabled_for_async: enabledForAsync === "true",
+          dispatch_weight: Number.parseInt(dispatchWeight, 10)
         })
       });
       if (!response.ok) {
@@ -124,6 +139,28 @@ export function EditChannelForm({
           placeholder="留空表示沿用当前密钥"
           className="font-mono"
         />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">每分钟额度</label>
+          <Input value={rpmLimit} onChange={(event) => setRpmLimit(event.target.value)} inputMode="numeric" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">最大 Inflight</label>
+          <Input value={maxInflight} onChange={(event) => setMaxInflight(event.target.value)} inputMode="numeric" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">安全系数</label>
+          <Input value={safetyFactor} onChange={(event) => setSafetyFactor(event.target.value)} inputMode="decimal" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">调度权重</label>
+          <Input value={dispatchWeight} onChange={(event) => setDispatchWeight(event.target.value)} inputMode="numeric" />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-sm font-medium text-foreground">支持异步受理</label>
+          <StatusSelect value={enabledForAsync === "true" ? "启用" : "禁用"} onValueChange={(value) => setEnabledForAsync(value === "启用" ? "true" : "false")} />
+        </div>
       </div>
       <div className="rounded-2xl border border-border bg-card/60 p-4">
         <div className="flex items-start justify-between gap-4">

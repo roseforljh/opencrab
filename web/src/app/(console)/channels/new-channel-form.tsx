@@ -18,6 +18,11 @@ export function NewChannelForm() {
   const [apiKey, setApiKey] = useState("");
   const [customModel, setCustomModel] = useState("");
   const [modelIds, setModelIds] = useState<string[]>([]);
+  const [rpmLimit, setRpmLimit] = useState("1000");
+  const [maxInflight, setMaxInflight] = useState("32");
+  const [safetyFactor, setSafetyFactor] = useState("0.9");
+  const [enabledForAsync, setEnabledForAsync] = useState("true");
+  const [dispatchWeight, setDispatchWeight] = useState("100");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previousProviderRef = useRef(provider);
@@ -73,7 +78,12 @@ export function NewChannelForm() {
           endpoint: endpoint.trim(),
           api_key: apiKey.trim(),
           enabled: status === "启用",
-          model_ids: modelIds
+          model_ids: modelIds,
+          rpm_limit: Number.parseInt(rpmLimit, 10),
+          max_inflight: Number.parseInt(maxInflight, 10),
+          safety_factor: Number.parseFloat(safetyFactor),
+          enabled_for_async: enabledForAsync === "true",
+          dispatch_weight: Number.parseInt(dispatchWeight, 10)
         })
       });
       if (!response.ok) {
@@ -129,6 +139,29 @@ export function NewChannelForm() {
             >
               {keyVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">每分钟额度</label>
+            <Input value={rpmLimit} onChange={(event) => setRpmLimit(event.target.value)} inputMode="numeric" placeholder="1000" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">最大 Inflight</label>
+            <Input value={maxInflight} onChange={(event) => setMaxInflight(event.target.value)} inputMode="numeric" placeholder="32" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">安全系数</label>
+            <Input value={safetyFactor} onChange={(event) => setSafetyFactor(event.target.value)} inputMode="decimal" placeholder="0.9" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">调度权重</label>
+            <Input value={dispatchWeight} onChange={(event) => setDispatchWeight(event.target.value)} inputMode="numeric" placeholder="100" />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium text-foreground">支持异步受理</label>
+            <StatusSelect value={enabledForAsync === "true" ? "启用" : "禁用"} onValueChange={(value) => setEnabledForAsync(value === "启用" ? "true" : "false")} />
           </div>
         </div>
       </div>

@@ -3,9 +3,11 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"opencrab/internal/domain"
@@ -38,7 +40,7 @@ func NewGeminiExecutor(client *http.Client) *GeminiExecutor {
 }
 
 func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
-	body, err := EncodeOpenAIChatRequest(toUnifiedRequest(input, domain.ProtocolOpenAI))
+	body, err := EncodeOpenAIChatRequest(toUnifiedRequest(input, domain.ProtocolOpenAI, domain.NormalizeProvider(input.Channel.Provider)))
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 OpenAI 请求失败: %w", err), 0, false, false)
 	}
@@ -51,11 +53,12 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+input.Channel.APIKey)
+	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"authorization": {}, "content-type": {}, "accept": {}})
 	return doExecutorRequest(e.client, req, input.Request.Stream)
 }
 
 func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
-	body, err := EncodeClaudeChatRequest(toUnifiedRequest(input, domain.ProtocolClaude))
+	body, err := EncodeClaudeChatRequest(toUnifiedRequest(input, domain.ProtocolClaude, domain.NormalizeProvider(input.Channel.Provider)))
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Claude 请求失败: %w", err), 0, false, false)
 	}
@@ -68,12 +71,20 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("x-api-key", input.Channel.APIKey)
-	req.Header.Set("anthropic-version", anthropicVersion)
+	version := anthropicVersion
+	if custom := strings.TrimSpace(input.Request.RequestHeaders["anthropic-version"]); custom != "" {
+		version = custom
+	}
+	req.Header.Set("anthropic-version", version)
+	if beta := strings.TrimSpace(input.Request.RequestHeaders["anthropic-beta"]); beta != "" {
+		req.Header.Set("anthropic-beta", beta)
+	}
+	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"x-api-key": {}, "content-type": {}, "accept": {}, "anthropic-version": {}, "anthropic-beta": {}})
 	return doExecutorRequest(e.client, req, input.Request.Stream)
 }
 
 func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
-	body, err := EncodeGeminiChatRequest(toUnifiedRequest(input, domain.ProtocolGemini))
+	body, err := EncodeGeminiChatRequest(toUnifiedRequest(input, domain.ProtocolGemini, domain.NormalizeProvider(input.Channel.Provider)))
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Gemini 请求失败: %w", err), 0, false, false)
 	}
@@ -90,10 +101,11 @@ func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("x-goog-api-key", input.Channel.APIKey)
+	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"x-goog-api-key": {}, "content-type": {}, "accept": {}})
 	return doExecutorRequest(e.client, req, input.Request.Stream)
 }
 
-func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol) domain.UnifiedChatRequest {
+func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol, targetProvider string) domain.UnifiedChatRequest {
 	messages := make([]domain.UnifiedMessage, 0, len(input.Request.Messages))
 	for _, message := range input.Request.Messages {
 		messages = append(messages, domain.UnifiedMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, Metadata: message.Metadata})
@@ -104,8 +116,30 @@ func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol) do
 		Stream:   input.Request.Stream,
 		Messages: messages,
 		Tools:    input.Request.Tools,
-		Metadata: cloneRawMap(input.Request.Metadata),
+		Metadata: sanitizeRequestMetadataForTarget(cloneRawMap(input.Request.Metadata), protocol, targetProvider),
 	}
+}
+
+func sanitizeRequestMetadataForTarget(metadata map[string]json.RawMessage, protocol domain.Protocol, targetProvider string) map[string]json.RawMessage {
+	if len(metadata) == 0 {
+		return metadata
+	}
+	cleaned := cloneRawMap(metadata)
+	deleteKeys := func(keys ...string) {
+		for _, key := range keys {
+			delete(cleaned, key)
+		}
+	}
+	switch protocol {
+	case domain.ProtocolOpenAI:
+		deleteKeys("previous_response_id", "include", "reasoning", "store", "instructions", "metadata", "generate")
+	case domain.ProtocolGemini:
+		deleteKeys("previous_response_id", "include", "reasoning", "store", "instructions", "tool_choice", "parallel_tool_calls", "thinking", "cache_control")
+	case domain.ProtocolClaude:
+		deleteKeys("previous_response_id", "include", "store", "parallel_tool_calls")
+	}
+	_ = targetProvider
+	return cleaned
 }
 
 func doExecutorRequest(client *http.Client, req *http.Request, stream bool) (*domain.ExecutionResult, error) {
@@ -138,4 +172,13 @@ func cloneHeaders(header http.Header) map[string][]string {
 		cloned[key] = append([]string(nil), values...)
 	}
 	return cloned
+}
+
+func applyRequestHeaders(req *http.Request, headers map[string]string, skip map[string]struct{}) {
+	for key, value := range headers {
+		if _, blocked := skip[strings.ToLower(strings.TrimSpace(key))]; blocked {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
 }

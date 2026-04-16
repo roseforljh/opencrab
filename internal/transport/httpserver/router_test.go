@@ -3,10 +3,12 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"opencrab/internal/domain"
 )
@@ -152,4 +154,191 @@ func TestCreateModelRouteAcceptsInvocationMode(t *testing.T) {
 	if captured.InvocationMode != "claude" {
 		t.Fatalf("unexpected invocation mode: %#v", captured)
 	}
+}
+
+func TestAdminAuthStatusReturnsInitializationFlags(t *testing.T) {
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: false}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/auth/status", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var payload domain.AdminAuthStatus
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Initialized || payload.Authenticated {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+}
+
+func TestProtectedAdminRouteRejectsAnonymousRequest(t *testing.T) {
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		ListSettings: func(ctx context.Context) ([]domain.SystemSettingGroup, error) {
+			return []domain.SystemSettingGroup{}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/settings", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAdminSetupInitializesPasswordAndSession(t *testing.T) {
+	router := NewRouter(Dependencies{
+		SetupAdminPassword: func(ctx context.Context, password string) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/auth/setup", strings.NewReader(`{"password":"hunter2-password"}`))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+	if len(rec.Result().Cookies()) == 0 || rec.Result().Cookies()[0].Name != adminSessionCookieName {
+		t.Fatalf("expected admin session cookie, got %#v", rec.Result().Cookies())
+	}
+}
+
+func TestAdminLoginRejectsWrongPassword(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAdminPassword: func(ctx context.Context, password string) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{}, fmt.Errorf("密码错误")
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/auth/login", strings.NewReader(`{"password":"wrong-password"}`))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAdminLogoutClearsSessionCookie(t *testing.T) {
+	router := NewRouter(Dependencies{})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/auth/logout", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 || cookies[0].Name != adminSessionCookieName || cookies[0].MaxAge != -1 {
+		t.Fatalf("expected cleared session cookie, got %#v", cookies)
+	}
+}
+
+func TestAdminPasswordChangeReturnsAuthenticatedPayload(t *testing.T) {
+	router := NewRouter(Dependencies{
+		ChangeAdminPassword: func(ctx context.Context, input domain.AdminPasswordChangeInput) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/auth/password", strings.NewReader(`{"current_password":"old-password","new_password":"new-password-1","confirm_password":"new-password-1"}`))
+	rec := httptest.NewRecorder()
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: "1.signature"})
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestCreateAPIKeyRejectsMissingSecondaryPasswordWhenEnabled(t *testing.T) {
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		VerifySecondaryPassword: func(ctx context.Context, password string) error {
+			return fmt.Errorf("二级密码未通过校验")
+		},
+		CreateAPIKey: func(ctx context.Context, input domain.CreateAPIKeyInput) (domain.CreatedAPIKey, error) {
+			return domain.CreatedAPIKey{}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/api-keys", strings.NewReader(`{"name":"console","enabled":true}`))
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: signedSessionCookieValue(strings.Repeat("ab", 32))})
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestDeleteAPIKeyAcceptsSecondaryPasswordHeader(t *testing.T) {
+	called := false
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		VerifySecondaryPassword: func(ctx context.Context, password string) error {
+			if password != "second-pass" {
+				return fmt.Errorf("二级密码未通过校验")
+			}
+			return nil
+		},
+		DeleteAPIKey: func(ctx context.Context, id int64) error {
+			called = true
+			return nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/api-keys/9", nil)
+	req.Header.Set("X-OpenCrab-Secondary-Password", "second-pass")
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: signedSessionCookieValue(strings.Repeat("ab", 32))})
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !called {
+		t.Fatalf("expected delete success, got code=%d called=%v", rec.Code, called)
+	}
+}
+
+func TestSettingsRejectAdminSecurityKeys(t *testing.T) {
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		UpdateSetting: func(ctx context.Context, input domain.UpdateSystemSettingInput) (domain.SystemSetting, error) {
+			return domain.SystemSetting{}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/settings", strings.NewReader(`{"key":"admin.secondary_enabled","value":"false"}`))
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: signedSessionCookieValue(strings.Repeat("ab", 32))})
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func signedSessionCookieValue(secret string) string {
+	payload := fmt.Sprintf("%d", time.Now().Add(time.Hour).Unix())
+	return payload + "." + signAdminSession(secret, payload)
 }

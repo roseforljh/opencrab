@@ -13,6 +13,11 @@ type ChannelRow = {
 	endpoint: string;
 	status: string;
 	modelIds: string[];
+	rpmLimit: number;
+	maxInflight: number;
+	safetyFactor: number;
+	enabledForAsync: boolean;
+	dispatchWeight: number;
 };
 
 export function EditChannelDrawer({ row }: { row: ChannelRow }) {

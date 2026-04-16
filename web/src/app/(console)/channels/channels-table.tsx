@@ -23,6 +23,11 @@ type ChannelRow = {
   endpoint: string;
   models: number;
   modelIds: string[];
+  rpmLimit: number;
+  maxInflight: number;
+  safetyFactor: number;
+  enabledForAsync: boolean;
+  dispatchWeight: number;
   updatedAt: string;
 };
 
@@ -188,6 +193,7 @@ export function ChannelsTable({ rows }: { rows: ChannelRow[] }) {
               <th className="px-4 py-3.5 font-medium">状态</th>
               <th className="px-4 py-3.5 font-medium">地址</th>
               <th className="px-4 py-3.5 font-medium">模型数</th>
+              <th className="px-4 py-3.5 font-medium">RPM / Inflight</th>
               <th className="px-4 py-3.5 font-medium">操作</th>
             </tr>
           </thead>
@@ -221,6 +227,7 @@ export function ChannelsTable({ rows }: { rows: ChannelRow[] }) {
                   <td className="px-4 py-3.5 text-foreground"><StatusBadge status={row.status} /></td>
                   <td className="px-4 py-3.5 text-foreground"><span className="font-mono text-xs text-muted-foreground">{row.endpoint}</span></td>
                   <td className="px-4 py-3.5 text-foreground">{row.models}</td>
+                  <td className="px-4 py-3.5 text-foreground"><span className="font-mono text-xs text-muted-foreground">{row.rpmLimit} / {row.maxInflight}</span></td>
                   <td className="px-4 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <ChannelTestDialog row={row} />
@@ -245,6 +252,22 @@ export function ChannelsTable({ rows }: { rows: ChannelRow[] }) {
                                 <div className="grid grid-cols-3 gap-4 px-4 py-3">
                                   <dt className="font-medium text-muted-foreground">覆盖模型数</dt>
                                   <dd className="col-span-2 text-foreground">{row.models}</dd>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                                  <dt className="font-medium text-muted-foreground">每分钟额度</dt>
+                                  <dd className="col-span-2 text-foreground">{row.rpmLimit}</dd>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                                  <dt className="font-medium text-muted-foreground">最大 Inflight</dt>
+                                  <dd className="col-span-2 text-foreground">{row.maxInflight}</dd>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                                  <dt className="font-medium text-muted-foreground">安全系数 / 权重</dt>
+                                  <dd className="col-span-2 text-foreground">{row.safetyFactor} / {row.dispatchWeight}</dd>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 px-4 py-3">
+                                  <dt className="font-medium text-muted-foreground">异步受理</dt>
+                                  <dd className="col-span-2 text-foreground">{row.enabledForAsync ? "启用" : "禁用"}</dd>
                                 </div>
                               </dl>
                             </div>

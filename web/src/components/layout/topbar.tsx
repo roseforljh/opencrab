@@ -1,15 +1,34 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useI18n } from "@/components/i18n-provider";
 import { useShell } from "@/components/layout/shell-provider";
-import { PanelLeftClose, PanelLeftOpen, Moon, Sun, Languages } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Moon, Sun, Languages, LogOut } from "lucide-react";
 
 export function Topbar() {
   const { theme, setTheme } = useTheme();
   const { language, setLanguage, t } = useI18n();
   const { collapsed, toggleCollapsed } = useShell();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+
+  async function handleLogout() {
+    try {
+      setLoggingOut(true);
+			setLogoutError("");
+			const response = await fetch("/api/auth/logout", { method: "POST" });
+			if (!response.ok) {
+				throw new Error((await response.text()) || "退出登录失败");
+			}
+			window.location.href = "/login";
+		} catch (error) {
+			setLogoutError(error instanceof Error ? error.message : "退出登录失败");
+		} finally {
+			setLoggingOut(false);
+		}
+	}
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background/90 px-5 backdrop-blur md:px-6">
@@ -31,6 +50,7 @@ export function Topbar() {
         </div>
       </div>
       <div className="flex items-center gap-3 text-sm">
+				{logoutError ? <span className="hidden text-xs text-danger xl:inline">{logoutError}</span> : null}
         <div className="flex items-center gap-2">
           <span className="flex h-2.5 w-2.5 rounded-full bg-success shadow-[0_0_12px_rgba(34,197,94,0.45)]"></span>
           <span className="text-muted-foreground">{t("topbar.system_normal")}</span>
@@ -51,6 +71,17 @@ export function Topbar() {
         >
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           <span className="hidden text-xs font-medium sm:inline">{theme === "dark" ? t("theme.light") : t("theme.dark")}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-muted-foreground transition-[background-color,color,border-color,transform] duration-200 ease-[var(--ease-out-smooth)] hover:-translate-y-0.5 hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          title={t("auth.logout")}
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="hidden text-xs font-medium sm:inline">{loggingOut ? t("auth.logging_out") : t("auth.logout")}</span>
         </button>
       </div>
     </header>

@@ -5,6 +5,7 @@ import { Copy } from "lucide-react";
 
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type ApiKeyRow = {
 	id: number;
@@ -15,13 +16,20 @@ type ApiKeyRow = {
 
 export function ApiKeyManager({
   row,
-  onStatusChange
+  onStatusChange,
+  onDelete,
+  requiresSecondaryPassword
 }: {
   row: ApiKeyRow;
   onStatusChange: (status: string) => void;
+  onDelete: (secondaryPassword: string) => Promise<void>;
+  requiresSecondaryPassword: boolean;
 }) {
   const [status, setStatus] = useState(row.status);
   const [copied, setCopied] = useState(false);
+  const [secondaryPassword, setSecondaryPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
 
   const handleCopy = async () => {
     if (!row.rawKey) {
@@ -41,6 +49,18 @@ export function ApiKeyManager({
     const next = status === "禁用" ? "启用" : "禁用";
     setStatus(next);
     onStatusChange(next);
+  };
+
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      setError("");
+      await onDelete(secondaryPassword);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "删除失败");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -83,6 +103,22 @@ export function ApiKeyManager({
             {copied ? "已复制" : "复制密钥"}
           </Button>
         ) : null}
+      </div>
+
+      <div className="rounded-2xl border border-danger/20 bg-danger/5 p-4">
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-danger">删除访问密钥</div>
+          <div className="text-sm text-danger/80">删除后无法恢复。{requiresSecondaryPassword ? "当前已开启二级密码，删除前必须校验。" : "当前未开启二级密码，将直接删除。"}</div>
+        </div>
+        {requiresSecondaryPassword ? (
+          <div className="mt-4">
+            <Input type="password" value={secondaryPassword} onChange={(event) => setSecondaryPassword(event.target.value)} placeholder="输入二级密码" />
+          </div>
+        ) : null}
+        {error ? <div className="mt-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div> : null}
+        <div className="mt-4 flex justify-end">
+          <Button variant="danger" onClick={() => void handleDelete()} disabled={deleting}>{deleting ? "删除中..." : "删除密钥"}</Button>
+        </div>
       </div>
     </div>
   );

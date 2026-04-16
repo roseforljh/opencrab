@@ -165,6 +165,30 @@ func TestOpenAICodecToolCalls(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecRoundTrip(t *testing.T) {
+	decoded, err := DecodeOpenAIResponsesRequest([]byte(`{"model":"gpt-5.4","stream":true,"input":[{"role":"user","content":[{"type":"input_text","text":"ping"}]}],"tools":[{"type":"function","name":"opencode"}]}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if decoded.Model != "gpt-5.4" || !decoded.Stream || decoded.Messages[0].Parts[0].Text != "ping" {
+		t.Fatalf("unexpected decoded request: %+v", decoded)
+	}
+	respBody, err := EncodeOpenAIResponsesResponse(domain.UnifiedChatResponse{Protocol: domain.ProtocolOpenAI, ID: "resp_1", Model: "gpt-5.4", FinishReason: "stop", Message: domain.UnifiedMessage{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "pong"}}}, Usage: map[string]int64{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+	if err != nil {
+		t.Fatalf("encode responses response: %v", err)
+	}
+	if !strings.Contains(string(respBody), `"object":"response"`) || !strings.Contains(string(respBody), `"output_text":"pong"`) {
+		t.Fatalf("unexpected encoded response: %s", string(respBody))
+	}
+	streamBody, err := EncodeOpenAIResponsesStream(domain.UnifiedChatResponse{Protocol: domain.ProtocolOpenAI, ID: "resp_1", Model: "gpt-5.4", Message: domain.UnifiedMessage{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "pong"}}}})
+	if err != nil {
+		t.Fatalf("encode responses stream: %v", err)
+	}
+	if !strings.Contains(string(streamBody), "event: response.created") || !strings.Contains(string(streamBody), "event: response.completed") {
+		t.Fatalf("unexpected stream encoding: %s", string(streamBody))
+	}
+}
+
 func TestClaudeCodecToolUseAndResult(t *testing.T) {
 	decoded, err := DecodeClaudeChatResponse([]byte(`{"id":"msg_tool","model":"claude-sonnet","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"opencode","input":{"prompt":"ping"}}],"stop_reason":"tool_use"}`))
 	if err != nil {
@@ -179,6 +203,41 @@ func TestClaudeCodecToolUseAndResult(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"tool_result"`) || !strings.Contains(string(data), `"tools"`) {
 		t.Fatalf("unexpected claude payload: %s", string(data))
+	}
+}
+
+func TestClaudeCodecRemovesThinkingWhenToolChoiceRequiresTool(t *testing.T) {
+	data, err := EncodeClaudeChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolClaude, Model: "claude-sonnet", Messages: []domain.UnifiedMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}}}, Metadata: map[string]json.RawMessage{
+		"thinking":    json.RawMessage(`{"type":"enabled","budget_tokens":1024}`),
+		"tool_choice": json.RawMessage(`{"type":"any"}`),
+	}})
+	if err != nil {
+		t.Fatalf("encode claude request: %v", err)
+	}
+	if strings.Contains(string(data), `"thinking"`) {
+		t.Fatalf("expected thinking to be stripped, got %s", string(data))
+	}
+}
+
+func TestClaudeCodecRejectsInvalidCacheControlOrdering(t *testing.T) {
+	err := normalizeClaudeCompatibilityPayload(map[string]any{
+		"messages":      []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "ping", "cache_control": map[string]any{"type": "ephemeral", "ttl": "5m"}}}}},
+		"cache_control": map[string]any{"type": "ephemeral", "ttl": "1h"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "ttl") {
+		t.Fatalf("expected ttl ordering error, got %v", err)
+	}
+}
+
+func TestClaudeCodecDisablesManualThinkingForOpus47(t *testing.T) {
+	data, err := EncodeClaudeChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolClaude, Model: "claude-opus-4.7", Messages: []domain.UnifiedMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}}}, Metadata: map[string]json.RawMessage{
+		"thinking": json.RawMessage(`{"type":"enabled","budget_tokens":1024}`),
+	}})
+	if err != nil {
+		t.Fatalf("encode claude request: %v", err)
+	}
+	if strings.Contains(string(data), `"thinking"`) {
+		t.Fatalf("expected manual thinking to be stripped for opus 4.7, got %s", string(data))
 	}
 }
 

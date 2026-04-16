@@ -6,7 +6,8 @@ import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { ErrorState } from "@/components/shared/error-state";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
-import { getAdminChannels, getAdminModels, getAdminModelRoutes, toEnabledStatus } from "@/lib/admin-api";
+import { toEnabledStatus } from "@/lib/admin-api";
+import { getAdminChannels, getAdminModels, getAdminModelRoutes } from "@/lib/admin-api-server";
 import { getDictionary } from "@/lib/i18n-shared";
 import { getServerLanguage } from "@/lib/i18n-server";
 
@@ -20,6 +21,11 @@ type ChannelRow = {
   endpoint: string;
   models: number;
   modelIds: string[];
+  rpmLimit: number;
+  maxInflight: number;
+  safetyFactor: number;
+  enabledForAsync: boolean;
+  dispatchWeight: number;
   updatedAt: string;
 };
 
@@ -45,6 +51,11 @@ export default async function ChannelsPage() {
         endpoint: channel.endpoint,
         models: modelIds.length,
         modelIds,
+        rpmLimit: channel.rpm_limit,
+        maxInflight: channel.max_inflight,
+        safetyFactor: channel.safety_factor,
+        enabledForAsync: channel.enabled_for_async,
+        dispatchWeight: channel.dispatch_weight,
         updatedAt: channel.updated_at
       };
     });
