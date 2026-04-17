@@ -3,8 +3,8 @@
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
 const statusOptions = [
-  { value: "启用", color: "bg-success/10 text-success ring-success/20" },
-  { value: "禁用", color: "bg-danger/10 text-danger ring-danger/20" }
+  { value: "启用", dotClassName: "bg-success ring-2 ring-success/20" },
+  { value: "禁用", dotClassName: "bg-danger ring-2 ring-danger/20" }
 ] as const;
 
 export function StatusSelect({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
@@ -14,7 +14,7 @@ export function StatusSelect({ value, onValueChange }: { value: string; onValueC
     <Select value={active.value} onValueChange={onValueChange}>
       <SelectTrigger>
         <div className="flex items-center gap-3">
-          <span className={`inline-flex h-2.5 w-2.5 rounded-full ${active.color}`} />
+          <span className={`inline-flex h-3 w-3 shrink-0 rounded-full ${active.dotClassName}`} />
           <span>{active.value}</span>
         </div>
       </SelectTrigger>
@@ -22,7 +22,7 @@ export function StatusSelect({ value, onValueChange }: { value: string; onValueC
         {statusOptions.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             <div className="flex items-center gap-3 pr-6">
-              <span className={`inline-flex h-2.5 w-2.5 rounded-full ${option.color}`} />
+              <span className={`inline-flex h-3 w-3 shrink-0 rounded-full ${option.dotClassName}`} />
               <span>{option.value}</span>
             </div>
           </SelectItem>

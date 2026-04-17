@@ -836,6 +836,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		})
 	})
 
+	r.Get("/v1/models", HandleOpenAIModels(deps))
 	r.Post("/v1/chat/completions", HandleGatewayChatCompletions(deps))
 	r.Post("/v1/responses", HandleOpenAIResponses(deps))
 	r.Get("/v1/responses", HandleOpenAIResponsesWebSocket(deps))

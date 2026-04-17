@@ -51,6 +51,41 @@ INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, f
 	}
 }
 
+func TestGatewayStoreListEnabledRoutesByAliasTarget(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	_, err = db.ExecContext(context.Background(), `
+INSERT INTO channels(name, provider, endpoint, api_key, enabled, created_at, updated_at) VALUES
+('codex', 'openai', 'https://api.openai.com/v1', 'k1', 1, 'now', 'now');
+INSERT INTO models(alias, upstream_model, created_at, updated_at) VALUES
+('gpt-5.4', 'gpt-5.4', 'now', 'now'),
+('aaa', 'gpt-5.4', 'now', 'now');
+INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, fallback_model, created_at, updated_at) VALUES
+('gpt-5.4', 'codex', 'openai', 1, '', 'now', 'now');`)
+	if err != nil {
+		t.Fatalf("seed db: %v", err)
+	}
+
+	store := NewGatewayStore(db)
+	routes, err := store.ListEnabledRoutesByModel(context.Background(), "aaa")
+	if err != nil {
+		t.Fatalf("list routes by alias target: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 resolved route, got %d", len(routes))
+	}
+	if routes[0].Channel.Name != "codex" || routes[0].UpstreamModel != "gpt-5.4" {
+		t.Fatalf("unexpected resolved route: %#v", routes[0])
+	}
+}
+
 func TestGatewayAttemptLogStoreLogGatewayAttempt(t *testing.T) {
 	db, err := Open(t.TempDir() + "/opencrab.db")
 	if err != nil {

@@ -21,10 +21,6 @@ func EncodeGeminiChatRequest(req domain.UnifiedChatRequest) ([]byte, error) {
 
 	payload := map[string]any{}
 	mergeRawFields(payload, req.Metadata)
-	payload["model"] = req.Model
-	if req.Stream {
-		payload["stream"] = true
-	}
 	if len(req.Tools) > 0 {
 		payload["tools"] = rawMessagesToAny(req.Tools)
 	}

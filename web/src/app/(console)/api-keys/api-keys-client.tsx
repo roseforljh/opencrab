@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Copy, CopyCheck } from "lucide-react";
 
 import { ApiKeyManager } from "@/app/(console)/api-keys/api-key-manager";
 import { NewApiKeyForm, type NewApiKeyDraft } from "@/app/(console)/api-keys/new-api-key-form";
@@ -15,7 +16,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 
 type ApiKeyRow = {
-	id: number;
+  id: number;
   name: string;
   rawKey?: string;
   status: string;
@@ -46,12 +47,29 @@ export function ApiKeysClient({
 }) {
   const [rows, setRows] = useState<ApiKeyRow[]>(initialRows);
   const [createOpen, setCreateOpen] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const stats = useMemo(() => {
     const enabled = rows.filter((row) => row.status === "启用").length;
     const disabled = rows.length - enabled;
     return { total: rows.length, enabled, disabled };
   }, [rows]);
+
+  const handleCopy = async (row: ApiKeyRow) => {
+    if (!row.rawKey) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(row.rawKey);
+      setCopiedId(row.id);
+      window.setTimeout(() => {
+        setCopiedId((current) => (current === row.id ? null : current));
+      }, 1200);
+    } catch {
+      setCopiedId(null);
+    }
+  };
 
   const columns: StaticTableColumn<ApiKeyRow>[] = [
     {
@@ -60,7 +78,20 @@ export function ApiKeysClient({
     },
     {
       header: "预览",
-      cell: (row) => <span className="font-mono text-xs text-muted-foreground">{toPreview(row.rawKey)}</span>
+      cell: (row) =>
+        row.rawKey ? (
+          <button
+            type="button"
+            onClick={() => void handleCopy(row)}
+            className="inline-flex items-center gap-2 rounded-lg border border-transparent px-2 py-1 font-mono text-xs text-muted-foreground transition-[background-color,color,border-color] duration-200 ease-[var(--ease-out-smooth)] hover:border-border hover:bg-muted/60 hover:text-foreground"
+            title="单击复制 API Key"
+          >
+            {copiedId === row.id ? <CopyCheck className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+            <span>{toPreview(row.rawKey)}</span>
+          </button>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">{toPreview(row.rawKey)}</span>
+        )
     },
     {
       header: "状态",
@@ -83,7 +114,10 @@ export function ApiKeysClient({
     }
 
     const created = (await response.json()) as { id: number; name: string; raw_key: string; enabled: boolean };
-    setRows((current) => [{ id: created.id, name: created.name, rawKey: created.raw_key, status: created.enabled ? "启用" : "禁用" }, ...current]);
+    setRows((current) => [
+      { id: created.id, name: created.name, rawKey: created.raw_key, status: created.enabled ? "启用" : "禁用" },
+      ...current
+    ]);
     setCreateOpen(false);
   };
 
@@ -147,10 +181,15 @@ export function ApiKeysClient({
             emptyTitle="暂无访问密钥"
             emptyDescription="创建第一个密钥后，这里会展示调用状态和最近使用时间。"
             rowAction={(row) => (
-                <DetailDrawer title={row.name} description="这里会承载复制、禁用、重置和查看权限等操作。" triggerLabel="管理">
-                  <ApiKeyManager row={row} onStatusChange={(status) => handleStatusChange(row.id, status)} onDelete={(secondaryPassword) => handleDelete(row.id, secondaryPassword)} requiresSecondaryPassword={requiresSecondaryPassword} />
-                </DetailDrawer>
-              )}
+              <DetailDrawer title={row.name} description="这里会承载复制、禁用、重置和查看权限等操作。" triggerLabel="管理">
+                <ApiKeyManager
+                  row={row}
+                  onStatusChange={(status) => handleStatusChange(row.id, status)}
+                  onDelete={(secondaryPassword) => handleDelete(row.id, secondaryPassword)}
+                  requiresSecondaryPassword={requiresSecondaryPassword}
+                />
+              </DetailDrawer>
+            )}
           />
         </div>
       </SectionCard>

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -142,6 +143,28 @@ func extractModel(body []byte) string {
 	return model
 }
 
+func extractModelFromRequest(path string, body []byte) string {
+	if model := strings.TrimSpace(extractModel(body)); model != "" && model != "unknown-model" {
+		return model
+	}
+
+	const geminiPrefix = "/v1beta/models/"
+	if strings.HasPrefix(path, geminiPrefix) {
+		modelPart := strings.TrimPrefix(path, geminiPrefix)
+		if idx := strings.Index(modelPart, ":"); idx >= 0 {
+			modelPart = modelPart[:idx]
+		}
+		if decoded, err := url.PathUnescape(strings.TrimSpace(modelPart)); err == nil && decoded != "" {
+			return decoded
+		}
+		if strings.TrimSpace(modelPart) != "" {
+			return strings.TrimSpace(modelPart)
+		}
+	}
+
+	return "unknown-model"
+}
+
 func fallbackLogModel(resultModel string, inputModel string) string {
 	if strings.TrimSpace(resultModel) != "" {
 		return resultModel
@@ -223,6 +246,18 @@ func extractGatewayAPIKey(req *http.Request) string {
 	return ""
 }
 
+func extractGatewaySessionID(req *http.Request) string {
+	if req == nil {
+		return ""
+	}
+	for _, key := range []string{"X-Claude-Code-Session-Id", "X-Session-ID"} {
+		if value := strings.TrimSpace(req.Header.Get(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func extractStringRawValue(value json.RawMessage) string {
 	if len(value) == 0 {
 		return ""
@@ -245,7 +280,7 @@ func extractSessionAffinityKey(req *http.Request, gatewayReq domain.GatewayReque
 		return ""
 	}
 	readHeader := func() string {
-		return strings.TrimSpace(req.Header.Get("X-Session-ID"))
+		return extractGatewaySessionID(req)
 	}
 	readMetadata := func() string {
 		for _, key := range []string{"session_id", "conversation_id", "user_id"} {

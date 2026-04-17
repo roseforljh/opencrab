@@ -33,6 +33,67 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 	}
 }
 
+func HandleOpenAIModels(deps Dependencies) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if deps.ListModels == nil || deps.VerifyAPIKey == nil {
+			http.Error(w, "models handler not configured", http.StatusNotImplemented)
+			return
+		}
+
+		rawKey := extractGatewayAPIKey(req)
+		if rawKey == "" {
+			renderGatewayErrorForProtocol(deps, w, fmt.Errorf("缂哄皯 API Key"), domain.ProtocolOpenAI)
+			return
+		}
+		allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
+		if err != nil {
+			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
+			return
+		}
+		if !allowed {
+			renderGatewayErrorForProtocol(deps, w, fmt.Errorf("API Key 鏃犳晥鎴栧凡绂佺敤"), domain.ProtocolOpenAI)
+			return
+		}
+
+		models, err := deps.ListModels(req.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		type openAIModel struct {
+			ID      string `json:"id"`
+			Object  string `json:"object"`
+			Created int64  `json:"created"`
+			OwnedBy string `json:"owned_by"`
+		}
+
+		data := make([]openAIModel, 0, len(models))
+		seen := make(map[string]struct{}, len(models))
+		for _, model := range models {
+			alias := strings.TrimSpace(model.Alias)
+			if alias == "" {
+				continue
+			}
+			if _, exists := seen[alias]; exists {
+				continue
+			}
+			seen[alias] = struct{}{}
+			data = append(data, openAIModel{
+				ID:      alias,
+				Object:  "model",
+				Created: 0,
+				OwnedBy: "opencrab",
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"object": "list",
+			"data":   data,
+		})
+	}
+}
+
 func HandleOpenAIResponses(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if wantsAsyncAdmission(req) {
@@ -281,7 +342,7 @@ func acceptGatewayRequest(deps Dependencies, req *http.Request, decode gatewayDe
 		RequestPath:      req.URL.Path,
 		RequestBody:      string(body),
 		RequestHeaders:   marshalGatewayAdmissionHeaders(req.Header),
-		SessionID:        strings.TrimSpace(req.Header.Get("X-Session-ID")),
+		SessionID:        extractGatewaySessionID(req),
 		DeliveryMode:     extractDeliveryMode(req, body),
 		WebhookURL:       extractWebhookURL(body),
 		AcceptedAt:       acceptedAt,
@@ -403,9 +464,12 @@ func marshalGatewayAdmissionHeaders(headers http.Header) string {
 		"openai-beta":       {},
 		"anthropic-version": {},
 		"anthropic-beta":    {},
-		"x-opencrab-async":  {},
-		"idempotency-key":   {},
-		"x-requested-with":  {},
+		"anthropic-dangerous-direct-browser-access": {},
+		"x-opencrab-async":                          {},
+		"idempotency-key":                           {},
+		"x-requested-with":                          {},
+		"x-session-id":                              {},
+		"x-claude-code-session-id":                  {},
 	}
 	payload := map[string]string{}
 	for key, values := range headers {
@@ -614,6 +678,7 @@ func DecodeStoredGatewayJobRequest(store ResponseSessionStore, settingsStore fun
 	}
 	if job.SessionID != "" {
 		httpReq.Header.Set("X-Session-ID", job.SessionID)
+		httpReq.Header.Set("X-Claude-Code-Session-Id", job.SessionID)
 	}
 	if settingsStore != nil {
 		settings, settingsErr := settingsStore(context.Background())
@@ -797,7 +862,15 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 	if channelName == "" {
 		channelName = "default-channel"
 	}
-	modelName := extractModel(requestBody)
+	modelName := extractModelFromRequest(req.URL.Path, requestBody)
+	if strings.TrimSpace(modelName) == "unknown-model" && metadata != nil {
+		switch {
+		case len(metadata.VisitedAliases) > 0:
+			modelName = metadata.VisitedAliases[0]
+		case len(metadata.FallbackChain) > 0:
+			modelName = metadata.FallbackChain[0]
+		}
+	}
 	usage := usageMetrics{}
 	loggedResponseBody := ""
 	if len(responseBody) > 0 {
@@ -841,10 +914,15 @@ func logGatewayFailureSummary(deps Dependencies, req *http.Request, requestBody 
 	}
 	execErr := domain.AsExecutionError(err)
 	statusCode := fallbackStatusCode(execErr.StatusCode)
-	modelName := extractModel(requestBody)
+	modelName := extractModelFromRequest(req.URL.Path, requestBody)
 	metadata := execErr.Metadata
-	if strings.TrimSpace(modelName) == "unknown-model" && metadata != nil && len(metadata.FallbackChain) > 0 {
-		modelName = metadata.FallbackChain[0]
+	if strings.TrimSpace(modelName) == "unknown-model" && metadata != nil {
+		switch {
+		case len(metadata.VisitedAliases) > 0:
+			modelName = metadata.VisitedAliases[0]
+		case len(metadata.FallbackChain) > 0:
+			modelName = metadata.FallbackChain[0]
+		}
 	}
 	detailPayload := map[string]any{
 		"log_type":        "gateway_request",
@@ -1000,7 +1078,7 @@ func enrichRequestHeaders(req *http.Request, extra []string) map[string]string {
 	if req == nil {
 		return nil
 	}
-	keys := append([]string{"Authorization", "x-api-key", "x-goog-api-key", "X-Session-ID"}, extra...)
+	keys := append([]string{"Authorization", "x-api-key", "x-goog-api-key", "X-Session-ID", "X-Claude-Code-Session-Id"}, extra...)
 	result := map[string]string{}
 	for _, key := range keys {
 		if value := strings.TrimSpace(req.Header.Get(key)); value != "" {
@@ -1028,7 +1106,7 @@ func storeResponseSession(store ResponseSessionStore, req *http.Request, request
 	}
 	sessionID := ""
 	if req != nil {
-		sessionID = strings.TrimSpace(req.Header.Get("X-Session-ID"))
+		sessionID = extractGatewaySessionID(req)
 	}
 	transcript := make([]domain.GatewayMessage, 0, 4)
 	if previous, ok := extractPreviousResponseID(requestBody); ok {

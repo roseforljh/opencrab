@@ -19,6 +19,14 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    document.body.dataset.scrollShell = "internal";
+
+    return () => {
+      delete document.body.dataset.scrollShell;
+    };
+  }, []);
+
   const value = useMemo(
     () => ({
       collapsed,

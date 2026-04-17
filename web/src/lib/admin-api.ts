@@ -84,6 +84,8 @@ export type AdminDashboardSummary = {
   provider_count: number;
   routing_overview: AdminRoutingOverview;
   today_requests: number;
+  today_success_count: number;
+  today_error_count: number;
   total_requests: number;
   success_count: number;
   error_count: number;
@@ -91,10 +93,14 @@ export type AdminDashboardSummary = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  total_metered_requests: number;
   cache_hit_count: number;
   cache_hit_rate: number;
   requests_per_minute: number;
+  requests_per_minute_success: number;
+  requests_per_minute_error: number;
   tokens_per_minute: number;
+  tokens_per_minute_metered_requests: number;
   daily_counts: {
     label: string;
     requests: number;

@@ -222,6 +222,12 @@ func TestGeminiExecutorBuildsNativeTextRequest(t *testing.T) {
 	if parts[0].(map[string]any)["text"] != "hello" {
 		t.Fatalf("unexpected first text: %#v", parts)
 	}
+	if _, exists := captured["model"]; exists {
+		t.Fatalf("gemini payload should not include model in body: %#v", captured)
+	}
+	if _, exists := captured["stream"]; exists {
+		t.Fatalf("gemini payload should not include stream in body: %#v", captured)
+	}
 }
 
 func TestClaudeExecutorBuildsMultimodalRequest(t *testing.T) {

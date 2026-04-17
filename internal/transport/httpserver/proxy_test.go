@@ -34,6 +34,34 @@ func TestProxyChatCompletionsCopiesResponse(t *testing.T) {
 	}
 }
 
+func TestOpenAIModelsReturnsConfiguredAliases(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) {
+			if rawKey != "sk-opencrab-test" {
+				t.Fatalf("unexpected api key: %s", rawKey)
+			}
+			return true, nil
+		},
+		ListModels: func(ctx context.Context) ([]domain.ModelMapping, error) {
+			return []domain.ModelMapping{
+				{ID: 1, Alias: "gpt-4.1", UpstreamModel: "gpt-4.1"},
+				{ID: 2, Alias: "gpt-4o-mini", UpstreamModel: "gpt-4o-mini"},
+			}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"object":"list"`) || !strings.Contains(body, `"id":"gpt-4.1"`) || !strings.Contains(body, `"id":"gpt-4o-mini"`) {
+		t.Fatalf("unexpected models response: %s", body)
+	}
+}
+
 func TestProxyResponsesConvertsChatCompletionResponse(t *testing.T) {
 	router := NewRouter(Dependencies{
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },

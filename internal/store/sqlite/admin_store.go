@@ -303,14 +303,26 @@ func GetDashboardSummary(ctx context.Context, db *sql.DB) (domain.DashboardSumma
 	requestLogs := filterGatewayRequestLogs(logs)
 	summary.TodayRequests = countTodayRequests(requestLogs)
 	summary.TotalRequests = len(requestLogs)
+	todayStart := startOfDay(time.Now())
 	for _, logItem := range requestLogs {
+		createdAt, parseErr := time.Parse(time.RFC3339, logItem.CreatedAt)
 		if isSuccessStatus(logItem.StatusCode) {
 			summary.SuccessCount++
+		}
+		if parseErr == nil && !createdAt.Before(todayStart) {
+			if isSuccessStatus(logItem.StatusCode) {
+				summary.TodaySuccessCount++
+			} else {
+				summary.TodayErrorCount++
+			}
 		}
 		summary.AverageLatency += logItem.LatencyMs
 		summary.PromptTokens += logItem.PromptTokens
 		summary.CompletionTokens += logItem.CompletionTokens
 		summary.TotalTokens += logItem.TotalTokens
+		if logItem.TotalTokens > 0 {
+			summary.TotalMeteredRequests++
+		}
 		if logItem.CacheHit {
 			summary.CacheHitCount++
 		}
@@ -332,7 +344,15 @@ func GetDashboardSummary(ctx context.Context, db *sql.DB) (domain.DashboardSumma
 			continue
 		}
 		summary.RequestsPerMinute++
+		if isSuccessStatus(logItem.StatusCode) {
+			summary.RequestsPerMinuteSuccess++
+		} else {
+			summary.RequestsPerMinuteError++
+		}
 		summary.TokensPerMinute += logItem.TotalTokens
+		if logItem.TotalTokens > 0 {
+			summary.TokensPerMinuteMeteredRequests++
+		}
 	}
 
 	summary.ChannelMix = buildDashboardChannelMix(requestLogs)

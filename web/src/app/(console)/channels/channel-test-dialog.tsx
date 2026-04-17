@@ -100,7 +100,7 @@ export function ChannelTestDialog({ row }: { row: ChannelRow }) {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="animate-overlay fixed inset-0 bg-background/80 backdrop-blur-sm" />
-        <Dialog.Content className="animate-modal fixed left-1/2 top-1/2 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-background shadow-2xl outline-none">
+        <Dialog.Content className="animate-modal fixed left-1/2 top-1/2 flex max-h-[min(84vh,720px)] w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl outline-none">
           <div className="flex items-start justify-between border-b border-border px-6 py-5">
             <div>
               <Dialog.Title className="text-lg font-semibold text-foreground">测试渠道连通性</Dialog.Title>
@@ -115,7 +115,7 @@ export function ChannelTestDialog({ row }: { row: ChannelRow }) {
             </Dialog.Close>
           </div>
 
-          <div className="space-y-4 px-6 py-6">
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
             <div className="grid gap-3">
               {models.map((model) => (
                 <button
@@ -135,7 +135,11 @@ export function ChannelTestDialog({ row }: { row: ChannelRow }) {
                   <div>
                     <div className="font-mono text-sm font-medium text-foreground">{model}</div>
                     <div className="mt-1">{renderState(stateMap[model])}</div>
-                    {messages[model] ? <div className="mt-1 text-[11px] text-muted-foreground">{messages[model]}</div> : null}
+                    {messages[model] ? (
+                      <div className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+                        {messages[model]}
+                      </div>
+                    ) : null}
                   </div>
                   <span className="text-xs text-muted-foreground">单击测试</span>
                 </button>

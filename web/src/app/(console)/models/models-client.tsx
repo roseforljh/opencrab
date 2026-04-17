@@ -1,7 +1,7 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Plus, Search, Trash2 } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -9,11 +9,9 @@ import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ModelRouteRow = {
   id: number;
-  modelId?: number;
   alias: string;
   target: string;
   channel: string;
@@ -28,170 +26,34 @@ type ModelMappingSummary = {
   upstreamModel: string;
 };
 
-type RouteDraft = {
+type AliasDraft = {
   alias: string;
   target: string;
-  channel: string;
-  invocationMode: string;
-  priority: string;
-  fallback: string;
 };
 
-const invocationModeOptions = [
-  { value: "auto", label: "自动" },
-  { value: "openai", label: "OpenAI" },
-  { value: "claude", label: "Claude" },
-  { value: "gemini", label: "Gemini" },
-];
-
-function createEmptyDraft(channelNames: string[]): RouteDraft {
+function createEmptyDraft(): AliasDraft {
   return {
     alias: "",
     target: "",
-    channel: channelNames[0] ?? "",
-    invocationMode: "auto",
-    priority: "1",
-    fallback: "",
   };
 }
 
-function routeToDraft(route: ModelRouteRow): RouteDraft {
+function mappingToDraft(mapping: ModelMappingSummary): AliasDraft {
   return {
-    alias: route.alias,
-    target: route.target,
-    channel: route.channel,
-    invocationMode: route.invocationMode || "auto",
-    priority: String(route.priority),
-    fallback: route.fallback,
+    alias: mapping.alias,
+    target: mapping.upstreamModel,
   };
 }
 
-function normalizeInvocationMode(value: string) {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "" || normalized === "auto") {
-    return "";
-  }
-  return normalized;
-}
-
-function buildRoutePayload(draft: RouteDraft) {
+function normalizeDraft(draft: AliasDraft) {
   const alias = draft.alias.trim();
   const target = draft.target.trim();
-  const channel = draft.channel.trim();
-  const fallback = draft.fallback.trim();
-  const priority = Number.parseInt(draft.priority.trim(), 10);
 
-  if (!alias || !target || !channel) {
-    throw new Error("模型别名、目标模型和目标渠道不能为空");
-  }
-  if (!Number.isFinite(priority) || priority <= 0) {
-    throw new Error("优先级必须是大于 0 的整数");
+  if (!alias || !target) {
+    throw new Error("对外模型别名和目标模型都不能为空");
   }
 
-  return {
-    alias,
-    target,
-    route: {
-      model_alias: alias,
-      channel_name: channel,
-      invocation_mode: normalizeInvocationMode(draft.invocationMode),
-      priority,
-      fallback_model: fallback,
-    },
-  };
-}
-
-async function ensureOk(response: Response, fallbackMessage: string) {
-  if (!response.ok) {
-    throw new Error((await response.text()) || fallbackMessage);
-  }
-}
-
-function RouteForm({
-  draft,
-  onChange,
-  channelNames,
-  aliasShared,
-  busy,
-  submitLabel,
-  onSubmit,
-  onCancel,
-  dangerAction,
-}: {
-  draft: RouteDraft;
-  onChange: (draft: RouteDraft) => void;
-  channelNames: string[];
-  aliasShared: boolean;
-  busy: boolean;
-  submitLabel: string;
-  onSubmit: () => void;
-  onCancel: () => void;
-  dangerAction?: ReactNode;
-}) {
-  return (
-    <div className="space-y-4 text-sm text-muted-foreground">
-      <div className="space-y-2">
-        <label className="text-sm font-medium leading-none text-foreground">模型别名</label>
-        <Input value={draft.alias} onChange={(event) => onChange({ ...draft, alias: event.target.value })} />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium leading-none text-foreground">目标模型</label>
-        <Input value={draft.target} onChange={(event) => onChange({ ...draft, target: event.target.value })} />
-        {aliasShared ? (
-          <p className="text-xs text-muted-foreground">当前别名已绑定多条路由，修改别名或目标模型会同步影响同别名的全部路由。</p>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium leading-none text-foreground">目标渠道</label>
-        <Select value={draft.channel} onValueChange={(value) => onChange({ ...draft, channel: value })}>
-          <SelectTrigger className="bg-muted/30">
-            <SelectValue placeholder="选择目标渠道" />
-          </SelectTrigger>
-          <SelectContent>
-            {channelNames.map((channel) => (
-              <SelectItem key={channel} value={channel}>
-                {channel}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium leading-none text-foreground">优先级</label>
-        <Input type="number" min={1} value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value })} />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium leading-none text-foreground">调用方式</label>
-        <Select value={draft.invocationMode} onValueChange={(value) => onChange({ ...draft, invocationMode: value })}>
-          <SelectTrigger className="bg-muted/30">
-            <SelectValue placeholder="选择调用方式" />
-          </SelectTrigger>
-          <SelectContent>
-            {invocationModeOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium leading-none text-foreground">回退模型</label>
-        <Input value={draft.fallback} onChange={(event) => onChange({ ...draft, fallback: event.target.value })} placeholder="可留空" />
-      </div>
-      <div className="flex items-center justify-between gap-3 pt-2">
-        <div>{dangerAction}</div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={onCancel} disabled={busy}>
-            取消
-          </Button>
-          <Button onClick={onSubmit} disabled={busy}>
-            {busy ? "提交中..." : submitLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+  return { alias, target };
 }
 
 export function ModelsClient({
@@ -200,99 +62,109 @@ export function ModelsClient({
   description,
   initialRoutes,
   initialModels,
-  channelNames,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   initialRoutes: ModelRouteRow[];
   initialModels: ModelMappingSummary[];
-  channelNames: string[];
 }) {
-  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(initialRoutes[0]?.id ?? null);
   const [keyword, setKeyword] = useState("");
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(initialModels[0]?.id ?? null);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<"create" | "update" | "delete" | null>(null);
-  const [createDraft, setCreateDraft] = useState<RouteDraft>(() => createEmptyDraft(channelNames));
-  const [editDraft, setEditDraft] = useState<RouteDraft>(() => (initialRoutes[0] ? routeToDraft(initialRoutes[0]) : createEmptyDraft(channelNames)));
+  const [createDraft, setCreateDraft] = useState<AliasDraft>(() => createEmptyDraft());
+  const [editDraft, setEditDraft] = useState<AliasDraft>(() => (initialModels[0] ? mappingToDraft(initialModels[0]) : createEmptyDraft()));
 
-  const filteredRoutes = useMemo(() => {
-    const query = keyword.toLowerCase();
-    return initialRoutes.filter((route) => route.alias.toLowerCase().includes(query) || route.target.toLowerCase().includes(query) || route.channel.toLowerCase().includes(query));
-  }, [initialRoutes, keyword]);
-
-  const aliasRouteCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+  const directRoutesByAlias = useMemo(() => {
+    const map = new Map<string, ModelRouteRow[]>();
     for (const route of initialRoutes) {
-      counts.set(route.alias, (counts.get(route.alias) ?? 0) + 1);
+      const current = map.get(route.alias) ?? [];
+      current.push(route);
+      map.set(route.alias, current);
     }
-    return counts;
+    return map;
   }, [initialRoutes]);
 
-  const selectedRoute = filteredRoutes.find((route) => route.id === selectedRouteId) ?? filteredRoutes[0] ?? null;
-  const selectedAliasShared = selectedRoute ? (aliasRouteCounts.get(selectedRoute.alias) ?? 0) > 1 : false;
+  const filteredModels = useMemo(() => {
+    const query = keyword.trim().toLowerCase();
+    if (!query) {
+      return initialModels;
+    }
+    return initialModels.filter((item) => item.alias.toLowerCase().includes(query) || item.upstreamModel.toLowerCase().includes(query));
+  }, [initialModels, keyword]);
+
+  const selectedModel = filteredModels.find((item) => item.id === selectedModelId) ?? filteredModels[0] ?? null;
 
   useEffect(() => {
-    if (!selectedRoute) {
-      setSelectedRouteId(null);
+    if (!selectedModel) {
+      setSelectedModelId(null);
       return;
     }
-    if (selectedRoute.id !== selectedRouteId) {
-      setSelectedRouteId(selectedRoute.id);
+    if (selectedModel.id !== selectedModelId) {
+      setSelectedModelId(selectedModel.id);
     }
-  }, [selectedRoute, selectedRouteId]);
+  }, [selectedModel, selectedModelId]);
 
   useEffect(() => {
-    if (selectedRoute) {
-      setEditDraft(routeToDraft(selectedRoute));
+    if (selectedModel) {
+      setEditDraft(mappingToDraft(selectedModel));
     }
-  }, [selectedRoute]);
+  }, [selectedModel]);
+
+  const selectedResolvedRoutes = useMemo(() => {
+    if (!selectedModel) {
+      return [] as ModelRouteRow[];
+    }
+    const direct = directRoutesByAlias.get(selectedModel.alias);
+    if (direct && direct.length > 0) {
+      return direct;
+    }
+    return directRoutesByAlias.get(selectedModel.upstreamModel) ?? [];
+  }, [directRoutesByAlias, selectedModel]);
+
+  const selectedManagedByChannel = selectedModel ? (directRoutesByAlias.get(selectedModel.alias)?.length ?? 0) > 0 : false;
+
+  const availableTargetAliases = useMemo(
+    () =>
+      initialModels
+        .filter((item) => (directRoutesByAlias.get(item.alias)?.length ?? 0) > 0)
+        .map((item) => item.alias)
+        .sort((left, right) => left.localeCompare(right)),
+    [directRoutesByAlias, initialModels],
+  );
 
   const handleCreate = async () => {
     setError(null);
     setBusyAction("create");
 
-    let createdModelId: number | null = null;
     try {
-      const payload = buildRoutePayload(createDraft);
-      const existingModel = initialModels.find((item) => item.alias === payload.alias);
-
-      if (existingModel && existingModel.upstreamModel !== payload.target) {
-        throw new Error("当前数据模型下，同一别名只能映射一个目标模型");
+      const payload = normalizeDraft(createDraft);
+      if (!availableTargetAliases.includes(payload.target)) {
+        throw new Error("目标模型必须是已接入渠道的内部模型");
       }
 
-      if (!existingModel) {
-        const createModelResponse = await fetch("/api/admin/models", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ alias: payload.alias, upstream_model: payload.target }),
-        });
-        await ensureOk(createModelResponse, "创建模型映射失败");
-        const createdModel = (await createModelResponse.json()) as { id: number };
-        createdModelId = createdModel.id;
-      }
-
-      const createRouteResponse = await fetch("/api/admin/model-routes", {
+      const response = await fetch("/api/admin/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload.route),
+        body: JSON.stringify({ alias: payload.alias, upstream_model: payload.target }),
       });
-      await ensureOk(createRouteResponse, "创建路由失败");
+      if (!response.ok) {
+        throw new Error((await response.text()) || "创建别名映射失败");
+      }
+
       window.location.reload();
     } catch (requestError) {
-      if (createdModelId !== null) {
-        await fetch(`/api/admin/models/${createdModelId}`, { method: "DELETE" });
-      }
-      setError(requestError instanceof Error ? requestError.message : "创建路由失败");
+      setError(requestError instanceof Error ? requestError.message : "创建别名映射失败");
     } finally {
       setBusyAction(null);
     }
   };
 
   const handleUpdate = async () => {
-    if (!selectedRoute) {
+    if (!selectedModel) {
       return;
     }
 
@@ -300,34 +172,34 @@ export function ModelsClient({
     setBusyAction("update");
 
     try {
-      const payload = buildRoutePayload(editDraft);
-      const updateRouteResponse = await fetch(`/api/admin/model-route-bindings/${selectedRoute.id}`, {
+      const payload = normalizeDraft(editDraft);
+      if (!availableTargetAliases.includes(payload.target)) {
+        throw new Error("目标模型必须是已接入渠道的内部模型");
+      }
+
+      const response = await fetch(`/api/admin/models/${selectedModel.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alias: payload.alias,
-          upstream_model: payload.target,
-          channel_name: payload.route.channel_name,
-          invocation_mode: payload.route.invocation_mode,
-          priority: payload.route.priority,
-          fallback_model: payload.route.fallback_model,
-        }),
+        body: JSON.stringify({ alias: payload.alias, upstream_model: payload.target }),
       });
-      await ensureOk(updateRouteResponse, "更新模型路由失败");
+      if (!response.ok) {
+        throw new Error((await response.text()) || "更新别名映射失败");
+      }
+
       window.location.reload();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "更新路由失败");
+      setError(requestError instanceof Error ? requestError.message : "更新别名映射失败");
     } finally {
       setBusyAction(null);
     }
   };
 
   const handleDelete = async () => {
-    if (!selectedRoute) {
+    if (!selectedModel) {
       return;
     }
 
-    if (!window.confirm(`确认删除路由 ${selectedRoute.alias} → ${selectedRoute.channel} 吗？`)) {
+    if (!window.confirm(`确认删除对外模型 ${selectedModel.alias} 吗？`)) {
       return;
     }
 
@@ -335,17 +207,14 @@ export function ModelsClient({
     setBusyAction("delete");
 
     try {
-      const routeCount = aliasRouteCounts.get(selectedRoute.alias) ?? 0;
-      if (routeCount <= 1 && selectedRoute.modelId) {
-        const deleteModelResponse = await fetch(`/api/admin/models/${selectedRoute.modelId}`, { method: "DELETE" });
-        await ensureOk(deleteModelResponse, "删除模型映射失败");
-      } else {
-        const deleteRouteResponse = await fetch(`/api/admin/model-routes/${selectedRoute.id}`, { method: "DELETE" });
-        await ensureOk(deleteRouteResponse, "删除路由失败");
+      const response = await fetch(`/api/admin/models/${selectedModel.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "删除别名映射失败");
       }
+
       window.location.reload();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "删除路由失败");
+      setError(requestError instanceof Error ? requestError.message : "删除别名映射失败");
     } finally {
       setBusyAction(null);
     }
@@ -357,16 +226,16 @@ export function ModelsClient({
 
       {error ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div> : null}
 
-      <section className="grid gap-6 xl:grid-cols-[300px_1fr]">
+      <section className="grid gap-6 xl:grid-cols-[320px_1fr]">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索别名、目标模型或渠道..." className="bg-card pl-9" />
+              <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索对外别名或目标模型..." className="bg-card pl-9" />
             </div>
             <DetailDrawer
-              title="新增路由规则"
-              description="为一个模型别名新增路由规则。若别名不存在，会先创建模型映射。"
+              title="新增对外模型别名"
+              description="这里只定义对外模型名和内部目标模型，不在这里指定渠道。实际请求会自动复用目标模型当前可用的渠道路由。"
               triggerLabel="新增"
               trigger={
                 <Button
@@ -374,7 +243,7 @@ export function ModelsClient({
                   variant="outline"
                   className="shrink-0"
                   onClick={() => {
-                    setCreateDraft(createEmptyDraft(channelNames));
+                    setCreateDraft(createEmptyDraft());
                     setCreateOpen(true);
                   }}
                 >
@@ -384,135 +253,145 @@ export function ModelsClient({
               open={createOpen}
               onOpenChange={setCreateOpen}
             >
-              <RouteForm
-                draft={createDraft}
-                onChange={setCreateDraft}
-                channelNames={channelNames}
-                aliasShared={false}
-                busy={busyAction === "create"}
-                submitLabel="创建路由"
-                onSubmit={() => void handleCreate()}
-                onCancel={() => setCreateOpen(false)}
-              />
+              <div className="space-y-4 text-sm text-muted-foreground">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none text-foreground">对外模型别名</label>
+                  <Input value={createDraft.alias} onChange={(event) => setCreateDraft({ ...createDraft, alias: event.target.value })} placeholder="例如 aaa" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none text-foreground">内部目标模型</label>
+                  <Input value={createDraft.target} onChange={(event) => setCreateDraft({ ...createDraft, target: event.target.value })} placeholder="例如 gpt-5.4" />
+                  <p className="text-xs text-muted-foreground">可用内部模型：{availableTargetAliases.join(" , ") || "暂无"}</p>
+                </div>
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={busyAction === "create"}>
+                    取消
+                  </Button>
+                  <Button onClick={() => void handleCreate()} disabled={busyAction === "create"}>
+                    {busyAction === "create" ? "提交中..." : "创建映射"}
+                  </Button>
+                </div>
+              </div>
             </DetailDrawer>
           </div>
 
           <div className="flex flex-col gap-2">
-            {filteredRoutes.map((route) => (
-              <button
-                key={route.id}
-                onClick={() => setSelectedRouteId(route.id)}
-                className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-[background-color,border-color,transform,box-shadow] duration-200 ease-[var(--ease-out-smooth)] ${
-                  route.id === selectedRoute?.id ? "border-primary/30 bg-primary/5 ring-1 ring-primary/20" : "border-border bg-card hover:border-border/80 hover:bg-muted/50"
-                }`}
-              >
-                <div className="flex w-full items-center justify-between gap-3">
-                  <span className="font-medium text-foreground">{route.alias}</span>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">P{route.priority}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span>{route.target}</span>
-                  <ArrowRight className="h-3 w-3" />
-                  <span className="truncate">{route.channel}</span>
-                </div>
-              </button>
-            ))}
+            {filteredModels.map((item) => {
+              const directCount = directRoutesByAlias.get(item.alias)?.length ?? 0;
+              const resolvedCount = directCount > 0 ? directCount : directRoutesByAlias.get(item.upstreamModel)?.length ?? 0;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setSelectedModelId(item.id)}
+                  className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-[background-color,border-color,transform,box-shadow] duration-200 ease-[var(--ease-out-smooth)] ${
+                    item.id === selectedModel?.id ? "border-primary/30 bg-primary/5 ring-1 ring-primary/20" : "border-border bg-card hover:border-border/80 hover:bg-muted/50"
+                  }`}
+                >
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span className="font-medium text-foreground">{item.alias}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{resolvedCount} 条路由</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>{item.alias}</span>
+                    <ArrowRight className="h-3 w-3" />
+                    <span className="truncate">{item.upstreamModel}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="flex flex-col gap-6">
           <SectionCard
-            title="路由配置"
-            description="当前选中路由的可编辑配置。"
+            title="别名映射"
+            description="用户对外请求的模型名会先映射到内部目标模型，再复用该目标模型已有的渠道路由。"
             action={
-              selectedRoute ? (
-                <DetailDrawer
-                  title="编辑路由规则"
-                  description="修改模型别名、目标模型、目标渠道和优先级。"
-                  triggerLabel="编辑"
-                  open={editOpen}
-                  onOpenChange={setEditOpen}
-                >
-                  <RouteForm
-                    draft={editDraft}
-                    onChange={setEditDraft}
-                    channelNames={channelNames}
-                    aliasShared={selectedAliasShared}
-                    busy={busyAction === "update" || busyAction === "delete"}
-                    submitLabel="保存更改"
-                    onSubmit={() => void handleUpdate()}
-                    onCancel={() => setEditOpen(false)}
-                    dangerAction={
+              selectedModel && !selectedManagedByChannel ? (
+                <DetailDrawer title="编辑别名映射" description="只编辑对外别名和目标模型，不直接编辑渠道。" triggerLabel="编辑" open={editOpen} onOpenChange={setEditOpen}>
+                  <div className="space-y-4 text-sm text-muted-foreground">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none text-foreground">对外模型别名</label>
+                      <Input value={editDraft.alias} onChange={(event) => setEditDraft({ ...editDraft, alias: event.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium leading-none text-foreground">内部目标模型</label>
+                      <Input value={editDraft.target} onChange={(event) => setEditDraft({ ...editDraft, target: event.target.value })} />
+                      <p className="text-xs text-muted-foreground">可用内部模型：{availableTargetAliases.join(" , ") || "暂无"}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pt-2">
                       <Button variant="danger" onClick={() => void handleDelete()} disabled={busyAction === "update" || busyAction === "delete"}>
                         <Trash2 className="mr-2 h-4 w-4" />
-                        删除路由
+                        删除映射
                       </Button>
-                    }
-                  />
+                      <div className="flex items-center gap-3">
+                        <Button variant="outline" onClick={() => setEditOpen(false)} disabled={busyAction === "update" || busyAction === "delete"}>
+                          取消
+                        </Button>
+                        <Button onClick={() => void handleUpdate()} disabled={busyAction === "update" || busyAction === "delete"}>
+                          {busyAction === "update" ? "提交中..." : "保存映射"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </DetailDrawer>
               ) : null
             }
           >
-            {selectedRoute ? (
+            {selectedModel ? (
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-1">
-                  <span className="text-sm font-medium text-muted-foreground">对外别名 (Alias)</span>
-                  <p className="text-base font-medium text-foreground">{selectedRoute.alias}</p>
+                  <span className="text-sm font-medium text-muted-foreground">对外模型别名</span>
+                  <p className="text-base font-medium text-foreground">{selectedModel.alias}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-sm font-medium text-muted-foreground">优先级</span>
-                  <p className="text-base font-medium text-foreground">P{selectedRoute.priority}</p>
+                  <span className="text-sm font-medium text-muted-foreground">内部目标模型</span>
+                  <p className="text-base font-medium text-foreground">{selectedModel.upstreamModel}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-sm font-medium text-muted-foreground">目标模型 (Target)</span>
-                  <p className="text-base font-medium text-foreground">{selectedRoute.target}</p>
+                  <span className="text-sm font-medium text-muted-foreground">当前可用渠道数</span>
+                  <p className="text-base font-medium text-foreground">{selectedResolvedRoutes.length}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-sm font-medium text-muted-foreground">目标渠道 (Channel)</span>
-                  <p className="text-base font-medium text-foreground">{selectedRoute.channel}</p>
+                  <span className="text-sm font-medium text-muted-foreground">映射类型</span>
+                  <p className="text-base font-medium text-foreground">{selectedManagedByChannel ? "渠道内置模型" : "自定义对外别名"}</p>
                 </div>
-                <div className="space-y-1">
-                  <span className="text-sm font-medium text-muted-foreground">调用方式 (Invocation Mode)</span>
-                  <p className="text-base font-medium text-foreground">{selectedRoute.invocationMode}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-sm font-medium text-muted-foreground">同别名路由数</span>
-                  <p className="text-base font-medium text-foreground">{aliasRouteCounts.get(selectedRoute.alias) ?? 1}</p>
-                </div>
+                {selectedManagedByChannel ? (
+                  <div className="md:col-span-2 rounded-lg border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                    这条模型由渠道配置自动生成，当前页面只展示，不建议直接修改。若要扩展多个对外模型，请新增自定义别名并指向这个内部模型。
+                  </div>
+                ) : null}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">暂无模型路由数据。</div>
+              <div className="text-sm text-muted-foreground">暂无模型映射数据。</div>
             )}
           </SectionCard>
 
           <SectionCard
-            title="回退策略 (Fallback)"
-            description="当前仅支持配置与展示，运行时 fallback 链路将在后续阶段接入。"
-            action={
-              <Button variant="outline" size="sm" className="gap-2" onClick={() => selectedRoute && setEditOpen(true)} disabled={!selectedRoute}>
-                <Settings2 className="h-4 w-4" />
-                配置回退
-              </Button>
-            }
+            title="实际转发路由"
+            description="这里展示当前别名最终会复用到哪些渠道路由。你不需要在这里手动指定渠道。"
           >
-            {selectedRoute ? (
-              <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">默认回退模型</p>
-                    <p className="mt-1 text-sm text-muted-foreground">当前配置为 {selectedRoute.fallback || "未配置"}</p>
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
-                      selectedRoute.fallback ? "bg-success/10 text-success ring-success/20" : "bg-muted text-muted-foreground ring-border"
-                    }`}
-                  >
-                    {selectedRoute.fallback ? "已配置" : "未配置"}
-                  </span>
+            {selectedModel ? (
+              selectedResolvedRoutes.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedResolvedRoutes.map((route) => (
+                    <div key={route.id} className="rounded-lg border border-border/60 bg-muted/30 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-foreground">{route.channel}</div>
+                        <div className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">P{route.priority}</div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>调用方式：{route.invocationMode || "auto"}</span>
+                        <span>回退：{route.fallback || "无"}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">目标模型当前还没有可复用的渠道路由。</div>
+              )
             ) : (
-              <div className="text-sm text-muted-foreground">暂无回退策略。</div>
+              <div className="text-sm text-muted-foreground">暂无路由数据。</div>
             )}
           </SectionCard>
         </div>

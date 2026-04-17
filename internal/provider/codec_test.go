@@ -116,13 +116,23 @@ func TestGeminiCodecRoundTripConflictAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode gemini: %v", err)
 	}
+	var encoded map[string]any
+	if err := json.Unmarshal(data, &encoded); err != nil {
+		t.Fatalf("unmarshal encoded gemini payload: %v", err)
+	}
 
 	decoded, err := DecodeGeminiChatRequest(data, "gemini-2.0-flash")
 	if err != nil {
 		t.Fatalf("decode gemini: %v", err)
 	}
-	if decoded.Model != "gemini-2.0-flash" || decoded.Messages[0].Role != "assistant" || !decoded.Stream {
+	if decoded.Model != "gemini-2.0-flash" || decoded.Messages[0].Role != "assistant" {
 		t.Fatalf("unexpected decoded gemini request: %+v", decoded)
+	}
+	if _, exists := encoded["model"]; exists {
+		t.Fatalf("unexpected gemini body model field: %s", string(data))
+	}
+	if _, exists := encoded["stream"]; exists {
+		t.Fatalf("unexpected gemini body stream field: %s", string(data))
 	}
 	if string(decoded.Metadata["generationConfig"]) != `{"maxOutputTokens":8}` {
 		t.Fatalf("expected generationConfig metadata, got %+v", decoded.Metadata)

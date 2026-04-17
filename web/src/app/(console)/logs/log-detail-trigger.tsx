@@ -82,7 +82,7 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || detail || loading) {
+    if (!open || detail) {
       return;
     }
 
@@ -116,7 +116,7 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
     return () => {
       cancelled = true;
     };
-  }, [detail, loading, open, row.id]);
+  }, [detail, open, row.id]);
 
   const details = parseLogDetails(detail?.details ?? row.details);
   const selectedChannel = details.selectedChannel ?? detail?.channel ?? row.channel;

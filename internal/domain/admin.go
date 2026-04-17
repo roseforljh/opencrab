@@ -87,6 +87,8 @@ type DashboardSummary struct {
 	ProviderCount          int                     `json:"provider_count"`
 	RoutingOverview        RoutingOverview         `json:"routing_overview"`
 	TodayRequests          int                     `json:"today_requests"`
+	TodaySuccessCount      int                     `json:"today_success_count"`
+	TodayErrorCount        int                     `json:"today_error_count"`
 	TotalRequests          int                     `json:"total_requests"`
 	SuccessCount           int                     `json:"success_count"`
 	ErrorCount             int                     `json:"error_count"`
@@ -94,10 +96,14 @@ type DashboardSummary struct {
 	PromptTokens           int64                   `json:"prompt_tokens"`
 	CompletionTokens       int64                   `json:"completion_tokens"`
 	TotalTokens            int64                   `json:"total_tokens"`
+	TotalMeteredRequests   int                     `json:"total_metered_requests"`
 	CacheHitCount          int                     `json:"cache_hit_count"`
 	CacheHitRate           float64                 `json:"cache_hit_rate"`
 	RequestsPerMinute      int                     `json:"requests_per_minute"`
+	RequestsPerMinuteSuccess int                   `json:"requests_per_minute_success"`
+	RequestsPerMinuteError int                     `json:"requests_per_minute_error"`
 	TokensPerMinute        int64                   `json:"tokens_per_minute"`
+	TokensPerMinuteMeteredRequests int             `json:"tokens_per_minute_metered_requests"`
 	DailyCounts            []DashboardDailyCount   `json:"daily_counts"`
 	TrafficSeries          []DashboardTrafficPoint `json:"traffic_series"`
 	RecentLogs             []DashboardRecentLog    `json:"recent_logs"`

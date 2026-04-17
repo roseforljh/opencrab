@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"opencrab/internal/domain"
 )
@@ -17,6 +18,27 @@ func NewGatewayStore(db *sql.DB) *GatewayStore {
 }
 
 func (s *GatewayStore) ListEnabledRoutesByModel(ctx context.Context, model string) ([]domain.GatewayRoute, error) {
+	normalizedModel := strings.TrimSpace(model)
+	routes, err := s.listEnabledRoutesByAlias(ctx, normalizedModel)
+	if err != nil {
+		return nil, err
+	}
+	if len(routes) > 0 {
+		return routes, nil
+	}
+
+	targetAlias, err := s.lookupModelTarget(ctx, normalizedModel)
+	if err != nil {
+		return nil, err
+	}
+	if targetAlias == "" || targetAlias == normalizedModel {
+		return nil, nil
+	}
+
+	return s.listEnabledRoutesByAlias(ctx, targetAlias)
+}
+
+func (s *GatewayStore) listEnabledRoutesByAlias(ctx context.Context, alias string) ([]domain.GatewayRoute, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT mr.id, mr.model_alias, m.upstream_model, c.name, c.provider, c.endpoint, c.api_key, c.rpm_limit, c.max_inflight, c.safety_factor, c.dispatch_weight, mr.invocation_mode, mr.priority, mr.fallback_model, COALESCE(rrs.cooldown_until, ''), COALESCE(rrs.last_error, '')
 FROM model_routes mr
@@ -24,7 +46,7 @@ JOIN models m ON m.alias = mr.model_alias
 JOIN channels c ON c.name = mr.channel_name
 LEFT JOIN routing_runtime_states rrs ON rrs.route_id = mr.id
 WHERE mr.model_alias = ? AND c.enabled = 1
-ORDER BY mr.priority ASC, mr.id ASC`, model)
+ORDER BY mr.priority ASC, mr.id ASC`, alias)
 	if err != nil {
 		return nil, fmt.Errorf("查询执行路由失败: %w", err)
 	}
@@ -42,4 +64,20 @@ ORDER BY mr.priority ASC, mr.id ASC`, model)
 		return nil, fmt.Errorf("遍历执行路由失败: %w", err)
 	}
 	return routes, nil
+}
+
+func (s *GatewayStore) lookupModelTarget(ctx context.Context, alias string) (string, error) {
+	if alias == "" {
+		return "", nil
+	}
+
+	var target string
+	err := s.db.QueryRowContext(ctx, `SELECT upstream_model FROM models WHERE alias = ? LIMIT 1`, alias).Scan(&target)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("查询模型映射失败: %w", err)
+	}
+	return strings.TrimSpace(target), nil
 }
