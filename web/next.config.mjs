@@ -1,5 +1,3 @@
-import path from "node:path";
-
 /**
  * 这个文件用于定义 Next.js 的基础运行配置。
  *
@@ -8,8 +6,7 @@ import path from "node:path";
  */
 const nextConfig = {
   reactStrictMode: true,
-  output: "standalone",
-  outputFileTracingRoot: path.join(process.cwd(), "..")
+  output: "standalone"
 };
 
 export default nextConfig;
