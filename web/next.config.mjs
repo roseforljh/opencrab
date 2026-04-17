@@ -8,6 +8,7 @@ import path from "node:path";
  */
 const nextConfig = {
   reactStrictMode: true,
+  output: "standalone",
   outputFileTracingRoot: path.join(process.cwd(), "..")
 };
 
