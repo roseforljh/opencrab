@@ -303,12 +303,94 @@ func encodeGeminiToolCallPart(call domain.UnifiedToolCall) (map[string]any, erro
 func decodeGeminiMessages(items []map[string]json.RawMessage) ([]domain.UnifiedMessage, error) {
 	messages := make([]domain.UnifiedMessage, 0, len(items))
 	for i, item := range items {
-		message, err := decodeGeminiContent(item)
+		decoded, err := decodeGeminiRequestMessages(item)
 		if err != nil {
 			return nil, fmt.Errorf("contents[%d]: %w", i, err)
 		}
-		messages = append(messages, message)
+		messages = append(messages, decoded...)
 	}
+	return messages, nil
+}
+
+func decodeGeminiRequestMessages(content map[string]json.RawMessage) ([]domain.UnifiedMessage, error) {
+	var partsRaw []map[string]json.RawMessage
+	if err := decodeRaw(content, "parts", &partsRaw, true); err != nil {
+		message, err := decodeGeminiContent(content)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.UnifiedMessage{message}, nil
+	}
+	functionResponseCount := 0
+	for _, raw := range partsRaw {
+		if _, ok := raw["functionResponse"]; ok {
+			functionResponseCount++
+		}
+	}
+	if functionResponseCount <= 1 {
+		message, err := decodeGeminiContent(content)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.UnifiedMessage{message}, nil
+	}
+
+	var role string
+	_ = decodeRawString(content, "role", &role, false)
+	unifiedRole := unifiedRoleFromGemini(role)
+	baseMetadata := collectUnknownFields(content, "role", "parts")
+	messages := make([]domain.UnifiedMessage, 0, functionResponseCount+1)
+	current := domain.UnifiedMessage{Role: unifiedRole, Metadata: cloneRawMap(baseMetadata)}
+	flushCurrent := func() {
+		if len(current.Parts) == 0 && len(current.ToolCalls) == 0 {
+			return
+		}
+		messages = append(messages, current)
+		current = domain.UnifiedMessage{Role: unifiedRole, Metadata: cloneRawMap(baseMetadata)}
+	}
+
+	for i, raw := range partsRaw {
+		part, err := decodeGeminiPart(raw)
+		if err != nil {
+			return nil, fmt.Errorf("parts[%d]: %w", i, err)
+		}
+		if part.Type == "function_call" {
+			callMetadata := collectUnknownFields(part.Metadata, "id", "name", "arguments")
+			if callMetadata == nil {
+				callMetadata = map[string]json.RawMessage{}
+			}
+			order := i
+			current.ToolCalls = append(current.ToolCalls, domain.UnifiedToolCall{
+				ID:            decodeStringRaw(part.Metadata["id"]),
+				Name:          decodeStringRaw(part.Metadata["name"]),
+				Arguments:     append(json.RawMessage(nil), part.Metadata["arguments"]...),
+				Order:         &order,
+				NativePayload: append(json.RawMessage(nil), part.NativePayload...),
+				Metadata:      callMetadata,
+			})
+			continue
+		}
+		if part.Type == "function_response" {
+			flushCurrent()
+			metadata := map[string]json.RawMessage{}
+			if id := append(json.RawMessage(nil), part.Metadata["id"]...); len(id) > 0 {
+				metadata["tool_call_id"] = id
+			}
+			if name := append(json.RawMessage(nil), part.Metadata["name"]...); len(name) > 0 {
+				metadata["tool_name"] = name
+			}
+			messages = append(messages, domain.UnifiedMessage{Role: "tool", Parts: []domain.UnifiedPart{part}, Metadata: metadata})
+			continue
+		}
+		part.Metadata = cloneRawMap(part.Metadata)
+		if part.Metadata == nil {
+			part.Metadata = map[string]json.RawMessage{}
+		}
+		order := i
+		part.Order = &order
+		current.Parts = append(current.Parts, part)
+	}
+	flushCurrent()
 	return messages, nil
 }
 

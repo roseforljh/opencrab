@@ -233,7 +233,7 @@ func HandleClaudeCountTokens(deps Dependencies) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		logGatewayRequestSummary(deps, req, body, resp.StatusCode, resp.Headers, resp.Body, startedAt, nil)
+		logGatewayRequestSummary(deps, req, body, resp.StatusCode, resp.Headers, resp.Body, startedAt, nil, nil)
 	}
 }
 
@@ -761,7 +761,7 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		logGatewayRequestSummary(deps, req, requestBody, result.Stream.StatusCode, result.Stream.Headers, nil, startedAt, result.Metadata)
+		logGatewayRequestSummary(deps, req, requestBody, result.Stream.StatusCode, result.Stream.Headers, nil, startedAt, result.Metadata, nil)
 		return
 	}
 	if result.Response == nil {
@@ -779,7 +779,8 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
-				logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata)
+				usage := usageMetricsFromUnified(unified.Usage)
+				logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata, &usage)
 				return
 			}
 		}
@@ -789,7 +790,12 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logGatewayRequestSummary(deps, req, requestBody, resp.StatusCode, resp.Headers, resp.Body, startedAt, result.Metadata)
+	var structuredUsage *usageMetrics
+	if unified, err := decodeUnifiedByProvider(providerName, result.Response.Body); err == nil {
+		usage := usageMetricsFromUnified(unified.Usage)
+		structuredUsage = &usage
+	}
+	logGatewayRequestSummary(deps, req, requestBody, resp.StatusCode, resp.Headers, resp.Body, startedAt, result.Metadata, structuredUsage)
 }
 
 func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, result *domain.ExecutionResult, startedAt time.Time, surface transform.Surface) {
@@ -798,7 +804,7 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		logGatewayRequestSummary(deps, req, requestBody, result.Stream.StatusCode, result.Stream.Headers, nil, startedAt, result.Metadata)
+		logGatewayRequestSummary(deps, req, requestBody, result.Stream.StatusCode, result.Stream.Headers, nil, startedAt, result.Metadata, nil)
 		return
 	}
 	if result == nil || result.Response == nil {
@@ -828,7 +834,8 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata)
+	usage := usageMetricsFromUnified(unified.Usage)
+	logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata, &usage)
 }
 
 func encodeGatewayResponseForSurface(resp *domain.ProxyResponse, surface transform.Surface) *domain.ProxyResponse {
@@ -876,7 +883,7 @@ func cloneHeaderMap(headers map[string][]string) map[string][]string {
 	return cloned
 }
 
-func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody []byte, statusCode int, headers map[string][]string, responseBody []byte, startedAt time.Time, metadata *domain.GatewayExecutionMetadata) {
+func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody []byte, statusCode int, headers map[string][]string, responseBody []byte, startedAt time.Time, metadata *domain.GatewayExecutionMetadata, structuredUsage *usageMetrics) {
 	if deps.CreateRequestLog == nil {
 		return
 	}
@@ -896,8 +903,12 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 	usage := usageMetrics{}
 	loggedResponseBody := ""
 	if len(responseBody) > 0 {
-		usage = extractUsageMetrics(responseBody)
 		loggedResponseBody = truncateLogBody(string(responseBody))
+	}
+	if structuredUsage != nil {
+		usage = *structuredUsage
+	} else if len(responseBody) > 0 {
+		usage = extractUsageMetrics(responseBody)
 	}
 	detailPayload := map[string]any{
 		"log_type":          "gateway_request",

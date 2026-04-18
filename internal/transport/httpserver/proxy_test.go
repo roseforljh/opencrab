@@ -834,16 +834,21 @@ func TestProxyClaudeMessagesAcceptsNativeHeader(t *testing.T) {
 }
 
 func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing.T) {
+	var logged domain.RequestLog
 	router := NewRouter(Dependencies{
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
 			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`)}}, nil
 		},
+		CreateRequestLog: func(ctx context.Context, item domain.RequestLog) error {
+			logged = item
+			return nil
+		},
 		CopyProxy:  copyProxyForTest,
 		CopyStream: copyStreamForTest,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(`{"model":"claude-sonnet-4-5","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"ping"}]}`))
-	req.Header.Set("x-api-key", "sk-opencrab-test")
+	req.Header.Set("x-api-key", "***")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -856,6 +861,19 @@ func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing
 	}
 	if !strings.Contains(body, `"output_tokens":2`) {
 		t.Fatalf("expected usage tokens in body: %s", body)
+	}
+	if logged.TotalTokens != 3 || logged.PromptTokens != 1 || logged.CompletionTokens != 2 {
+		t.Fatalf("expected persisted usage tokens, got %+v", logged)
+	}
+}
+
+func TestExtractUsageMetricsFromClaudeSSE(t *testing.T) {
+	body := []byte("event: message_start\ndata: {\"message\":{\"usage\":{\"input_tokens\":123,\"output_tokens\":0}}}\n\n" +
+		"event: message_delta\ndata: {\"usage\":{\"output_tokens\":45}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+	usage := extractUsageMetrics(body)
+	if usage.PromptTokens != 123 || usage.CompletionTokens != 45 || usage.TotalTokens != 168 {
+		t.Fatalf("unexpected sse usage: %+v", usage)
 	}
 }
 

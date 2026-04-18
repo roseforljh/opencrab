@@ -1159,9 +1159,5 @@ func markResponsesBridgeRepair(req domain.UnifiedChatRequest, sourceProtocol dom
 	if sourceProtocol == "" || sourceProtocol == domain.ProtocolOpenAI {
 		return req
 	}
-	if req.Metadata == nil {
-		req.Metadata = map[string]json.RawMessage{}
-	}
-	req.Metadata["__opencrab_repair_tool_pairs"] = json.RawMessage(`true`)
 	return req
 }

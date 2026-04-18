@@ -300,12 +300,79 @@ func buildClaudeSource(desc mediaDescriptor) (map[string]any, error) {
 func decodeClaudeMessages(items []map[string]json.RawMessage) ([]domain.UnifiedMessage, error) {
 	messages := make([]domain.UnifiedMessage, 0, len(items))
 	for i, item := range items {
-		message, err := decodeClaudeMessage(item)
+		decoded, err := decodeClaudeRequestMessages(item)
 		if err != nil {
 			return nil, fmt.Errorf("messages[%d]: %w", i, err)
 		}
-		messages = append(messages, message)
+		messages = append(messages, decoded...)
 	}
+	return messages, nil
+}
+
+func decodeClaudeRequestMessages(raw map[string]json.RawMessage) ([]domain.UnifiedMessage, error) {
+	contentRaw, ok := raw["content"]
+	if !ok {
+		return nil, fmt.Errorf("content 缺失")
+	}
+	var blocks []map[string]json.RawMessage
+	if err := json.Unmarshal(contentRaw, &blocks); err != nil {
+		message, err := decodeClaudeMessage(raw)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.UnifiedMessage{message}, nil
+	}
+	toolResultCount := 0
+	for _, block := range blocks {
+		var blockType string
+		if err := decodeRawString(block, "type", &blockType, false); err == nil && blockType == "tool_result" {
+			toolResultCount++
+		}
+	}
+	if toolResultCount <= 1 {
+		message, err := decodeClaudeMessage(raw)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.UnifiedMessage{message}, nil
+	}
+
+	var role string
+	if err := decodeRawString(raw, "role", &role, true); err != nil {
+		return nil, err
+	}
+	baseMetadata := collectUnknownFields(raw, "role", "content")
+	messages := make([]domain.UnifiedMessage, 0, toolResultCount+1)
+	current := domain.UnifiedMessage{Role: role, Metadata: cloneRawMap(baseMetadata)}
+	flushCurrent := func() {
+		if len(current.Parts) == 0 && len(current.ToolCalls) == 0 {
+			return
+		}
+		messages = append(messages, current)
+		current = domain.UnifiedMessage{Role: role, Metadata: cloneRawMap(baseMetadata)}
+	}
+
+	for i, block := range blocks {
+		part, call, isToolResult, err := decodeClaudeContentBlock(block)
+		if err != nil {
+			return nil, fmt.Errorf("content[%d]: %w", i, err)
+		}
+		if isToolResult {
+			flushCurrent()
+			metadata := map[string]json.RawMessage{}
+			if rawToolUseID, found := decodeClaudeToolResultID(part); found {
+				metadata["tool_call_id"] = rawToolUseID
+			}
+			messages = append(messages, domain.UnifiedMessage{Role: "tool", Parts: []domain.UnifiedPart{part}, Metadata: metadata})
+			continue
+		}
+		if call.Name != "" {
+			current.ToolCalls = append(current.ToolCalls, call)
+			continue
+		}
+		current.Parts = append(current.Parts, part)
+	}
+	flushCurrent()
 	return messages, nil
 }
 

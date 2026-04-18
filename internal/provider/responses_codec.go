@@ -97,11 +97,6 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 
 	payload := map[string]any{}
 	metadata := cloneRawMap(req.Metadata)
-	repairToolPairs := false
-	if len(metadata["__opencrab_repair_tool_pairs"]) > 0 {
-		repairToolPairs = true
-		delete(metadata, "__opencrab_repair_tool_pairs")
-	}
 	mergeRawFields(payload, metadata)
 	payload["model"] = req.Model
 	if req.Stream {
@@ -114,7 +109,7 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 	if err != nil {
 		return nil, err
 	}
-	input = repairResponsesInputToolPairs(input, session != nil && strings.TrimSpace(session.PreviousResponseID) != "", repairToolPairs)
+	input = repairResponsesInputToolPairs(input, session != nil && strings.TrimSpace(session.PreviousResponseID) != "", false)
 	if strings.TrimSpace(instructions) != "" {
 		payload["instructions"] = instructions
 	}

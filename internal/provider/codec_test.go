@@ -370,7 +370,7 @@ func TestResponsesCodecEncodesClaudeToolResultStructuredOutput(t *testing.T) {
 	}
 }
 
-func TestResponsesCodecDropsOrphanFunctionCallWithoutOutput(t *testing.T) {
+func TestResponsesCodecKeepsOrphanFunctionCallWithoutOutput(t *testing.T) {
 	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
 		Protocol: domain.ProtocolOpenAI,
 		Model:    "gpt-5.4",
@@ -383,8 +383,8 @@ func TestResponsesCodecDropsOrphanFunctionCallWithoutOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode responses request: %v", err)
 	}
-	if strings.Contains(string(data), `"type":"function_call"`) {
-		t.Fatalf("orphan function_call should be dropped: %s", string(data))
+	if !strings.Contains(string(data), `"type":"function_call"`) || !strings.Contains(string(data), `"call_id":"call_1"`) {
+		t.Fatalf("orphan function_call should be preserved: %s", string(data))
 	}
 }
 
@@ -455,6 +455,65 @@ func TestClaudeCodecPreservesStructuredToolResultBlocks(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), `"role":"tool"`) {
 		t.Fatalf("unexpected tool role leak: %s", string(encoded))
+	}
+}
+
+func TestClaudeCodecSplitsMultipleToolResultsIntoDistinctMessages(t *testing.T) {
+	req, err := DecodeClaudeChatRequest([]byte(`{
+		"model":"claude-sonnet",
+		"messages":[
+			{
+				"role":"user",
+				"content":[
+					{"type":"tool_result","tool_use_id":"call_read","content":[{"type":"text","text":"read failed"}]},
+					{"type":"tool_result","tool_use_id":"call_bash","content":"bash ok"}
+				]
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode claude request: %v", err)
+	}
+	if len(req.Messages) != 2 {
+		t.Fatalf("expected split tool results into 2 messages, got %d: %+v", len(req.Messages), req.Messages)
+	}
+	for i, expectedID := range []string{"call_read", "call_bash"} {
+		msg := req.Messages[i]
+		if msg.Role != "tool" {
+			t.Fatalf("message %d expected tool role, got %+v", i, msg)
+		}
+		if got := decodeStringRaw(msg.Metadata["tool_call_id"]); got != expectedID {
+			t.Fatalf("message %d expected tool_call_id %s, got %s", i, expectedID, got)
+		}
+		if len(msg.Parts) == 0 || len(msg.Parts[0].NativePayload) == 0 {
+			t.Fatalf("message %d expected structured native payload, got %+v", i, msg)
+		}
+	}
+
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolOpenAI, Model: "gpt-5.4", Messages: req.Messages}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	for _, snippet := range []string{`"function_call_output"`, `"call_id":"call_read"`, `"call_id":"call_bash"`} {
+		if !strings.Contains(string(data), snippet) {
+			t.Fatalf("expected %s in encoded responses payload: %s", snippet, string(data))
+		}
+	}
+}
+
+func TestClaudeCodecDecodeMessageSingleToolResultPreservesBinding(t *testing.T) {
+	msg, err := decodeClaudeMessage(map[string]json.RawMessage{
+		"role":    json.RawMessage(`"user"`),
+		"content": json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]`),
+	})
+	if err != nil {
+		t.Fatalf("decode claude message: %v", err)
+	}
+	if msg.Role != "tool" {
+		t.Fatalf("expected tool role, got %+v", msg)
+	}
+	if got := decodeStringRaw(msg.Metadata["tool_call_id"]); got != "toolu_1" {
+		t.Fatalf("expected tool_call_id toolu_1, got %+v", msg.Metadata)
 	}
 }
 
@@ -546,6 +605,48 @@ func TestGeminiCodecFunctionCallAndResponse(t *testing.T) {
 	}
 	if !strings.Contains(string(encodedResp), `"functionCall"`) {
 		t.Fatalf("expected functionCall in encoded gemini response: %s", string(encodedResp))
+	}
+}
+
+func TestGeminiCodecSplitsMultipleFunctionResponsesIntoDistinctMessages(t *testing.T) {
+	req, err := DecodeGeminiChatRequest([]byte(`{
+		"model":"gemini-2.0-flash",
+		"contents":[
+			{
+				"role":"user",
+				"parts":[
+					{"functionResponse":{"id":"call_read","name":"Read","response":{"error":"bad pages"}}},
+					{"functionResponse":{"id":"call_bash","name":"Bash","response":{"ok":true}}}
+				]
+			}
+		]
+	}`), "")
+	if err != nil {
+		t.Fatalf("decode gemini request: %v", err)
+	}
+	if len(req.Messages) != 2 {
+		t.Fatalf("expected 2 split tool messages, got %d: %+v", len(req.Messages), req.Messages)
+	}
+	for i, expectedID := range []string{"call_read", "call_bash"} {
+		msg := req.Messages[i]
+		if msg.Role != "tool" {
+			t.Fatalf("message %d expected tool role, got %+v", i, msg)
+		}
+		if got := decodeStringRaw(msg.Metadata["tool_call_id"]); got != expectedID {
+			t.Fatalf("message %d expected tool_call_id %s, got %s", i, expectedID, got)
+		}
+		if len(msg.Parts) == 0 || len(msg.Parts[0].NativePayload) == 0 {
+			t.Fatalf("message %d expected native payload, got %+v", i, msg)
+		}
+	}
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolOpenAI, Model: "gpt-5.4", Messages: req.Messages}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	for _, snippet := range []string{`"function_call_output"`, `"call_id":"call_read"`, `"call_id":"call_bash"`} {
+		if !strings.Contains(string(data), snippet) {
+			t.Fatalf("expected %s in encoded responses payload: %s", snippet, string(data))
+		}
 	}
 }
 

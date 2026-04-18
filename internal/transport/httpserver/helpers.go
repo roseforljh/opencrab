@@ -389,6 +389,23 @@ type usageMetrics struct {
 	CacheHit         bool
 }
 
+func usageMetricsFromUnified(usage map[string]int64) usageMetrics {
+	if len(usage) == 0 {
+		return usageMetrics{}
+	}
+	totalTokens := usage["total_tokens"]
+	if totalTokens == 0 {
+		totalTokens = usage["prompt_tokens"] + usage["completion_tokens"]
+	}
+	cacheHit := usage["cached_tokens"] > 0 || usage["prompt_cache_hit_tokens"] > 0
+	return usageMetrics{
+		PromptTokens:     usage["prompt_tokens"],
+		CompletionTokens: usage["completion_tokens"],
+		TotalTokens:      totalTokens,
+		CacheHit:         cacheHit,
+	}
+}
+
 func extractUsageMetrics(body []byte) usageMetrics {
 	var payload struct {
 		Usage struct {
@@ -402,19 +419,123 @@ func extractUsageMetrics(body []byte) usageMetrics {
 		} `json:"usage"`
 	}
 
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err == nil {
+		totalTokens := payload.Usage.TotalTokens
+		if totalTokens == 0 {
+			totalTokens = payload.Usage.PromptTokens + payload.Usage.CompletionTokens
+		}
+		if payload.Usage.PromptTokens > 0 || payload.Usage.CompletionTokens > 0 || totalTokens > 0 || payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0 {
+			return usageMetrics{
+				PromptTokens:     payload.Usage.PromptTokens,
+				CompletionTokens: payload.Usage.CompletionTokens,
+				TotalTokens:      totalTokens,
+				CacheHit:         payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0,
+			}
+		}
+	}
+
+	var responsesPayload struct {
+		Usage struct {
+			InputTokens        int64 `json:"input_tokens"`
+			OutputTokens       int64 `json:"output_tokens"`
+			TotalTokens        int64 `json:"total_tokens"`
+			InputTokensDetails struct {
+				CachedTokens int64 `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &responsesPayload); err == nil {
+		totalTokens := responsesPayload.Usage.TotalTokens
+		if totalTokens == 0 {
+			totalTokens = responsesPayload.Usage.InputTokens + responsesPayload.Usage.OutputTokens
+		}
+		if responsesPayload.Usage.InputTokens > 0 || responsesPayload.Usage.OutputTokens > 0 || totalTokens > 0 || responsesPayload.Usage.InputTokensDetails.CachedTokens > 0 {
+			return usageMetrics{
+				PromptTokens:     responsesPayload.Usage.InputTokens,
+				CompletionTokens: responsesPayload.Usage.OutputTokens,
+				TotalTokens:      totalTokens,
+				CacheHit:         responsesPayload.Usage.InputTokensDetails.CachedTokens > 0,
+			}
+		}
+	}
+
+	return extractSSEUsageMetrics(body)
+}
+
+func extractSSEUsageMetrics(body []byte) usageMetrics {
+	lines := strings.Split(string(body), "\n")
+	last := usageMetrics{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		metrics := extractUsageMetricsFromEventPayload([]byte(payload))
+		if metrics.PromptTokens == 0 && metrics.CompletionTokens == 0 && metrics.TotalTokens == 0 && !metrics.CacheHit {
+			continue
+		}
+		last = metrics
+	}
+	return last
+}
+
+func extractUsageMetricsFromEventPayload(body []byte) usageMetrics {
+	var messageStart struct {
+		Message struct {
+			Usage struct {
+				InputTokens  int64 `json:"input_tokens"`
+				OutputTokens int64 `json:"output_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(body, &messageStart); err == nil {
+		if messageStart.Message.Usage.InputTokens > 0 || messageStart.Message.Usage.OutputTokens > 0 {
+			return usageMetrics{
+				PromptTokens:     messageStart.Message.Usage.InputTokens,
+				CompletionTokens: messageStart.Message.Usage.OutputTokens,
+				TotalTokens:      messageStart.Message.Usage.InputTokens + messageStart.Message.Usage.OutputTokens,
+			}
+		}
+	}
+
+	var messageDelta struct {
+		Usage struct {
+			OutputTokens int64 `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &messageDelta); err == nil {
+		if messageDelta.Usage.OutputTokens > 0 {
+			return usageMetrics{CompletionTokens: messageDelta.Usage.OutputTokens, TotalTokens: messageDelta.Usage.OutputTokens}
+		}
+	}
+
+	var responseCompleted struct {
+		Response struct {
+			Usage struct {
+				InputTokens        int64 `json:"input_tokens"`
+				OutputTokens       int64 `json:"output_tokens"`
+				TotalTokens        int64 `json:"total_tokens"`
+				InputTokensDetails struct {
+					CachedTokens int64 `json:"cached_tokens"`
+				} `json:"input_tokens_details"`
+			} `json:"usage"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(body, &responseCompleted); err != nil {
 		return usageMetrics{}
 	}
-
-	totalTokens := payload.Usage.TotalTokens
+	totalTokens := responseCompleted.Response.Usage.TotalTokens
 	if totalTokens == 0 {
-		totalTokens = payload.Usage.PromptTokens + payload.Usage.CompletionTokens
+		totalTokens = responseCompleted.Response.Usage.InputTokens + responseCompleted.Response.Usage.OutputTokens
 	}
-
 	return usageMetrics{
-		PromptTokens:     payload.Usage.PromptTokens,
-		CompletionTokens: payload.Usage.CompletionTokens,
+		PromptTokens:     responseCompleted.Response.Usage.InputTokens,
+		CompletionTokens: responseCompleted.Response.Usage.OutputTokens,
 		TotalTokens:      totalTokens,
-		CacheHit:         payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0,
+		CacheHit:         responseCompleted.Response.Usage.InputTokensDetails.CachedTokens > 0,
 	}
 }

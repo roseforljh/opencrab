@@ -179,6 +179,49 @@ func TestOpenAIExecutorUsesResponsesEndpointForNativeResponses(t *testing.T) {
 	}
 }
 
+func TestOpenAIExecutorPreservesFunctionCallWhenBridgingClaudeToolUse(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://api.openai.com/v1/responses" {
+			t.Fatalf("unexpected url: %s", req.URL.String())
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages: []domain.GatewayMessage{
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "ping"}),
+				{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	input, ok := captured["input"].([]any)
+	if !ok {
+		t.Fatalf("unexpected input payload: %#v", captured["input"])
+	}
+	serialized, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("marshal input: %v", err)
+	}
+	if !strings.Contains(string(serialized), `"type":"function_call"`) || !strings.Contains(string(serialized), `"call_id":"call_1"`) {
+		t.Fatalf("expected bridged payload to keep function_call, got %s", string(serialized))
+	}
+}
+
 func TestOpenAIExecutorReturnsNativeResponsesStreamWhenRequested(t *testing.T) {
 	body := &trackingReadCloser{reader: strings.NewReader("event: response.created\ndata: {}\n\n")}
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
