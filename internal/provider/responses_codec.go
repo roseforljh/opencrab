@@ -96,7 +96,13 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 	}
 
 	payload := map[string]any{}
-	mergeRawFields(payload, req.Metadata)
+	metadata := cloneRawMap(req.Metadata)
+	repairToolPairs := false
+	if len(metadata["__opencrab_repair_tool_pairs"]) > 0 {
+		repairToolPairs = true
+		delete(metadata, "__opencrab_repair_tool_pairs")
+	}
+	mergeRawFields(payload, metadata)
 	payload["model"] = req.Model
 	if req.Stream {
 		payload["stream"] = true
@@ -108,6 +114,7 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 	if err != nil {
 		return nil, err
 	}
+	input = repairResponsesInputToolPairs(input, session != nil && strings.TrimSpace(session.PreviousResponseID) != "", repairToolPairs)
 	if strings.TrimSpace(instructions) != "" {
 		payload["instructions"] = instructions
 	}
@@ -421,6 +428,66 @@ func encodeResponsesInputFromMessages(messages []domain.UnifiedMessage) (string,
 		return "", nil, fmt.Errorf("Responses 请求至少需要一条非 system 消息")
 	}
 	return strings.Join(instructions, "\n\n"), items, nil
+}
+
+func repairResponsesInputToolPairs(items []any, allowOrphanOutputs bool, dropOrphanCalls bool) []any {
+	if len(items) == 0 {
+		return items
+	}
+	callPresent := make(map[string]struct{}, len(items))
+	outputPresent := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		payload, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		itemType, _ := payload["type"].(string)
+		callID, _ := payload["call_id"].(string)
+		callID = strings.TrimSpace(callID)
+		switch itemType {
+		case "function_call":
+			if callID != "" {
+				callPresent[callID] = struct{}{}
+			}
+		case "function_call_output":
+			if callID != "" {
+				outputPresent[callID] = struct{}{}
+			}
+		}
+	}
+	filtered := make([]any, 0, len(items))
+	for _, item := range items {
+		payload, ok := item.(map[string]any)
+		if !ok {
+			filtered = append(filtered, item)
+			continue
+		}
+		itemType, _ := payload["type"].(string)
+		callID, _ := payload["call_id"].(string)
+		callID = strings.TrimSpace(callID)
+		switch itemType {
+		case "function_call":
+			if callID == "" {
+				continue
+			}
+			if dropOrphanCalls {
+				if _, ok := outputPresent[callID]; !ok {
+					continue
+				}
+			}
+		case "function_call_output":
+			if callID == "" {
+				continue
+			}
+			if dropOrphanCalls && !allowOrphanOutputs {
+				if _, ok := callPresent[callID]; !ok {
+					continue
+				}
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {

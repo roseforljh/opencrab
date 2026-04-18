@@ -53,11 +53,11 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	payload, err := buildExecutorPayload(
 		domain.ProtocolOpenAI,
 		targetOperation,
-		toUnifiedRequest(domain.ExecutorRequest{
+		markResponsesBridgeRepair(toUnifiedRequest(domain.ExecutorRequest{
 			Channel:       input.Channel,
 			UpstreamModel: input.UpstreamModel,
 			Request:       effectiveRequest,
-		}, domain.ProtocolOpenAI, normalizedProvider),
+		}, domain.ProtocolOpenAI, normalizedProvider), input.Request.Protocol, targetOperation),
 		effectiveRequest.Session,
 		input.Channel.Endpoint,
 		input.UpstreamModel,
@@ -1150,4 +1150,18 @@ func inferGatewaySourceOperation(req domain.GatewayRequest) domain.ProtocolOpera
 	default:
 		return domain.ProtocolOperationOpenAIChatCompletions
 	}
+}
+
+func markResponsesBridgeRepair(req domain.UnifiedChatRequest, sourceProtocol domain.Protocol, targetOperation domain.ProtocolOperation) domain.UnifiedChatRequest {
+	if targetOperation != domain.ProtocolOperationOpenAIResponses {
+		return req
+	}
+	if sourceProtocol == "" || sourceProtocol == domain.ProtocolOpenAI {
+		return req
+	}
+	if req.Metadata == nil {
+		req.Metadata = map[string]json.RawMessage{}
+	}
+	req.Metadata["__opencrab_repair_tool_pairs"] = json.RawMessage(`true`)
+	return req
 }

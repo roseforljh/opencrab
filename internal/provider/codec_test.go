@@ -370,6 +370,40 @@ func TestResponsesCodecEncodesClaudeToolResultStructuredOutput(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecDropsOrphanFunctionCallWithoutOutput(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}}},
+		},
+		Metadata: map[string]json.RawMessage{"__opencrab_repair_tool_pairs": json.RawMessage(`true`)},
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if strings.Contains(string(data), `"type":"function_call"`) {
+		t.Fatalf("orphan function_call should be dropped: %s", string(data))
+	}
+}
+
+func TestResponsesCodecKeepsOrphanOutputWhenPreviousResponseIDPresent(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: "done"}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)}},
+		},
+	}, &domain.GatewaySessionState{PreviousResponseID: "resp_prev"})
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(data), `"previous_response_id":"resp_prev"`) || !strings.Contains(string(data), `"function_call_output"`) {
+		t.Fatalf("orphan function_call_output should be kept with previous_response_id: %s", string(data))
+	}
+}
+
 func TestClaudeCodecToolUseAndResult(t *testing.T) {
 	decoded, err := DecodeClaudeChatResponse([]byte(`{"id":"msg_tool","model":"claude-sonnet","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"opencode","input":{"prompt":"ping"}}],"stop_reason":"tool_use"}`))
 	if err != nil {
