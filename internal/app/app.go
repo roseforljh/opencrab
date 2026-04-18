@@ -162,6 +162,36 @@ func New() (*App, error) {
 			}
 			return buildSystemSettingGroups(appConfig, items), nil
 		},
+		ListCapabilityProfiles: func(ctx context.Context) (domain.CapabilityProfileListResponse, error) {
+			items, err := capabilityProfileStore.ListCapabilityProfiles(ctx)
+			if err != nil {
+				return domain.CapabilityProfileListResponse{}, err
+			}
+			profiles := make([]domain.CapabilityProfile, 0, len(items))
+			for _, item := range items {
+				profile := domain.CapabilityProfile{
+					ScopeType: string(item.ScopeType),
+					ScopeKey:  item.ScopeKey,
+					Operation: string(item.Operation),
+					Enabled:   item.Enabled,
+				}
+				if item.Capabilities != nil {
+					profile.Capabilities = make([]string, 0, len(item.Capabilities))
+					for _, value := range item.Capabilities {
+						profile.Capabilities = append(profile.Capabilities, string(value))
+					}
+				}
+				profiles = append(profiles, profile)
+			}
+			return domain.CapabilityProfileListResponse{
+				Items: profiles,
+				Catalog: domain.CapabilityCatalog{
+					ScopeTypes: capability.ScopeTypes(),
+					Operations: capability.Operations(),
+					Items:      capability.AllCapabilities(),
+				},
+			}, nil
+		},
 		GetRoutingOverview: func(ctx context.Context) (domain.RoutingOverview, error) {
 			return store.GetRoutingOverview(ctx, db)
 		},
@@ -213,6 +243,12 @@ func New() (*App, error) {
 		},
 		DeleteModelRoute: func(ctx context.Context, id int64) error {
 			return store.DeleteModelRoute(ctx, db, id)
+		},
+		UpsertCapabilityProfile: func(ctx context.Context, input domain.UpsertCapabilityProfileInput) error {
+			return capabilityProfileStore.UpsertCapabilityProfile(ctx, input)
+		},
+		DeleteCapabilityProfile: func(ctx context.Context, input domain.DeleteCapabilityProfileInput) error {
+			return capabilityProfileStore.DeleteCapabilityProfile(ctx, input)
 		},
 		ListRequestLogs: func(ctx context.Context) ([]domain.RequestLogSummary, error) {
 			return store.ListRequestLogSummaries(ctx, db)

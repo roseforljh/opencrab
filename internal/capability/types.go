@@ -53,3 +53,58 @@ type RouteCompatibility struct {
 	Reason          string
 	TargetOperation domain.ProtocolOperation
 }
+
+func ScopeTypes() []string {
+	return []string{string(ScopeTypeProviderDefault), string(ScopeTypeChannelOverride), string(ScopeTypeModelProfile)}
+}
+
+func Operations() []string {
+	return []string{
+		string(domain.ProtocolOperationOpenAIChatCompletions),
+		string(domain.ProtocolOperationOpenAIResponses),
+		string(domain.ProtocolOperationOpenAIRealtime),
+		string(domain.ProtocolOperationClaudeMessages),
+		string(domain.ProtocolOperationClaudeCountTokens),
+		string(domain.ProtocolOperationGeminiGenerateContent),
+		string(domain.ProtocolOperationGeminiStreamGenerate),
+	}
+}
+
+func AllCapabilities() []string {
+	return []string{
+		string(CapabilityFunctionTools),
+		string(CapabilityCustomTools),
+		string(CapabilityBuiltinWebSearch),
+		string(CapabilityBuiltinFileSearch),
+		string(CapabilityBuiltinRemoteMCP),
+		string(CapabilityBuiltinComputerUse),
+		string(CapabilityBuiltinShell),
+		string(CapabilityBuiltinApplyPatch),
+		string(CapabilityBuiltinCodeInterpreter),
+		string(CapabilityBuiltinImageGeneration),
+		string(CapabilityParallelToolCalls),
+		string(CapabilityStructuredOutputs),
+		string(CapabilitySafetyIdentifier),
+		string(CapabilityReasoning),
+		string(CapabilityOpenAIResponsesSession),
+		string(CapabilityOpenAIResponsesInclude),
+		string(CapabilityOpenAIResponsesStore),
+		string(CapabilityClaudeBetaHeader),
+		string(CapabilityClaudeThinking),
+		string(CapabilityClaudeToolChoiceForced),
+		string(CapabilityClaudePromptCaching),
+		string(CapabilityClaudeComputerUse),
+		string(CapabilityGeminiGenerationConfig),
+		string(CapabilityGeminiSafetySettings),
+		string(CapabilityGeminiToolConfig),
+		string(CapabilityGeminiThinking),
+		string(CapabilityGeminiStructuredOutputs),
+		string(CapabilityGeminiGoogleSearch),
+		string(CapabilityGeminiURLContext),
+		string(CapabilityGeminiCodeExecution),
+		string(CapabilityGeminiThoughtSignatures),
+		string(CapabilityMultimodalImage),
+		string(CapabilityMultimodalAudio),
+		string(CapabilityMultimodalFile),
+	}
+}

@@ -342,3 +342,36 @@ type APIKeyScope struct {
 	ChannelNames []string
 	ModelAliases []string
 }
+
+type CapabilityProfile struct {
+	ScopeType    string   `json:"scope_type"`
+	ScopeKey     string   `json:"scope_key"`
+	Operation    string   `json:"operation"`
+	Enabled      *bool    `json:"enabled,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+type CapabilityCatalog struct {
+	ScopeTypes []string `json:"scope_types"`
+	Operations []string `json:"operations"`
+	Items      []string `json:"items"`
+}
+
+type CapabilityProfileListResponse struct {
+	Items   []CapabilityProfile `json:"items"`
+	Catalog CapabilityCatalog   `json:"catalog"`
+}
+
+type UpsertCapabilityProfileInput struct {
+	ScopeType    string   `json:"scope_type"`
+	ScopeKey     string   `json:"scope_key"`
+	Operation    string   `json:"operation"`
+	Enabled      *bool    `json:"enabled,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+type DeleteCapabilityProfileInput struct {
+	ScopeType string `json:"scope_type"`
+	ScopeKey  string `json:"scope_key"`
+	Operation string `json:"operation"`
+}

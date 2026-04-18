@@ -131,6 +131,19 @@ func validateUpdateSystemSettingInput(input *domain.UpdateSystemSettingInput) er
 	return nil
 }
 
+func validateCapabilityProfileInput(scopeType string, scopeKey string, operation string) error {
+	if strings.TrimSpace(scopeType) == "" {
+		return fmt.Errorf("scope_type 不能为空")
+	}
+	if strings.TrimSpace(scopeKey) == "" {
+		return fmt.Errorf("scope_key 不能为空")
+	}
+	if strings.TrimSpace(operation) == "" {
+		return fmt.Errorf("operation 不能为空")
+	}
+	return nil
+}
+
 func extractModel(body []byte) string {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {

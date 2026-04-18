@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Gauge, Network, Route, KeyRound, ScrollText, Settings2 } from "lucide-react";
+import { Gauge, Network, Route, KeyRound, ScrollText, Settings2, SlidersHorizontal } from "lucide-react";
 
 import { useI18n } from "@/components/i18n-provider";
 import { useShell } from "@/components/layout/shell-provider";
@@ -14,6 +14,7 @@ const navIconMap = {
   dashboard: Gauge,
   channels: Network,
   models: Route,
+  capabilities: SlidersHorizontal,
   apikeys: KeyRound,
   logs: ScrollText,
   settings: Settings2

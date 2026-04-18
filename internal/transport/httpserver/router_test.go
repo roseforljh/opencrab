@@ -338,6 +338,86 @@ func TestSettingsRejectAdminSecurityKeys(t *testing.T) {
 	}
 }
 
+func TestCapabilityProfilesListReturnsCatalog(t *testing.T) {
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		ListCapabilityProfiles: func(ctx context.Context) (domain.CapabilityProfileListResponse, error) {
+			return domain.CapabilityProfileListResponse{
+				Items:   []domain.CapabilityProfile{{ScopeType: "provider_default", ScopeKey: "openai", Operation: "responses", Capabilities: []string{"function_tools"}}},
+				Catalog: domain.CapabilityCatalog{ScopeTypes: []string{"provider_default"}, Operations: []string{"responses"}, Items: []string{"function_tools"}},
+			}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/capability-profiles", nil)
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: signedSessionCookieValue(strings.Repeat("ab", 32))})
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var payload domain.CapabilityProfileListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Items) != 1 || len(payload.Catalog.Items) != 1 {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+}
+
+func TestCapabilityProfilesUpdateAcceptsPayload(t *testing.T) {
+	var captured domain.UpsertCapabilityProfileInput
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		UpsertCapabilityProfile: func(ctx context.Context, input domain.UpsertCapabilityProfileInput) error {
+			captured = input
+			return nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/capability-profiles", strings.NewReader(`{"scope_type":"provider_default","scope_key":"openai","operation":"responses","enabled":true,"capabilities":["function_tools","builtin_shell"]}`))
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: signedSessionCookieValue(strings.Repeat("ab", 32))})
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if captured.ScopeType != "provider_default" || captured.ScopeKey != "openai" || len(captured.Capabilities) != 2 {
+		t.Fatalf("unexpected payload: %#v", captured)
+	}
+}
+
+func TestCapabilityProfilesDeleteAcceptsPayload(t *testing.T) {
+	var captured domain.DeleteCapabilityProfileInput
+	router := NewRouter(Dependencies{
+		GetAdminAuthState: func(ctx context.Context) (domain.AdminAuthState, error) {
+			return domain.AdminAuthState{Initialized: true, SessionSecret: strings.Repeat("ab", 32)}, nil
+		},
+		DeleteCapabilityProfile: func(ctx context.Context, input domain.DeleteCapabilityProfileInput) error {
+			captured = input
+			return nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/capability-profiles", strings.NewReader(`{"scope_type":"channel_override","scope_key":"openai-main","operation":"chat_completions"}`))
+	req.AddCookie(&http.Cookie{Name: adminSessionCookieName, Value: signedSessionCookieValue(strings.Repeat("ab", 32))})
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if captured.ScopeType != "channel_override" || captured.ScopeKey != "openai-main" || captured.Operation != "chat_completions" {
+		t.Fatalf("unexpected payload: %#v", captured)
+	}
+}
+
 func signedSessionCookieValue(secret string) string {
 	payload := fmt.Sprintf("%d", time.Now().Add(time.Hour).Unix())
 	return payload + "." + signAdminSession(secret, payload)

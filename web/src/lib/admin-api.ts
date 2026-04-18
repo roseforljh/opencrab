@@ -176,6 +176,25 @@ export type AdminSettingGroup = {
   items: AdminSettingItem[];
 };
 
+export type AdminCapabilityProfile = {
+  scope_type: string;
+  scope_key: string;
+  operation: string;
+  enabled?: boolean;
+  capabilities?: string[];
+};
+
+export type AdminCapabilityCatalog = {
+  scope_types: string[];
+  operations: string[];
+  items: string[];
+};
+
+export type AdminCapabilityProfileResponse = {
+  items: AdminCapabilityProfile[];
+  catalog: AdminCapabilityCatalog;
+};
+
 export type AdminRoutingOverview = {
   active_cooldowns: number;
   sticky_bindings: number;

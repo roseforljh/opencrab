@@ -47,6 +47,7 @@ type Dependencies struct {
 	GetRoutingOverview             func(ctx context.Context) (domain.RoutingOverview, error)
 	GetDashboardSummary            func(ctx context.Context) (domain.DashboardSummary, error)
 	ListSettings                   func(ctx context.Context) ([]domain.SystemSettingGroup, error)
+	ListCapabilityProfiles         func(ctx context.Context) (domain.CapabilityProfileListResponse, error)
 	CreateChannel                  func(ctx context.Context, input domain.CreateChannelInput) (domain.Channel, error)
 	UpdateChannel                  func(ctx context.Context, id int64, input domain.UpdateChannelInput) error
 	DeleteChannel                  func(ctx context.Context, id int64) error
@@ -62,6 +63,8 @@ type Dependencies struct {
 	CreateModelRoute               func(ctx context.Context, input domain.CreateModelRouteInput) (domain.ModelRoute, error)
 	UpdateModelRoute               func(ctx context.Context, id int64, input domain.UpdateModelRouteInput) error
 	DeleteModelRoute               func(ctx context.Context, id int64) error
+	UpsertCapabilityProfile        func(ctx context.Context, input domain.UpsertCapabilityProfileInput) error
+	DeleteCapabilityProfile        func(ctx context.Context, input domain.DeleteCapabilityProfileInput) error
 	ResolveAPIKey                  func(ctx context.Context, rawKey string) (domain.APIKeyScope, bool, error)
 	VerifyAPIKey                   func(ctx context.Context, rawKey string) (bool, error)
 	CreateRequestLog               func(ctx context.Context, item domain.RequestLog) error
@@ -804,6 +807,67 @@ func NewRouter(deps Dependencies) http.Handler {
 				}
 
 				writeJSON(w, http.StatusOK, map[string]any{"items": items})
+			})
+
+			protected.Get("/capability-profiles", func(w http.ResponseWriter, req *http.Request) {
+				if deps.ListCapabilityProfiles == nil {
+					http.Error(w, "capability profiles handler not configured", http.StatusNotImplemented)
+					return
+				}
+
+				payload, err := deps.ListCapabilityProfiles(req.Context())
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				writeJSON(w, http.StatusOK, payload)
+			})
+
+			protected.Put("/capability-profiles", func(w http.ResponseWriter, req *http.Request) {
+				if deps.UpsertCapabilityProfile == nil {
+					http.Error(w, "capability profiles update handler not configured", http.StatusNotImplemented)
+					return
+				}
+
+				var input domain.UpsertCapabilityProfileInput
+				if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+					http.Error(w, "请求体格式不正确", http.StatusBadRequest)
+					return
+				}
+				if err := validateCapabilityProfileInput(input.ScopeType, input.ScopeKey, input.Operation); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				if err := deps.UpsertCapabilityProfile(req.Context(), input); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			})
+
+			protected.Delete("/capability-profiles", func(w http.ResponseWriter, req *http.Request) {
+				if deps.DeleteCapabilityProfile == nil {
+					http.Error(w, "capability profiles delete handler not configured", http.StatusNotImplemented)
+					return
+				}
+
+				var input domain.DeleteCapabilityProfileInput
+				if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+					http.Error(w, "请求体格式不正确", http.StatusBadRequest)
+					return
+				}
+				if err := validateCapabilityProfileInput(input.ScopeType, input.ScopeKey, input.Operation); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				if err := deps.DeleteCapabilityProfile(req.Context(), input); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			})
 
 			protected.Put("/settings", func(w http.ResponseWriter, req *http.Request) {
