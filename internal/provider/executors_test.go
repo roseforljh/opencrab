@@ -794,6 +794,52 @@ func TestOpenAIExecutorTransformsClaudeToolChoiceToOpenAI(t *testing.T) {
 	}
 }
 
+func TestOpenAIExecutorTransformsClaudeFunctionToolsToOpenAI(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl_1","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}]}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools: []json.RawMessage{
+				json.RawMessage(`{"name":"opencode","description":"Run operation","input_schema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool, ok := tools[0].(map[string]any)
+	if !ok || tool["type"] != "function" {
+		t.Fatalf("unexpected tool payload: %#v", tools[0])
+	}
+	functionPayload, ok := tool["function"].(map[string]any)
+	if !ok || functionPayload["name"] != "opencode" || functionPayload["description"] != "Run operation" {
+		t.Fatalf("unexpected function payload: %#v", tool)
+	}
+	parameters, ok := functionPayload["parameters"].(map[string]any)
+	if !ok || parameters["type"] != "object" {
+		t.Fatalf("unexpected function parameters: %#v", functionPayload)
+	}
+}
+
 func TestOpenAIExecutorDisablesUpstreamStreamForClaudeBridge(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

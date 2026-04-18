@@ -282,6 +282,7 @@ func sanitizeRequestForTarget(metadata map[string]json.RawMessage, tools []json.
 	metadata = sanitizeRequestMetadataForTarget(metadata, sourceProtocol, targetProtocol, targetProvider)
 	if len(tools) == 0 {
 		if sourceProtocol == domain.ProtocolClaude && targetProvider == "openai" {
+			tools = rewriteClaudeToolsToOpenAI(tools)
 			metadata, tools = rewriteClaudeContainerToOpenAI(metadata, tools)
 			metadata, tools = rewriteClaudeMCPToOpenAITools(metadata, tools)
 		}
@@ -297,6 +298,7 @@ func sanitizeRequestForTarget(metadata map[string]json.RawMessage, tools []json.
 		metadata, tools = rewriteOpenAICodeInterpreterToClaude(metadata, tools)
 		metadata, tools = rewriteOpenAIMCPToolsToClaude(metadata, tools)
 	case sourceProtocol == domain.ProtocolClaude && targetProvider == "openai":
+		tools = rewriteClaudeToolsToOpenAI(tools)
 		metadata, tools = rewriteClaudeContainerToOpenAI(metadata, tools)
 		metadata, tools = rewriteClaudeMCPToOpenAITools(metadata, tools)
 	}
@@ -645,6 +647,44 @@ func rewriteGeminiToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
 		default:
 			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
 		}
+	}
+	return rewritten
+}
+
+func rewriteClaudeToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
+	if len(tools) == 0 {
+		return tools
+	}
+	rewritten := make([]json.RawMessage, 0, len(tools))
+	for _, raw := range tools {
+		tool := decodeJSONObject(raw)
+		if len(tool) == 0 {
+			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+			continue
+		}
+		typeValue, _ := tool["type"].(string)
+		if strings.TrimSpace(strings.ToLower(typeValue)) != "" {
+			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+			continue
+		}
+		name, _ := tool["name"].(string)
+		if strings.TrimSpace(name) == "" || tool["input_schema"] == nil {
+			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+			continue
+		}
+		functionTool := map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":       name,
+				"description": coalesceString(tool["description"]),
+				"parameters": tool["input_schema"],
+			},
+		}
+		if encoded, err := json.Marshal(functionTool); err == nil {
+			rewritten = append(rewritten, encoded)
+			continue
+		}
+		rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
 	}
 	return rewritten
 }
