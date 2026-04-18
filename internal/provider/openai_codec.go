@@ -473,9 +473,19 @@ func decodeUsage(raw map[string]json.RawMessage, target *map[string]int64) error
 	if !ok {
 		return nil
 	}
-	usage := map[string]int64{}
-	if err := json.Unmarshal(usageRaw, &usage); err != nil {
+	var usagePayload map[string]json.RawMessage
+	if err := json.Unmarshal(usageRaw, &usagePayload); err != nil {
 		return fmt.Errorf("usage 格式非法: %w", err)
+	}
+	usage := map[string]int64{}
+	for key, value := range usagePayload {
+		var number int64
+		if err := json.Unmarshal(value, &number); err == nil {
+			usage[key] = number
+		}
+	}
+	if len(usage) == 0 {
+		return nil
 	}
 	*target = usage
 	return nil

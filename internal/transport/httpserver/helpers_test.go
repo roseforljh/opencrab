@@ -44,3 +44,14 @@ func TestExtractSessionAffinityKeyReadsClaudeCodeHeader(t *testing.T) {
 		t.Fatalf("expected affinity key from claude code session header, got %q", affinityKey)
 	}
 }
+
+func TestUsageMetricsFromUnifiedReadsOpenAIInputOutputTokens(t *testing.T) {
+	usage := usageMetricsFromUnified(map[string]int64{
+		"input_tokens":  13,
+		"output_tokens": 21,
+		"total_tokens":  34,
+	})
+	if usage.PromptTokens != 13 || usage.CompletionTokens != 21 || usage.TotalTokens != 34 {
+		t.Fatalf("unexpected usage metrics: %+v", usage)
+	}
+}

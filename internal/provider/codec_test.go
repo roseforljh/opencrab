@@ -53,6 +53,14 @@ func TestOpenAICodecRoundTripAndMetadata(t *testing.T) {
 	if string(resp.Message.Metadata["refusal"]) != `null` {
 		t.Fatalf("expected message metadata refusal, got %+v", resp.Message.Metadata)
 	}
+
+	respWithNestedUsage, err := DecodeOpenAIChatResponse([]byte(`{"id":"chatcmpl-2","model":"gpt-4o-mini","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens_details":{"reasoning_tokens":2}},"system_fingerprint":"fp"}`))
+	if err != nil {
+		t.Fatalf("decode openai response with nested usage: %v", err)
+	}
+	if respWithNestedUsage.Usage["prompt_tokens"] != 11 || respWithNestedUsage.Usage["completion_tokens"] != 7 || respWithNestedUsage.Usage["total_tokens"] != 18 {
+		t.Fatalf("expected usage tokens to survive nested details, got %+v", respWithNestedUsage.Usage)
+	}
 }
 
 func TestClaudeCodecRoundTripAndMetadata(t *testing.T) {

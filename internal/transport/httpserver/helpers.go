@@ -393,14 +393,22 @@ func usageMetricsFromUnified(usage map[string]int64) usageMetrics {
 	if len(usage) == 0 {
 		return usageMetrics{}
 	}
+	promptTokens := usage["prompt_tokens"]
+	if promptTokens == 0 {
+		promptTokens = usage["input_tokens"]
+	}
+	completionTokens := usage["completion_tokens"]
+	if completionTokens == 0 {
+		completionTokens = usage["output_tokens"]
+	}
 	totalTokens := usage["total_tokens"]
 	if totalTokens == 0 {
-		totalTokens = usage["prompt_tokens"] + usage["completion_tokens"]
+		totalTokens = promptTokens + completionTokens
 	}
 	cacheHit := usage["cached_tokens"] > 0 || usage["prompt_cache_hit_tokens"] > 0
 	return usageMetrics{
-		PromptTokens:     usage["prompt_tokens"],
-		CompletionTokens: usage["completion_tokens"],
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
 		TotalTokens:      totalTokens,
 		CacheHit:         cacheHit,
 	}
@@ -464,7 +472,8 @@ func extractUsageMetrics(body []byte) usageMetrics {
 
 func extractSSEUsageMetrics(body []byte) usageMetrics {
 	lines := strings.Split(string(body), "\n")
-	last := usageMetrics{}
+	aggregated := usageMetrics{}
+	seen := false
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "data:") {
@@ -478,9 +487,20 @@ func extractSSEUsageMetrics(body []byte) usageMetrics {
 		if metrics.PromptTokens == 0 && metrics.CompletionTokens == 0 && metrics.TotalTokens == 0 && !metrics.CacheHit {
 			continue
 		}
-		last = metrics
+		seen = true
+		if metrics.PromptTokens > 0 {
+			aggregated.PromptTokens = metrics.PromptTokens
+		}
+		if metrics.CompletionTokens > 0 {
+			aggregated.CompletionTokens = metrics.CompletionTokens
+		}
+		aggregated.CacheHit = aggregated.CacheHit || metrics.CacheHit
 	}
-	return last
+	if !seen {
+		return usageMetrics{}
+	}
+	aggregated.TotalTokens = aggregated.PromptTokens + aggregated.CompletionTokens
+	return aggregated
 }
 
 func extractUsageMetricsFromEventPayload(body []byte) usageMetrics {
