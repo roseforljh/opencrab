@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"opencrab/internal/capability"
 	"opencrab/internal/config"
 	"opencrab/internal/domain"
 	"opencrab/internal/observability"
@@ -79,6 +80,7 @@ func New() (*App, error) {
 	routingCursorStore := store.NewRoutingCursorStore(db)
 	runtimeStateStore := store.NewRoutingRuntimeStateStore(db)
 	stickyRoutingStore := store.NewStickyRoutingStore(db)
+	capabilityProfileStore := store.NewCapabilityProfileStore(db)
 	dispatchQuotaManager := usecase.NewRedisDispatchQuotaManager(dispatchRuntimeStore)
 	jobStore := store.NewGatewayJobStore(db)
 	gatewayService := usecase.NewGatewayService(
@@ -95,6 +97,7 @@ func New() (*App, error) {
 		runtimeConfigStore,
 		runtimeStateStore,
 		stickyRoutingStore,
+		capability.NewRegistry(capabilityProfileStore),
 	)
 	dispatcher := usecase.NewGatewayJobDispatcher(
 		jobStore,

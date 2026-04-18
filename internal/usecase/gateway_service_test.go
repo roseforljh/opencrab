@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"opencrab/internal/capability"
 	"opencrab/internal/domain"
 )
 
@@ -180,7 +181,7 @@ func (s *memoryStickyStore) CountStickyBindings(ctx context.Context) (int, error
 }
 
 func newGatewayServiceForTest(routes []domain.GatewayRoute, executors map[string]domain.Executor, logger domain.GatewayAttemptLogger, strategy domain.RoutingStrategyStore, cursors domain.RoutingCursorStore, runtimeStates domain.RoutingRuntimeStateStore, sticky domain.StickyRoutingStore) *GatewayService {
-	return NewGatewayService(fakeRouteStore{routes: routes}, executors, logger, nil, strategy, cursors, fakeRuntimeConfigStore{settings: domain.GatewayRuntimeSettings{CooldownDuration: 45 * time.Second, StickyEnabled: true, StickyKeySource: "auto"}}, runtimeStates, sticky)
+	return NewGatewayService(fakeRouteStore{routes: routes}, executors, logger, nil, strategy, cursors, fakeRuntimeConfigStore{settings: domain.GatewayRuntimeSettings{CooldownDuration: 45 * time.Second, StickyEnabled: true, StickyKeySource: "auto"}}, runtimeStates, sticky, capability.NewRegistry(nil))
 }
 
 func TestGatewayServiceRetryableFallback(t *testing.T) {
@@ -285,6 +286,7 @@ func TestGatewayServiceUsesPreloadedRuntimeSettings(t *testing.T) {
 		fakeRuntimeConfigStore{err: errors.New("runtime settings should not be read")},
 		nil,
 		nil,
+		capability.NewRegistry(nil),
 	)
 
 	result, err := service.Execute(context.Background(), "req-runtime", domain.GatewayRequest{
@@ -313,6 +315,7 @@ func TestGatewayServiceQuotaWaitSkipsExecutor(t *testing.T) {
 		fakeRuntimeConfigStore{settings: domain.GatewayRuntimeSettings{CooldownDuration: time.Second, StickyEnabled: true, StickyKeySource: "auto"}},
 		nil,
 		nil,
+		capability.NewRegistry(nil),
 	)
 
 	_, err := service.Execute(context.Background(), "req-quota", domain.GatewayRequest{Model: "m", Messages: []domain.GatewayMessage{testGatewayMessage("user", "quota")}})
@@ -337,6 +340,7 @@ func TestGatewayServiceReleasesQuotaAfterSuccess(t *testing.T) {
 		fakeRuntimeConfigStore{settings: domain.GatewayRuntimeSettings{CooldownDuration: time.Second, StickyEnabled: true, StickyKeySource: "auto"}},
 		nil,
 		nil,
+		capability.NewRegistry(nil),
 	)
 
 	_, err := service.Execute(context.Background(), "req-release", domain.GatewayRequest{Model: "m", Messages: []domain.GatewayMessage{testGatewayMessage("user", "ok")}})

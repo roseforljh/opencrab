@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -9,6 +10,8 @@ import (
 
 func TestEvaluateGatewayRouteAllowsToolBridgeToOpenAI(t *testing.T) {
 	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
 		domain.GatewayRequest{
 			Protocol: domain.ProtocolClaude,
 			Model:    "m",
@@ -26,6 +29,8 @@ func TestEvaluateGatewayRouteAllowsToolBridgeToOpenAI(t *testing.T) {
 
 func TestEvaluateGatewayRouteRejectsClaudeNativeThinkingOnOpenAI(t *testing.T) {
 	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
 		domain.GatewayRequest{
 			Protocol:  domain.ProtocolClaude,
 			Operation: domain.ProtocolOperationClaudeMessages,
@@ -46,6 +51,8 @@ func TestEvaluateGatewayRouteRejectsClaudeNativeThinkingOnOpenAI(t *testing.T) {
 
 func TestEvaluateGatewayRouteRejectsResponsesSessionOnNonOpenAI(t *testing.T) {
 	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
 		domain.GatewayRequest{
 			Protocol:  domain.ProtocolOpenAI,
 			Operation: domain.ProtocolOperationOpenAIResponses,

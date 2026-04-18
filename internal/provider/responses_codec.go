@@ -34,6 +34,14 @@ func DecodeOpenAIResponsesRequest(body []byte) (domain.UnifiedChatRequest, error
 			req.Messages = append(req.Messages, domain.UnifiedMessage{Role: "system", Parts: []domain.UnifiedPart{{Type: "text", Text: instructions}}})
 		}
 	}
+	for _, key := range []string{"parallel_tool_calls", "include", "reasoning", "store", "text"} {
+		if value, ok := raw[key]; ok {
+			if req.Metadata == nil {
+				req.Metadata = map[string]json.RawMessage{}
+			}
+			req.Metadata[key] = append(json.RawMessage(nil), value...)
+		}
+	}
 	input, ok := raw["input"]
 	if !ok {
 		return domain.UnifiedChatRequest{}, fmt.Errorf("input 缺失")
@@ -70,7 +78,7 @@ func DecodeOpenAIResponsesSession(body []byte) (*domain.GatewaySessionState, err
 	if len(session.Metadata) == 0 {
 		session.Metadata = nil
 	}
-	if session.PreviousResponseID == "" {
+	if session.PreviousResponseID == "" && session.Metadata == nil {
 		return nil, nil
 	}
 	return session, nil

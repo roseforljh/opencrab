@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"opencrab/internal/capability"
 	"opencrab/internal/domain"
 	"opencrab/internal/planner"
 )
@@ -23,6 +24,7 @@ type GatewayService struct {
 	runtimeConfig domain.GatewayRuntimeConfigStore
 	runtimeStates domain.RoutingRuntimeStateStore
 	sticky        domain.StickyRoutingStore
+	capabilities  *capability.Registry
 }
 
 func (s *GatewayService) SelectRoute(ctx context.Context, req domain.GatewayRequest) (domain.GatewayRoute, error) {
@@ -36,7 +38,7 @@ func (s *GatewayService) SelectRoute(ctx context.Context, req domain.GatewayRequ
 		}
 		settings = loaded
 	}
-	state := &gatewayExecutionState{settings: settings, fallbackStage: "none", visitedSet: map[string]struct{}{}}
+	state := &gatewayExecutionState{settings: settings, fallbackStage: "none", visitedSet: map[string]struct{}{}, plannedOps: map[int64]domain.ProtocolOperation{}}
 	return s.selectRouteForAlias(ctx, req, req.Model, 0, state)
 }
 
@@ -67,6 +69,7 @@ type gatewayExecutionState struct {
 	winningPriority int
 	decisionReason  string
 	selectedChannel string
+	plannedOps      map[int64]domain.ProtocolOperation
 }
 
 func NewGatewayService(
@@ -79,6 +82,7 @@ func NewGatewayService(
 	runtimeConfig domain.GatewayRuntimeConfigStore,
 	runtimeStates domain.RoutingRuntimeStateStore,
 	sticky domain.StickyRoutingStore,
+	capabilities *capability.Registry,
 ) *GatewayService {
 	return &GatewayService{
 		routes:        routes,
@@ -90,6 +94,7 @@ func NewGatewayService(
 		runtimeConfig: runtimeConfig,
 		runtimeStates: runtimeStates,
 		sticky:        sticky,
+		capabilities:  capabilities,
 	}
 }
 
@@ -109,6 +114,7 @@ func (s *GatewayService) Execute(ctx context.Context, requestID string, req doma
 		settings:      settings,
 		fallbackStage: "none",
 		visitedSet:    map[string]struct{}{},
+		plannedOps:    map[int64]domain.ProtocolOperation{},
 	}
 
 	result, err := s.executeAlias(ctx, requestID, req, req.Model, 0, state)
@@ -262,10 +268,15 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 			_ = s.quota.Release(ctx, domain.DispatchReleaseInput{ChannelName: route.Channel.Name, ReservationKey: reservation.ReservationKey})
 		}
 
+		plannedReq := adaptRequestForProvider(routingReq, route.Channel.Provider)
+		if plannedOp, ok := state.plannedOps[route.ID]; ok && plannedOp != "" {
+			plannedReq.Operation = plannedOp
+		}
+
 		result, execErr := executor.Execute(ctx, domain.ExecutorRequest{
 			Channel:       route.Channel,
 			UpstreamModel: route.UpstreamModel,
-			Request:       adaptRequestForProvider(routingReq, route.Channel.Provider),
+			Request:       plannedReq,
 		})
 
 		if execErr == nil {
@@ -518,7 +529,7 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 			})
 			continue
 		}
-		compatibility := planner.EvaluateGatewayRoute(routingReq, route)
+		compatibility := planner.EvaluateGatewayRoute(ctx, s.capabilities, routingReq, route)
 		if !compatibility.Executable {
 			skip := domain.GatewaySkip{
 				RouteID:        route.ID,
@@ -558,6 +569,9 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 				RequestBody:      marshalGatewayRequest(req),
 			})
 			continue
+		}
+		if compatibility.TargetOperation != "" {
+			state.plannedOps[route.ID] = compatibility.TargetOperation
 		}
 		if active, until := routeInCooldown(route); active {
 			skip := domain.GatewaySkip{
