@@ -548,6 +548,52 @@ func TestOpenAIExecutorTransformsGeminiCodeExecutionTool(t *testing.T) {
 	}
 }
 
+func TestOpenAIExecutorTransformsGeminiFunctionDeclarationsToOpenAI(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolGemini,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools: []json.RawMessage{
+				json.RawMessage(`{"functionDeclarations":[{"name":"lookup","description":"Find item","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}]}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "function" {
+		t.Fatalf("unexpected tool payload: %#v", tool)
+	}
+	functionPayload, ok := tool["function"].(map[string]any)
+	if !ok || functionPayload["name"] != "lookup" || functionPayload["description"] != "Find item" {
+		t.Fatalf("unexpected function payload: %#v", tool)
+	}
+	parameters, ok := functionPayload["parameters"].(map[string]any)
+	if !ok || parameters["type"] != "object" {
+		t.Fatalf("unexpected function parameters: %#v", functionPayload)
+	}
+}
+
 func TestGeminiExecutorTransformsOpenAICodeInterpreterTool(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -581,6 +627,53 @@ func TestGeminiExecutorTransformsOpenAICodeInterpreterTool(t *testing.T) {
 	tool := tools[0].(map[string]any)
 	if _, ok := tool["codeExecution"].(map[string]any); !ok {
 		t.Fatalf("unexpected tool payload: %#v", tool)
+	}
+}
+
+func TestGeminiExecutorTransformsOpenAIFunctionTools(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools: []json.RawMessage{
+				json.RawMessage(`{"type":"function","function":{"name":"lookup","description":"Find item","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	declarations, ok := tool["functionDeclarations"].([]any)
+	if !ok || len(declarations) != 1 {
+		t.Fatalf("unexpected functionDeclarations payload: %#v", tool)
+	}
+	declaration := declarations[0].(map[string]any)
+	if declaration["name"] != "lookup" || declaration["description"] != "Find item" {
+		t.Fatalf("unexpected declaration payload: %#v", declaration)
+	}
+	parameters, ok := declaration["parameters"].(map[string]any)
+	if !ok || parameters["type"] != "object" {
+		t.Fatalf("unexpected declaration parameters: %#v", declaration)
 	}
 }
 

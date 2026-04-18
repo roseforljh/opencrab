@@ -619,6 +619,7 @@ func rewriteOpenAIToolsToGemini(tools []json.RawMessage) []json.RawMessage {
 		return tools
 	}
 	rewritten := make([]json.RawMessage, 0, len(tools))
+	functionDeclarations := make([]map[string]any, 0)
 	for _, raw := range tools {
 		tool := decodeJSONObject(raw)
 		typeValue, _ := tool["type"].(string)
@@ -626,9 +627,28 @@ func rewriteOpenAIToolsToGemini(tools []json.RawMessage) []json.RawMessage {
 		case "code_interpreter":
 			encoded, _ := json.Marshal(map[string]any{"codeExecution": map[string]any{}})
 			rewritten = append(rewritten, encoded)
+		case "function":
+			functionPayload, _ := tool["function"].(map[string]any)
+			name, _ := functionPayload["name"].(string)
+			if strings.TrimSpace(name) == "" {
+				rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+				continue
+			}
+			declaration := map[string]any{
+				"name":        name,
+				"description": coalesceString(functionPayload["description"]),
+			}
+			if parameters := functionPayload["parameters"]; parameters != nil {
+				declaration["parameters"] = parameters
+			}
+			functionDeclarations = append(functionDeclarations, declaration)
 		default:
 			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
 		}
+	}
+	if len(functionDeclarations) > 0 {
+		encoded, _ := json.Marshal(map[string]any{"functionDeclarations": functionDeclarations})
+		rewritten = append(rewritten, encoded)
 	}
 	return rewritten
 }
@@ -644,6 +664,30 @@ func rewriteGeminiToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
 		case tool["codeExecution"] != nil || tool["code_execution"] != nil:
 			encoded, _ := json.Marshal(map[string]any{"type": "code_interpreter", "container": map[string]any{"type": "auto"}})
 			rewritten = append(rewritten, encoded)
+		case tool["functionDeclarations"] != nil:
+			if declarations, ok := tool["functionDeclarations"].([]any); ok {
+				for _, item := range declarations {
+					declaration, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
+					name, _ := declaration["name"].(string)
+					if strings.TrimSpace(name) == "" {
+						continue
+					}
+					openAITool := map[string]any{
+						"type": "function",
+						"function": map[string]any{
+							"name":        name,
+							"description": coalesceString(declaration["description"]),
+							"parameters":  declaration["parameters"],
+						},
+					}
+					if encoded, err := json.Marshal(openAITool); err == nil {
+						rewritten = append(rewritten, encoded)
+					}
+				}
+			}
 		default:
 			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
 		}

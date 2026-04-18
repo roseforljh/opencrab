@@ -1433,8 +1433,13 @@ func decodeContextManagementBoolean(payload map[string]json.RawMessage, keys ...
 }
 
 func clearHistoricalToolUses(messages []domain.GatewayMessage) []domain.GatewayMessage {
+	preserveFrom := findTrailingPendingToolExchangeStart(messages)
 	cleared := make([]domain.GatewayMessage, 0, len(messages))
-	for _, message := range messages {
+	for index, message := range messages {
+		if preserveFrom >= 0 && index >= preserveFrom {
+			cleared = append(cleared, message)
+			continue
+		}
 		if strings.EqualFold(message.Role, "tool") {
 			continue
 		}
@@ -1458,6 +1463,26 @@ func clearHistoricalToolUses(messages []domain.GatewayMessage) []domain.GatewayM
 		cleared = append(cleared, next)
 	}
 	return cleared
+}
+
+func findTrailingPendingToolExchangeStart(messages []domain.GatewayMessage) int {
+	if len(messages) == 0 {
+		return -1
+	}
+	last := messages[len(messages)-1]
+	if !strings.EqualFold(last.Role, "tool") {
+		return -1
+	}
+	start := len(messages) - 1
+	for start > 0 {
+		prev := messages[start-1]
+		if strings.EqualFold(prev.Role, "tool") || (strings.EqualFold(prev.Role, "assistant") && len(prev.ToolCalls) > 0) {
+			start--
+			continue
+		}
+		break
+	}
+	return start
 }
 
 func clearHistoricalThinking(messages []domain.GatewayMessage) []domain.GatewayMessage {

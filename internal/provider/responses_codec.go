@@ -432,10 +432,14 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 			}
 			return []any{item}, nil
 		}
+		output, err := encodeResponsesToolOutput(message)
+		if err != nil {
+			return nil, err
+		}
 		return []any{map[string]any{
 			"type":    "function_call_output",
 			"call_id": decodeStringRaw(message.Metadata["tool_call_id"]),
-			"output":  firstUnifiedText(message),
+			"output":  output,
 		}}, nil
 	}
 
@@ -486,6 +490,56 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 		return nil, fmt.Errorf("Responses 消息不能为空")
 	}
 	return items, nil
+}
+
+func encodeResponsesToolOutput(message domain.UnifiedMessage) (any, error) {
+	values := make([]any, 0, len(message.Parts))
+	for _, part := range message.Parts {
+		if len(part.InputItem) > 0 {
+			var item map[string]any
+			if err := json.Unmarshal(part.InputItem, &item); err == nil {
+				if output, ok := item["output"]; ok {
+					values = append(values, output)
+					continue
+				}
+			}
+		}
+		if len(part.NativePayload) > 0 {
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(part.NativePayload, &raw); err == nil {
+				if content, ok := raw["content"]; ok {
+					var value any
+					if err := json.Unmarshal(content, &value); err == nil {
+						values = append(values, value)
+						continue
+					}
+				}
+			}
+		}
+		if part.Type == "text" {
+			values = append(values, part.Text)
+		}
+	}
+	if len(values) == 0 {
+		return []any{}, nil
+	}
+	if len(values) == 1 {
+		return values[0], nil
+	}
+	allStrings := true
+	texts := make([]string, 0, len(values))
+	for _, value := range values {
+		text, ok := value.(string)
+		if !ok {
+			allStrings = false
+			break
+		}
+		texts = append(texts, text)
+	}
+	if allStrings {
+		return strings.Join(texts, "\n\n"), nil
+	}
+	return values, nil
 }
 
 func encodeResponsesContent(parts []domain.UnifiedPart) ([]map[string]any, error) {

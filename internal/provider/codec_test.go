@@ -347,6 +347,29 @@ func TestResponsesCodecPreservesFunctionCallOutputItemShape(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecEncodesClaudeToolResultStructuredOutput(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{
+				Role: "tool",
+				Parts: []domain.UnifiedPart{{
+					Type:        "tool_result",
+					NativePayload: json.RawMessage(`{"type":"tool_result","tool_use_id":"call_1","content":[]}`),
+				}},
+				Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)},
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(data), `"function_call_output"`) || !strings.Contains(string(data), `"call_id":"call_1"`) || !strings.Contains(string(data), `"output":[]`) {
+		t.Fatalf("unexpected encoded structured tool result: %s", string(data))
+	}
+}
+
 func TestClaudeCodecToolUseAndResult(t *testing.T) {
 	decoded, err := DecodeClaudeChatResponse([]byte(`{"id":"msg_tool","model":"claude-sonnet","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"opencode","input":{"prompt":"ping"}}],"stop_reason":"tool_use"}`))
 	if err != nil {
