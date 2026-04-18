@@ -47,11 +47,18 @@ func NewGeminiExecutor(client *http.Client) *GeminiExecutor {
 
 func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
 	normalizedProvider := domain.NormalizeProvider(input.Channel.Provider)
+	targetOperation := plannedOperationForExecutor(input, normalizedProvider)
+	effectiveRequest := input.Request
+	effectiveRequest.Stream = shouldUseNativeUpstreamStream(input.Request, normalizedProvider, targetOperation)
 	payload, err := buildExecutorPayload(
 		domain.ProtocolOpenAI,
-		plannedOperationForExecutor(input, normalizedProvider),
-		toUnifiedRequest(input, domain.ProtocolOpenAI, normalizedProvider),
-		input.Request.Session,
+		targetOperation,
+		toUnifiedRequest(domain.ExecutorRequest{
+			Channel:       input.Channel,
+			UpstreamModel: input.UpstreamModel,
+			Request:       effectiveRequest,
+		}, domain.ProtocolOpenAI, normalizedProvider),
+		effectiveRequest.Session,
 		input.Channel.Endpoint,
 		input.UpstreamModel,
 	)
@@ -72,12 +79,19 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 }
 
 func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
-	unifiedReq := toUnifiedRequest(input, domain.ProtocolClaude, domain.NormalizeProvider(input.Channel.Provider))
+	normalizedProvider := domain.NormalizeProvider(input.Channel.Provider)
+	effectiveRequest := input.Request
+	effectiveRequest.Stream = shouldUseNativeUpstreamStream(input.Request, normalizedProvider, domain.ProtocolOperationClaudeMessages)
+	unifiedReq := toUnifiedRequest(domain.ExecutorRequest{
+		Channel:       input.Channel,
+		UpstreamModel: input.UpstreamModel,
+		Request:       effectiveRequest,
+	}, domain.ProtocolClaude, normalizedProvider)
 	payload, err := buildExecutorPayload(
 		domain.ProtocolClaude,
 		domain.ProtocolOperationClaudeMessages,
 		unifiedReq,
-		input.Request.Session,
+		effectiveRequest.Session,
 		input.Channel.Endpoint,
 		input.UpstreamModel,
 	)
@@ -110,11 +124,23 @@ func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if input.Request.Stream {
 		targetOperation = domain.ProtocolOperationGeminiStreamGenerate
 	}
+	normalizedProvider := domain.NormalizeProvider(input.Channel.Provider)
+	effectiveRequest := input.Request
+	effectiveRequest.Stream = shouldUseNativeUpstreamStream(input.Request, normalizedProvider, targetOperation)
+	if effectiveRequest.Stream {
+		targetOperation = domain.ProtocolOperationGeminiStreamGenerate
+	} else {
+		targetOperation = domain.ProtocolOperationGeminiGenerateContent
+	}
 	payload, err := buildExecutorPayload(
 		domain.ProtocolGemini,
 		targetOperation,
-		toUnifiedRequest(input, domain.ProtocolGemini, domain.NormalizeProvider(input.Channel.Provider)),
-		input.Request.Session,
+		toUnifiedRequest(domain.ExecutorRequest{
+			Channel:       input.Channel,
+			UpstreamModel: input.UpstreamModel,
+			Request:       effectiveRequest,
+		}, domain.ProtocolGemini, normalizedProvider),
+		effectiveRequest.Session,
 		input.Channel.Endpoint,
 		input.UpstreamModel,
 	)
@@ -235,6 +261,7 @@ func sanitizeRequestMetadataForTarget(metadata map[string]json.RawMessage, sourc
 		rewriteGeminiThinkingToClaude(cleaned)
 	case sourceProtocol == domain.ProtocolClaude && targetProvider == "openai":
 		rewriteClaudeThinkingToOpenAI(cleaned)
+		rewriteClaudeToolChoiceToOpenAI(cleaned)
 	case sourceProtocol == domain.ProtocolClaude && targetProvider == "gemini":
 		rewriteClaudeThinkingToGemini(cleaned)
 	}
@@ -416,6 +443,47 @@ func rewriteClaudeThinkingToOpenAI(metadata map[string]json.RawMessage) {
 		metadata["reasoning"] = encoded
 	}
 	delete(metadata, "thinking")
+}
+
+func rewriteClaudeToolChoiceToOpenAI(metadata map[string]json.RawMessage) {
+	toolChoice := decodeJSONObject(metadata["tool_choice"])
+	if len(toolChoice) == 0 {
+		return
+	}
+
+	typeValue, _ := toolChoice["type"].(string)
+	typeValue = strings.TrimSpace(strings.ToLower(typeValue))
+	var rewritten any
+	switch typeValue {
+	case "", "auto":
+		rewritten = "auto"
+	case "any":
+		rewritten = "required"
+	case "tool":
+		name := coalesceString(toolChoice["name"], toolChoice["tool_name"])
+		if strings.TrimSpace(name) == "" {
+			rewritten = "required"
+		} else {
+			rewritten = map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name": name,
+				},
+			}
+		}
+	case "none":
+		rewritten = "none"
+	default:
+		return
+	}
+	if encoded, err := json.Marshal(rewritten); err == nil {
+		metadata["tool_choice"] = encoded
+	}
+	if disabled, ok := toolChoice["disable_parallel_tool_use"].(bool); ok && disabled {
+		if encoded, err := json.Marshal(false); err == nil {
+			metadata["parallel_tool_calls"] = encoded
+		}
+	}
 }
 
 func rewriteGeminiThinkingToClaude(metadata map[string]json.RawMessage) {
@@ -947,5 +1015,55 @@ func applyRequestHeaders(req *http.Request, headers map[string]string, skip map[
 			continue
 		}
 		req.Header.Set(key, value)
+	}
+}
+
+func shouldUseNativeUpstreamStream(req domain.GatewayRequest, targetProvider string, targetOperation domain.ProtocolOperation) bool {
+	if !req.Stream {
+		return false
+	}
+	if req.Protocol == "" {
+		switch targetProvider {
+		case "claude":
+			return targetOperation == domain.ProtocolOperationClaudeMessages
+		case "gemini":
+			return targetOperation == domain.ProtocolOperationGeminiStreamGenerate
+		case "openai":
+			return true
+		default:
+			return false
+		}
+	}
+	sourceOperation := inferGatewaySourceOperation(req)
+	switch req.Protocol {
+	case domain.ProtocolClaude:
+		return targetProvider == "claude" && targetOperation == domain.ProtocolOperationClaudeMessages
+	case domain.ProtocolGemini:
+		return targetProvider == "gemini" && targetOperation == sourceOperation
+	case domain.ProtocolCodex:
+		return targetProvider == "openai" && targetOperation == domain.ProtocolOperationOpenAIResponses
+	case domain.ProtocolOpenAI:
+		return targetProvider == "openai" && targetOperation == sourceOperation
+	default:
+		return false
+	}
+}
+
+func inferGatewaySourceOperation(req domain.GatewayRequest) domain.ProtocolOperation {
+	if req.Operation != "" {
+		return req.Operation
+	}
+	switch req.Protocol {
+	case domain.ProtocolClaude:
+		return domain.ProtocolOperationClaudeMessages
+	case domain.ProtocolGemini:
+		if req.Stream {
+			return domain.ProtocolOperationGeminiStreamGenerate
+		}
+		return domain.ProtocolOperationGeminiGenerateContent
+	case domain.ProtocolCodex:
+		return domain.ProtocolOperationCodexResponses
+	default:
+		return domain.ProtocolOperationOpenAIChatCompletions
 	}
 }

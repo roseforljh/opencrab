@@ -751,3 +751,78 @@ func TestOpenAIExecutorTransformsClaudeContainerToCodeInterpreter(t *testing.T) 
 		t.Fatalf("unexpected Claude container leak: %#v", captured)
 	}
 }
+
+func TestOpenAIExecutorTransformsClaudeToolChoiceToOpenAI(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl_1","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}]}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:    []json.RawMessage{json.RawMessage(`{"name":"opencode","input_schema":{"type":"object"}}`)},
+			Metadata: map[string]json.RawMessage{
+				"tool_choice": json.RawMessage(`{"type":"tool","name":"opencode"}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	toolChoice, ok := captured["tool_choice"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool_choice payload: %#v", captured)
+	}
+	if toolChoice["type"] != "function" {
+		t.Fatalf("unexpected tool_choice type: %#v", toolChoice)
+	}
+	functionPayload, ok := toolChoice["function"].(map[string]any)
+	if !ok || functionPayload["name"] != "opencode" {
+		t.Fatalf("unexpected tool_choice function payload: %#v", toolChoice)
+	}
+}
+
+func TestOpenAIExecutorDisablesUpstreamStreamForClaudeBridge(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl_1","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}]}`))}, nil
+	})}
+
+	result, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Stream:   true,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if result.Response == nil || result.Stream != nil {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if _, exists := captured["stream"]; exists {
+		t.Fatalf("cross-protocol stream should be downgraded, got %#v", captured)
+	}
+}

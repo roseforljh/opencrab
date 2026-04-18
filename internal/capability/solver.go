@@ -62,7 +62,7 @@ func resolveTargetOperation(profile RequestProfile, provider string, stream bool
 		if profile.SourceOperation != "" && profile.SourceProtocol == domain.ProtocolOpenAI {
 			return profile.SourceOperation
 		}
-		if requiresAny(profile.RequiredCapabilities, CapabilityBuiltinWebSearch, CapabilityBuiltinFileSearch, CapabilityBuiltinRemoteMCP, CapabilityBuiltinComputerUse, CapabilityBuiltinShell, CapabilityBuiltinApplyPatch, CapabilityBuiltinCodeInterpreter, CapabilityBuiltinImageGeneration, CapabilityCustomTools, CapabilityOpenAIResponsesSession, CapabilityOpenAIResponsesInclude, CapabilityOpenAIResponsesStore, CapabilityGeminiCodeExecution, CapabilityClaudeMCPServers) {
+		if requiresAny(profile.RequiredCapabilities, CapabilityBuiltinWebSearch, CapabilityBuiltinFileSearch, CapabilityBuiltinRemoteMCP, CapabilityBuiltinComputerUse, CapabilityBuiltinShell, CapabilityBuiltinApplyPatch, CapabilityBuiltinCodeInterpreter, CapabilityBuiltinImageGeneration, CapabilityCustomTools, CapabilityOpenAIResponsesSession, CapabilityOpenAIResponsesInclude, CapabilityOpenAIResponsesStore, CapabilityGeminiCodeExecution, CapabilityClaudeMCPServers, CapabilityClaudeContainer) {
 			return domain.ProtocolOperationOpenAIResponses
 		}
 		return domain.ProtocolOperationOpenAIChatCompletions
@@ -125,6 +125,8 @@ func capabilitySatisfiedByProvider(required Capability, supported map[Capability
 		return (provider == "openai" && has(supported, CapabilityReasoning)) || (provider == "claude" && has(supported, CapabilityClaudeThinking))
 	case CapabilityClaudeThinking:
 		return (provider == "openai" && has(supported, CapabilityReasoning)) || (provider == "gemini" && has(supported, CapabilityGeminiThinking))
+	case CapabilityClaudeToolChoiceForced:
+		return provider == "openai" && has(supported, CapabilityFunctionTools)
 	case CapabilityBuiltinCodeInterpreter:
 		return (provider == "gemini" && has(supported, CapabilityGeminiCodeExecution)) || provider == "claude"
 	case CapabilityGeminiCodeExecution:

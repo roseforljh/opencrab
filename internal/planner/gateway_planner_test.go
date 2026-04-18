@@ -211,6 +211,49 @@ func TestEvaluateGatewayRouteAllowsClaudeMCPServersOnOpenAI(t *testing.T) {
 	}
 }
 
+func TestEvaluateGatewayRouteAllowsClaudeToolChoiceOnOpenAI(t *testing.T) {
+	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
+		domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Model:    "m",
+			Tools:    []json.RawMessage{json.RawMessage(`{"name":"opencode","input_schema":{"type":"object"}}`)},
+			Metadata: map[string]json.RawMessage{
+				"tool_choice": json.RawMessage(`{"type":"tool","name":"opencode"}`),
+			},
+		},
+		domain.GatewayRoute{
+			ModelAlias: "m",
+			Channel:    domain.UpstreamChannel{Name: "openai-a", Provider: "openai"},
+		},
+	)
+	if !result.Executable {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestEvaluateGatewayRouteMapsClaudeContainerToOpenAIResponses(t *testing.T) {
+	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
+		domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Model:    "m",
+			Metadata: map[string]json.RawMessage{
+				"container": json.RawMessage(`{"type":"auto"}`),
+			},
+		},
+		domain.GatewayRoute{
+			ModelAlias: "m",
+			Channel:    domain.UpstreamChannel{Name: "openai-a", Provider: "openai"},
+		},
+	)
+	if !result.Executable || result.TargetOperation != domain.ProtocolOperationOpenAIResponses {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
 func TestEvaluateGatewayRouteRejectsMalformedClaudeMCPServersOnOpenAI(t *testing.T) {
 	result := EvaluateGatewayRoute(
 		context.Background(),
