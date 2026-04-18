@@ -85,6 +85,7 @@ const (
 
 type GatewayRequest struct {
 	Protocol        Protocol                   `json:"protocol,omitempty"`
+	Operation       ProtocolOperation          `json:"operation,omitempty"`
 	Model           string                     `json:"model"`
 	Stream          bool                       `json:"stream,omitempty"`
 	Messages        []GatewayMessage           `json:"messages"`
@@ -95,6 +96,7 @@ type GatewayRequest struct {
 	Session         *GatewaySessionState       `json:"-"`
 	AffinityKey     string                     `json:"-"`
 	RuntimeSettings *GatewayRuntimeSettings    `json:"-"`
+	APIKeyScope     *APIKeyScope               `json:"-"`
 }
 
 type GatewaySessionState struct {

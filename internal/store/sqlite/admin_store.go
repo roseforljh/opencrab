@@ -45,7 +45,7 @@ func ListChannels(ctx context.Context, db *sql.DB) ([]domain.Channel, error) {
 }
 
 func ListAPIKeys(ctx context.Context, db *sql.DB) ([]domain.APIKey, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, name, enabled FROM api_keys ORDER BY id DESC`)
+	rows, err := db.QueryContext(ctx, `SELECT id, name, enabled, channel_name, model_alias FROM api_keys ORDER BY id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("查询 api_keys 失败: %w", err)
 	}
@@ -55,10 +55,14 @@ func ListAPIKeys(ctx context.Context, db *sql.DB) ([]domain.APIKey, error) {
 	for rows.Next() {
 		var item domain.APIKey
 		var enabled int
-		if err := rows.Scan(&item.ID, &item.Name, &enabled); err != nil {
+		var rawChannelNames string
+		var rawModelAliases string
+		if err := rows.Scan(&item.ID, &item.Name, &enabled, &rawChannelNames, &rawModelAliases); err != nil {
 			return nil, fmt.Errorf("读取 api_key 失败: %w", err)
 		}
 		item.Enabled = enabled == 1
+		item.ChannelNames = decodeScopeList(rawChannelNames)
+		item.ModelAliases = decodeScopeList(rawModelAliases)
 		items = append(items, item)
 	}
 
@@ -943,6 +947,13 @@ func cleanupOrphanModels(ctx context.Context, tx *sql.Tx) error {
 }
 
 func CreateAPIKey(ctx context.Context, db *sql.DB, input domain.CreateAPIKeyInput) (domain.CreatedAPIKey, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	input.ChannelNames = normalizeScopeList(input.ChannelNames)
+	input.ModelAliases = normalizeScopeList(input.ModelAliases)
+	if err := validateAPIKeyScope(ctx, db, input.ChannelNames, input.ModelAliases); err != nil {
+		return domain.CreatedAPIKey{}, err
+	}
+
 	rawKey, err := generateAPIKey()
 	if err != nil {
 		return domain.CreatedAPIKey{}, fmt.Errorf("生成 api key 失败: %w", err)
@@ -952,10 +963,12 @@ func CreateAPIKey(ctx context.Context, db *sql.DB, input domain.CreateAPIKeyInpu
 	now := time.Now().Format(time.RFC3339)
 	result, err := db.ExecContext(
 		ctx,
-		`INSERT INTO api_keys(name, key_hash, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO api_keys(name, key_hash, enabled, channel_name, model_alias, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		input.Name,
 		hex.EncodeToString(keyHash[:]),
 		boolToInt(input.Enabled),
+		encodeScopeList(input.ChannelNames),
+		encodeScopeList(input.ModelAliases),
 		now,
 		now,
 	)
@@ -969,10 +982,12 @@ func CreateAPIKey(ctx context.Context, db *sql.DB, input domain.CreateAPIKeyInpu
 	}
 
 	return domain.CreatedAPIKey{
-		ID:      id,
-		Name:    input.Name,
-		RawKey:  rawKey,
-		Enabled: input.Enabled,
+		ID:           id,
+		Name:         input.Name,
+		RawKey:       rawKey,
+		Enabled:      input.Enabled,
+		ChannelNames: append([]string(nil), input.ChannelNames...),
+		ModelAliases: append([]string(nil), input.ModelAliases...),
 	}, nil
 }
 
@@ -1292,16 +1307,91 @@ func recordExistsTx(ctx context.Context, tx *sql.Tx, query string, args ...any) 
 }
 
 func VerifyAPIKey(ctx context.Context, db *sql.DB, rawKey string) (bool, error) {
-	keyHash := sha256.Sum256([]byte(rawKey))
-	var exists int
-	if err := db.QueryRowContext(ctx, `SELECT 1 FROM api_keys WHERE key_hash = ? AND enabled = 1 LIMIT 1`, hex.EncodeToString(keyHash[:])).Scan(&exists); err != nil {
-		if err == sql.ErrNoRows {
-			return false, nil
-		}
-		return false, fmt.Errorf("校验 api key 失败: %w", err)
+	_, found, err := ResolveAPIKey(ctx, db, rawKey)
+	if err != nil {
+		return false, err
 	}
+	return found, nil
+}
 
-	return true, nil
+func ResolveAPIKey(ctx context.Context, db *sql.DB, rawKey string) (domain.APIKeyScope, bool, error) {
+	keyHash := sha256.Sum256([]byte(rawKey))
+	var scope domain.APIKeyScope
+	var rawChannelNames string
+	var rawModelAliases string
+	if err := db.QueryRowContext(ctx, `SELECT id, name, channel_name, model_alias FROM api_keys WHERE key_hash = ? AND enabled = 1 LIMIT 1`, hex.EncodeToString(keyHash[:])).Scan(&scope.ID, &scope.Name, &rawChannelNames, &rawModelAliases); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.APIKeyScope{}, false, nil
+		}
+		return domain.APIKeyScope{}, false, fmt.Errorf("校验 api key 失败: %w", err)
+	}
+	scope.ChannelNames = decodeScopeList(rawChannelNames)
+	scope.ModelAliases = decodeScopeList(rawModelAliases)
+	return scope, true, nil
+}
+
+func validateAPIKeyScope(ctx context.Context, db *sql.DB, channelNames []string, modelAliases []string) error {
+	for _, channelName := range channelNames {
+		if !recordExists(ctx, db, `SELECT 1 FROM channels WHERE name = ? LIMIT 1`, channelName) {
+			return fmt.Errorf("渠道不存在")
+		}
+	}
+	for _, modelAlias := range modelAliases {
+		if !recordExists(ctx, db, `SELECT 1 FROM models WHERE alias = ? LIMIT 1`, modelAlias) {
+			return fmt.Errorf("模型不存在")
+		}
+	}
+	if len(channelNames) > 0 && len(modelAliases) > 0 {
+		for _, channelName := range channelNames {
+			for _, modelAlias := range modelAliases {
+				if !recordExists(ctx, db, `SELECT 1 FROM model_routes WHERE channel_name = ? AND model_alias = ? LIMIT 1`, channelName, modelAlias) {
+					return fmt.Errorf("所选渠道和模型没有可用路由")
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeScopeList(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := strings.TrimSpace(value)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		items = append(items, normalized)
+	}
+	return items
+}
+
+func encodeScopeList(values []string) string {
+	normalized := normalizeScopeList(values)
+	if len(normalized) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func decodeScopeList(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(trimmed), &values); err == nil {
+		return normalizeScopeList(values)
+	}
+	return normalizeScopeList([]string{trimmed})
 }
 
 func CreateRequestLog(ctx context.Context, db *sql.DB, item domain.RequestLog) error {

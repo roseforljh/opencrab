@@ -35,23 +35,14 @@ func HandleGatewayChatCompletions(deps Dependencies) http.HandlerFunc {
 
 func HandleOpenAIModels(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if deps.ListModels == nil || deps.VerifyAPIKey == nil {
+		if deps.ListModels == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
 			http.Error(w, "models handler not configured", http.StatusNotImplemented)
 			return
 		}
 
-		rawKey := extractGatewayAPIKey(req)
-		if rawKey == "" {
-			renderGatewayErrorForProtocol(deps, w, fmt.Errorf("缂哄皯 API Key"), domain.ProtocolOpenAI)
-			return
-		}
-		allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
+		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
 			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
-			return
-		}
-		if !allowed {
-			renderGatewayErrorForProtocol(deps, w, fmt.Errorf("API Key 鏃犳晥鎴栧凡绂佺敤"), domain.ProtocolOpenAI)
 			return
 		}
 
@@ -70,10 +61,31 @@ func HandleOpenAIModels(deps Dependencies) http.HandlerFunc {
 
 		data := make([]openAIModel, 0, len(models))
 		seen := make(map[string]struct{}, len(models))
+		allowedByChannel := map[string]struct{}{}
+		if len(scope.ChannelNames) > 0 && deps.ListModelRoutes != nil {
+			routes, routeErr := deps.ListModelRoutes(req.Context())
+			if routeErr != nil {
+				http.Error(w, routeErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			for _, route := range routes {
+				if scopeListContains(scope.ChannelNames, route.ChannelName) {
+					allowedByChannel[strings.TrimSpace(route.ModelAlias)] = struct{}{}
+				}
+			}
+		}
 		for _, model := range models {
 			alias := strings.TrimSpace(model.Alias)
 			if alias == "" {
 				continue
+			}
+			if len(scope.ModelAliases) > 0 && !scopeListContains(scope.ModelAliases, alias) {
+				continue
+			}
+			if len(scope.ChannelNames) > 0 && deps.ListModelRoutes != nil {
+				if _, ok := allowedByChannel[alias]; !ok {
+					continue
+				}
 			}
 			if _, exists := seen[alias]; exists {
 				continue
@@ -171,22 +183,13 @@ func HandleClaudeMessages(deps Dependencies) http.HandlerFunc {
 func HandleClaudeCountTokens(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		startedAt := time.Now()
-		if deps.CountClaudeTokens == nil || deps.CopyProxy == nil || deps.VerifyAPIKey == nil {
+		if deps.CountClaudeTokens == nil || deps.CopyProxy == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
 			renderClaudeError(w, http.StatusNotImplemented, "count tokens handler not configured")
 			return
 		}
-		rawKey := extractGatewayAPIKey(req)
-		if rawKey == "" {
-			renderClaudeError(w, http.StatusUnauthorized, "缺少 API Key")
-			return
-		}
-		allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
+		_, _, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			renderClaudeError(w, http.StatusUnauthorized, err.Error())
-			return
-		}
-		if !allowed {
-			renderClaudeError(w, http.StatusUnauthorized, "API Key 无效或已禁用")
+			renderClaudeError(w, gatewayErrorStatusCode(err), err.Error())
 			return
 		}
 		body, err := io.ReadAll(req.Body)
@@ -239,20 +242,13 @@ func executeGatewayRequest(deps Dependencies, req *http.Request, decode gatewayD
 	if deps.ExecuteGateway == nil || deps.CopyProxy == nil || deps.CopyStream == nil {
 		return nil, nil, "", startedAt, fmt.Errorf("gateway handler not configured")
 	}
-	if deps.VerifyAPIKey == nil {
+	if deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil {
 		return nil, nil, "", startedAt, fmt.Errorf("api key verifier not configured")
 	}
 
-	rawKey := extractGatewayAPIKey(req)
-	if rawKey == "" {
-		return nil, nil, "", startedAt, fmt.Errorf("缺少 API Key")
-	}
-	allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
+	rawKey, scope, err := resolveGatewayAPIKey(deps, req)
 	if err != nil {
 		return nil, nil, "", startedAt, err
-	}
-	if !allowed {
-		return nil, nil, "", startedAt, fmt.Errorf("API Key 无效或已禁用")
 	}
 	if deps.CheckRateLimit != nil && !deps.CheckRateLimit(rawKey) {
 		return nil, nil, "", startedAt, fmt.Errorf("请求过于频繁，请稍后再试")
@@ -264,6 +260,9 @@ func executeGatewayRequest(deps Dependencies, req *http.Request, decode gatewayD
 	}
 	gatewayReq, protocol, err := decode(body, req)
 	if err != nil {
+		return body, nil, protocol, startedAt, err
+	}
+	if err := applyAPIKeyScopeToGatewayRequest(&gatewayReq, scope); err != nil {
 		return body, nil, protocol, startedAt, err
 	}
 	if deps.GetGatewayRuntimeSettings != nil {
@@ -285,19 +284,12 @@ func executeGatewayRequest(deps Dependencies, req *http.Request, decode gatewayD
 }
 
 func acceptGatewayRequest(deps Dependencies, req *http.Request, decode gatewayDecoder) (domain.GatewayAcceptedResponse, error) {
-	if deps.CreateGatewayJob == nil || deps.GetGatewayJobByRequestID == nil || deps.VerifyAPIKey == nil {
+	if deps.CreateGatewayJob == nil || deps.GetGatewayJobByRequestID == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
 		return domain.GatewayAcceptedResponse{}, fmt.Errorf("gateway admission handler not configured")
 	}
-	rawKey := extractGatewayAPIKey(req)
-	if rawKey == "" {
-		return domain.GatewayAcceptedResponse{}, fmt.Errorf("缺少 API Key")
-	}
-	allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
+	rawKey, scope, err := resolveGatewayAPIKey(deps, req)
 	if err != nil {
 		return domain.GatewayAcceptedResponse{}, err
-	}
-	if !allowed {
-		return domain.GatewayAcceptedResponse{}, fmt.Errorf("API Key 无效或已禁用")
 	}
 	if deps.CheckRateLimit != nil && !deps.CheckRateLimit(rawKey) {
 		return domain.GatewayAcceptedResponse{}, fmt.Errorf("请求过于频繁，请稍后再试")
@@ -323,6 +315,9 @@ func acceptGatewayRequest(deps Dependencies, req *http.Request, decode gatewayDe
 	}
 	gatewayReq, protocol, err := decode(body, req)
 	if err != nil {
+		return domain.GatewayAcceptedResponse{}, err
+	}
+	if err := applyAPIKeyScopeToGatewayRequest(&gatewayReq, scope); err != nil {
 		return domain.GatewayAcceptedResponse{}, err
 	}
 	requestID := middleware.GetReqID(req.Context())
@@ -367,18 +362,13 @@ func acceptGatewayRequest(deps Dependencies, req *http.Request, decode gatewayDe
 
 func HandleGatewayRequestStatus(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if deps.GetGatewayJobByRequestID == nil || deps.VerifyAPIKey == nil {
+		if deps.GetGatewayJobByRequestID == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
 			http.Error(w, "gateway request status handler not configured", http.StatusNotImplemented)
 			return
 		}
-		rawKey := extractGatewayAPIKey(req)
-		if rawKey == "" {
-			http.Error(w, "缺少 API Key", http.StatusUnauthorized)
-			return
-		}
-		allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
-		if err != nil || !allowed {
-			http.Error(w, "API Key 无效或已禁用", http.StatusUnauthorized)
+		rawKey, _, err := resolveGatewayAPIKey(deps, req)
+		if err != nil {
+			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
 			return
 		}
 		item, err := deps.GetGatewayJobByRequestID(req.Context(), chi.URLParam(req, "requestID"))
@@ -400,18 +390,13 @@ func HandleGatewayRequestStatus(deps Dependencies) http.HandlerFunc {
 
 func HandleGatewayRequestEvents(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if deps.GetGatewayJobByRequestID == nil || deps.VerifyAPIKey == nil {
+		if deps.GetGatewayJobByRequestID == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
 			http.Error(w, "gateway request events handler not configured", http.StatusNotImplemented)
 			return
 		}
-		rawKey := extractGatewayAPIKey(req)
-		if rawKey == "" {
-			http.Error(w, "缺少 API Key", http.StatusUnauthorized)
-			return
-		}
-		allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
-		if err != nil || !allowed {
-			http.Error(w, "API Key 无效或已禁用", http.StatusUnauthorized)
+		rawKey, _, err := resolveGatewayAPIKey(deps, req)
+		if err != nil {
+			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
 			return
 		}
 		item, err := deps.GetGatewayJobByRequestID(req.Context(), chi.URLParam(req, "requestID"))
@@ -608,7 +593,9 @@ func decodeOpenAIGatewayRequest(body []byte, _ *http.Request) (domain.GatewayReq
 	if err != nil {
 		return domain.GatewayRequest{}, "", err
 	}
-	return unifiedToGatewayRequest(unified, nil, nil), domain.ProtocolOpenAI, nil
+	request := unifiedToGatewayRequest(unified, nil, nil)
+	request.Operation = domain.ProtocolOperationOpenAIChatCompletions
+	return request, domain.ProtocolOpenAI, nil
 }
 
 func decodeOpenAIResponsesGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
@@ -621,7 +608,9 @@ func decodeOpenAIResponsesGatewayRequest(body []byte, req *http.Request) (domain
 	if err != nil {
 		return domain.GatewayRequest{}, "", err
 	}
-	return unifiedToGatewayRequest(unified, enrichRequestHeaders(req, []string{"OpenAI-Beta", "X-Stainless-Helper-Method", "X-Stainless-Retry-Count", "X-Stainless-Timeout"}), session), domain.ProtocolOpenAI, nil
+	request := unifiedToGatewayRequest(unified, enrichRequestHeaders(req, []string{"OpenAI-Beta", "X-Stainless-Helper-Method", "X-Stainless-Retry-Count", "X-Stainless-Timeout"}), session)
+	request.Operation = domain.ProtocolOperationOpenAIResponses
+	return request, domain.ProtocolOpenAI, nil
 }
 
 func decodeClaudeGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
@@ -629,7 +618,9 @@ func decodeClaudeGatewayRequest(body []byte, req *http.Request) (domain.GatewayR
 	if err != nil {
 		return domain.GatewayRequest{}, "", err
 	}
-	return unifiedToGatewayRequest(unified, enrichRequestHeaders(req, []string{"anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"}), nil), domain.ProtocolClaude, nil
+	request := unifiedToGatewayRequest(unified, enrichRequestHeaders(req, []string{"anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"}), nil)
+	request.Operation = domain.ProtocolOperationClaudeMessages
+	return request, domain.ProtocolClaude, nil
 }
 
 func decodeGeminiGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
@@ -637,10 +628,14 @@ func decodeGeminiGatewayRequest(body []byte, req *http.Request) (domain.GatewayR
 	if err != nil {
 		return domain.GatewayRequest{}, "", err
 	}
+	operation := domain.ProtocolOperationGeminiGenerateContent
 	if strings.Contains(req.URL.Path, ":streamGenerateContent") {
 		unified.Stream = true
+		operation = domain.ProtocolOperationGeminiStreamGenerate
 	}
-	return unifiedToGatewayRequest(unified, enrichRequestHeaders(req, nil), nil), domain.ProtocolGemini, nil
+	request := unifiedToGatewayRequest(unified, enrichRequestHeaders(req, nil), nil)
+	request.Operation = operation
+	return request, domain.ProtocolGemini, nil
 }
 
 func DecodeStoredGatewayRequest(protocol domain.Protocol, path string, body []byte, headerJSON string) (domain.GatewayRequest, error) {
@@ -816,8 +811,24 @@ func decodeUnifiedByProvider(providerName string, body []byte) (domain.UnifiedCh
 	case "gemini":
 		return provider.DecodeGeminiChatResponse(body)
 	default:
+		if looksLikeOpenAIResponsesPayload(body) {
+			return provider.DecodeOpenAIResponsesResponse(body)
+		}
 		return provider.DecodeOpenAIChatResponse(body)
 	}
+}
+
+func looksLikeOpenAIResponsesPayload(body []byte) bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return false
+	}
+	var objectType string
+	if err := json.Unmarshal(raw["object"], &objectType); err == nil && strings.TrimSpace(objectType) == "response" {
+		return true
+	}
+	_, hasOutput := raw["output"]
+	return hasOutput
 }
 
 func encodeUnifiedByProtocol(protocol domain.Protocol, resp domain.UnifiedChatResponse) ([]byte, error) {
@@ -978,6 +989,10 @@ func renderGatewayError(deps Dependencies, w http.ResponseWriter, err error) {
 		http.Error(w, message, http.StatusUnauthorized)
 		return
 	}
+	if strings.Contains(message, "API Key 不允许") {
+		http.Error(w, message, http.StatusForbidden)
+		return
+	}
 	if strings.Contains(message, "请求过于频繁") {
 		http.Error(w, message, http.StatusTooManyRequests)
 		return
@@ -1001,6 +1016,9 @@ func gatewayErrorStatusCode(err error) int {
 	message := err.Error()
 	if strings.Contains(message, "缺少 API Key") || strings.Contains(message, "无效或已禁用") {
 		return http.StatusUnauthorized
+	}
+	if strings.Contains(message, "API Key 不允许") {
+		return http.StatusForbidden
 	}
 	if strings.Contains(message, "请求过于频繁") {
 		return http.StatusTooManyRequests

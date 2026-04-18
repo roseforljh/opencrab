@@ -64,6 +64,9 @@ func DecodeOpenAIResponsesSession(body []byte) (*domain.GatewaySessionState, err
 	if reasoningRaw, ok := raw["reasoning"]; ok {
 		session.Metadata["reasoning"] = string(reasoningRaw)
 	}
+	if storeRaw, ok := raw["store"]; ok {
+		session.Metadata["store"] = string(storeRaw)
+	}
 	if len(session.Metadata) == 0 {
 		session.Metadata = nil
 	}
@@ -71,6 +74,92 @@ func DecodeOpenAIResponsesSession(body []byte) (*domain.GatewaySessionState, err
 		return nil, nil
 	}
 	return session, nil
+}
+
+func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain.GatewaySessionState) ([]byte, error) {
+	if req.Protocol == "" {
+		req.Protocol = domain.ProtocolOpenAI
+	}
+	if req.Protocol != domain.ProtocolOpenAI {
+		return nil, fmt.Errorf("Responses codec 不支持协议: %s", req.Protocol)
+	}
+	if err := req.ValidateCore(); err != nil {
+		return nil, err
+	}
+
+	payload := map[string]any{}
+	mergeRawFields(payload, req.Metadata)
+	payload["model"] = req.Model
+	if req.Stream {
+		payload["stream"] = true
+	}
+	if len(req.Tools) > 0 {
+		payload["tools"] = rawMessagesToAny(req.Tools)
+	}
+	instructions, input, err := encodeResponsesInputFromMessages(req.Messages)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(instructions) != "" {
+		payload["instructions"] = instructions
+	}
+	payload["input"] = input
+	if session != nil {
+		if strings.TrimSpace(session.PreviousResponseID) != "" {
+			payload["previous_response_id"] = session.PreviousResponseID
+		}
+		if session.Metadata != nil {
+			if include := strings.TrimSpace(session.Metadata["include"]); include != "" {
+				var raw any
+				if err := json.Unmarshal([]byte(include), &raw); err == nil {
+					payload["include"] = raw
+				}
+			}
+			if reasoning := strings.TrimSpace(session.Metadata["reasoning"]); reasoning != "" {
+				var raw any
+				if err := json.Unmarshal([]byte(reasoning), &raw); err == nil {
+					payload["reasoning"] = raw
+				}
+			}
+			if store := strings.TrimSpace(session.Metadata["store"]); store != "" {
+				var raw any
+				if err := json.Unmarshal([]byte(store), &raw); err == nil {
+					payload["store"] = raw
+				}
+			}
+		}
+	}
+	return json.Marshal(payload)
+}
+
+func DecodeOpenAIResponsesResponse(body []byte) (domain.UnifiedChatResponse, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return domain.UnifiedChatResponse{}, fmt.Errorf("解析 Responses 响应失败: %w", err)
+	}
+
+	resp := domain.UnifiedChatResponse{Protocol: domain.ProtocolOpenAI}
+	resp.Metadata = collectUnknownFields(raw, "id", "model", "status", "output", "usage", "output_text")
+	_ = decodeRawString(raw, "id", &resp.ID, false)
+	_ = decodeRawString(raw, "model", &resp.Model, false)
+	_ = decodeRawString(raw, "status", &resp.FinishReason, false)
+	if usageRaw, ok := raw["usage"]; ok {
+		usage, err := decodeResponsesUsage(usageRaw)
+		if err != nil {
+			return domain.UnifiedChatResponse{}, err
+		}
+		resp.Usage = usage
+	}
+	outputRaw, ok := raw["output"]
+	if !ok {
+		return domain.UnifiedChatResponse{}, fmt.Errorf("output 缺失")
+	}
+	message, err := decodeResponsesOutput(outputRaw)
+	if err != nil {
+		return domain.UnifiedChatResponse{}, err
+	}
+	resp.Message = message
+	return resp, nil
 }
 
 func EncodeOpenAIResponsesResponse(resp domain.UnifiedChatResponse) ([]byte, error) {
@@ -171,6 +260,149 @@ func BuildOpenAIResponsesEvents(resp domain.UnifiedChatResponse) ([]map[string]a
 	}
 	events = append(events, map[string]any{"type": "response.completed", "response": responseObject})
 	return events, nil
+}
+
+func encodeResponsesInputFromMessages(messages []domain.UnifiedMessage) (string, []any, error) {
+	instructions := make([]string, 0)
+	items := make([]any, 0, len(messages))
+	for _, message := range messages {
+		if strings.EqualFold(strings.TrimSpace(message.Role), "system") {
+			if text := firstUnifiedText(message); strings.TrimSpace(text) != "" {
+				instructions = append(instructions, text)
+			}
+			continue
+		}
+		encoded, err := encodeResponsesInputItems(message)
+		if err != nil {
+			return "", nil, err
+		}
+		items = append(items, encoded...)
+	}
+	if len(items) == 0 {
+		return "", nil, fmt.Errorf("Responses 请求至少需要一条非 system 消息")
+	}
+	return strings.Join(instructions, "\n\n"), items, nil
+}
+
+func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
+	if strings.EqualFold(strings.TrimSpace(message.Role), "tool") {
+		return []any{map[string]any{
+			"type":    "function_call_output",
+			"call_id": decodeStringRaw(message.Metadata["tool_call_id"]),
+			"output":  firstUnifiedText(message),
+		}}, nil
+	}
+
+	items := make([]any, 0, 1+len(message.ToolCalls))
+	if len(message.Parts) > 0 {
+		content, err := encodeResponsesContent(message.Parts)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, map[string]any{
+			"type":    "message",
+			"role":    message.Role,
+			"content": content,
+		})
+	}
+	for idx, call := range message.ToolCalls {
+		callID := call.ID
+		if strings.TrimSpace(callID) == "" {
+			callID = fmt.Sprintf("fc_%d", idx+1)
+		}
+		items = append(items, map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      call.Name,
+			"arguments": string(call.Arguments),
+		})
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("Responses 消息不能为空")
+	}
+	return items, nil
+}
+
+func encodeResponsesContent(parts []domain.UnifiedPart) ([]map[string]any, error) {
+	items := make([]map[string]any, 0, len(parts))
+	for _, part := range parts {
+		item, err := encodeOpenAIPart(part)
+		if err != nil {
+			return nil, err
+		}
+		switch item["type"] {
+		case "text":
+			item["type"] = "input_text"
+		case "image_url":
+			item["type"] = "input_image"
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func decodeResponsesOutput(raw json.RawMessage) (domain.UnifiedMessage, error) {
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return domain.UnifiedMessage{}, fmt.Errorf("output 格式非法: %w", err)
+	}
+	message := domain.UnifiedMessage{Role: "assistant", Parts: []domain.UnifiedPart{}, ToolCalls: []domain.UnifiedToolCall{}}
+	for i, item := range items {
+		var itemType string
+		if err := decodeRawString(item, "type", &itemType, true); err != nil {
+			return domain.UnifiedMessage{}, fmt.Errorf("output[%d].type: %w", i, err)
+		}
+		switch itemType {
+		case "message":
+			var role string
+			_ = decodeRawString(item, "role", &role, false)
+			if strings.TrimSpace(role) != "" {
+				message.Role = role
+			}
+			if contentRaw, ok := item["content"]; ok {
+				parts, err := decodeResponsesContent(contentRaw)
+				if err != nil {
+					return domain.UnifiedMessage{}, fmt.Errorf("output[%d].content: %w", i, err)
+				}
+				message.Parts = append(message.Parts, parts...)
+			}
+		case "function_call":
+			var name string
+			if err := decodeRawString(item, "name", &name, true); err != nil {
+				return domain.UnifiedMessage{}, fmt.Errorf("output[%d].name: %w", i, err)
+			}
+			arguments := json.RawMessage(`{}`)
+			if rawArgs, ok := item["arguments"]; ok {
+				var argsString string
+				if err := json.Unmarshal(rawArgs, &argsString); err == nil {
+					arguments = json.RawMessage(argsString)
+				} else {
+					arguments = append(json.RawMessage(nil), rawArgs...)
+				}
+			}
+			call := domain.UnifiedToolCall{Name: name, Arguments: arguments}
+			if callIDRaw, ok := item["call_id"]; ok {
+				_ = json.Unmarshal(callIDRaw, &call.ID)
+			}
+			message.ToolCalls = append(message.ToolCalls, call)
+		}
+	}
+	if len(message.Parts) == 0 && len(message.ToolCalls) == 0 {
+		message.Parts = append(message.Parts, domain.UnifiedPart{Type: "text", Text: ""})
+	}
+	return message, nil
+}
+
+func decodeResponsesUsage(raw json.RawMessage) (map[string]int64, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("usage 格式非法: %w", err)
+	}
+	usage := map[string]int64{}
+	extractInt64(payload, "input_tokens", usage, "prompt_tokens")
+	extractInt64(payload, "output_tokens", usage, "completion_tokens")
+	extractInt64(payload, "total_tokens", usage, "total_tokens")
+	return usage, nil
 }
 
 func decodeResponsesInput(input json.RawMessage) ([]domain.UnifiedMessage, error) {

@@ -40,13 +40,14 @@ func NewGeminiExecutor(client *http.Client) *GeminiExecutor {
 }
 
 func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
-	body, err := EncodeOpenAIChatRequest(toUnifiedRequest(input, domain.ProtocolOpenAI, domain.NormalizeProvider(input.Channel.Provider)))
+	normalizedProvider := domain.NormalizeProvider(input.Channel.Provider)
+	body, url, stream, err := buildOpenAIExecutorPayload(input, normalizedProvider)
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 OpenAI 请求失败: %w", err), 0, false, false)
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, buildChatCompletionsURL(input.Channel.Endpoint), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("创建 OpenAI 请求失败: %w", err), 0, false, false)
 	}
@@ -54,7 +55,7 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+input.Channel.APIKey)
 	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"authorization": {}, "content-type": {}, "accept": {}})
-	return doExecutorRequest(e.client, req, input.Request.Stream)
+	return doExecutorRequest(e.client, req, stream)
 }
 
 func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
@@ -118,6 +119,21 @@ func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol, ta
 		Tools:    input.Request.Tools,
 		Metadata: sanitizeRequestMetadataForTarget(cloneRawMap(input.Request.Metadata), protocol, targetProvider),
 	}
+}
+
+func buildOpenAIExecutorPayload(input domain.ExecutorRequest, normalizedProvider string) ([]byte, string, bool, error) {
+	if input.Request.Operation == domain.ProtocolOperationOpenAIResponses && normalizedProvider == "openai" {
+		body, err := EncodeOpenAIResponsesRequest(toUnifiedRequest(input, domain.ProtocolOpenAI, normalizedProvider), input.Request.Session)
+		if err != nil {
+			return nil, "", false, err
+		}
+		return body, buildResponsesURL(input.Channel.Endpoint), false, nil
+	}
+	body, err := EncodeOpenAIChatRequest(toUnifiedRequest(input, domain.ProtocolOpenAI, normalizedProvider))
+	if err != nil {
+		return nil, "", false, err
+	}
+	return body, buildChatCompletionsURL(input.Channel.Endpoint), input.Request.Stream, nil
 }
 
 func sanitizeRequestMetadataForTarget(metadata map[string]json.RawMessage, protocol domain.Protocol, targetProvider string) map[string]json.RawMessage {

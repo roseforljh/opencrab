@@ -199,6 +199,33 @@ func TestResponsesCodecRoundTrip(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecRequestEncodeAndResponseDecode(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "system", Parts: []domain.UnifiedPart{{Type: "text", Text: "be precise"}}},
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "fc_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}}},
+			{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: `{"ok":true}`}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"fc_1"`)}},
+		},
+	}, &domain.GatewaySessionState{PreviousResponseID: "resp_prev", Metadata: map[string]string{"store": "false"}})
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(data), `"instructions":"be precise"`) || !strings.Contains(string(data), `"previous_response_id":"resp_prev"`) || !strings.Contains(string(data), `"function_call_output"`) {
+		t.Fatalf("unexpected encoded responses request: %s", string(data))
+	}
+
+	decodedResp, err := DecodeOpenAIResponsesResponse([]byte(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]},{"id":"fc_1","type":"function_call","call_id":"fc_1","name":"opencode","arguments":"{\"prompt\":\"ping\"}"}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`))
+	if err != nil {
+		t.Fatalf("decode responses response: %v", err)
+	}
+	if decodedResp.ID != "resp_1" || decodedResp.Message.Parts[0].Text != "pong" || len(decodedResp.Message.ToolCalls) != 1 {
+		t.Fatalf("unexpected decoded responses response: %+v", decodedResp)
+	}
+}
+
 func TestClaudeCodecToolUseAndResult(t *testing.T) {
 	decoded, err := DecodeClaudeChatResponse([]byte(`{"id":"msg_tool","model":"claude-sonnet","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"opencode","input":{"prompt":"ping"}}],"stop_reason":"tool_use"}`))
 	if err != nil {

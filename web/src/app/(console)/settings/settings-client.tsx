@@ -51,6 +51,8 @@ const backoffModeOptions = [
   { value: "exponential", label: "指数退避" }
 ];
 
+const securityInputClassName = "bg-muted/30 dark:border-white/8 dark:bg-white/[0.03]";
+
 export function SettingsClient({
   eyebrow,
   title,
@@ -80,6 +82,7 @@ export function SettingsClient({
   const [secondaryConfirmPassword, setSecondaryConfirmPassword] = useState("");
   const [secondarySaving, setSecondarySaving] = useState(false);
   const [secondaryMessage, setSecondaryMessage] = useState<string | null>(null);
+  const [searchValue, setSearchValue] = useState("");
 
   const handleChange = (groupTitle: string, key: string, value: string) => {
     setGroups((current) =>
@@ -216,6 +219,27 @@ export function SettingsClient({
   };
 
   const showSecondaryPasswordFields = secondaryEnabled === "enabled";
+  const normalizedSearchValue = searchValue.trim().toLowerCase();
+  const filteredGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (!normalizedSearchValue) {
+          return true;
+        }
+
+        return [group.title, item.label, item.description, item.key, item.value].some((field) =>
+          field.toLowerCase().includes(normalizedSearchValue)
+        );
+      })
+    }))
+    .filter((group) => group.items.length > 0);
+
+  const scrollToGroup = (groupTitle: string) => {
+    const sections = Array.from(document.querySelectorAll("section"));
+    const matchedSection = sections.find((section) => section.querySelector("h3")?.textContent === groupTitle);
+    matchedSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handlePasswordChange = async () => {
     setPasswordMessage(null);
@@ -281,7 +305,17 @@ export function SettingsClient({
     <PageContainer>
       <PageHeader eyebrow={eyebrow} title={title} description={description} />
 
-      <FilterBar placeholder="搜索设置项..." chips={groups.map((group) => ({ label: group.title }))} />
+      <FilterBar
+        placeholder="搜索设置项..."
+        searchValue={searchValue}
+        onSearchValueChange={setSearchValue}
+        showChipIcon={false}
+        enableActiveStyle={false}
+        chips={groups.map((group) => ({
+          label: group.title,
+          onClick: () => scrollToGroup(group.title)
+        }))}
+      />
 
       {error ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div> : null}
 
@@ -296,15 +330,15 @@ export function SettingsClient({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">当前密码</label>
-                  <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+                  <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className={securityInputClassName} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">新密码</label>
-                  <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+                  <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className={securityInputClassName} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">确认新密码</label>
-                  <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+                  <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className={securityInputClassName} />
                 </div>
                 {passwordMessage ? <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-foreground">{passwordMessage}</div> : null}
                 <div className="flex justify-end">
@@ -336,23 +370,40 @@ export function SettingsClient({
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">当前管理员密码</label>
-                  <Input type="password" value={currentAdminPassword} onChange={(event) => setCurrentAdminPassword(event.target.value)} />
+                  <Input type="password" value={currentAdminPassword} onChange={(event) => setCurrentAdminPassword(event.target.value)} className={securityInputClassName} />
                 </div>
                 {securityState.configured && showSecondaryPasswordFields ? (
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">当前二级密码</label>
-                    <Input type="password" value={currentSecondaryPassword} onChange={(event) => setCurrentSecondaryPassword(event.target.value)} placeholder="修改二级密码时需要输入，单独重新开启可留空" />
+                    <Input
+                      type="password"
+                      value={currentSecondaryPassword}
+                      onChange={(event) => setCurrentSecondaryPassword(event.target.value)}
+                      placeholder="修改二级密码时需要输入，单独重新开启可留空"
+                      className={securityInputClassName}
+                    />
                   </div>
                 ) : null}
                 {showSecondaryPasswordFields ? (
                   <>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">新二级密码</label>
-                      <Input type="password" value={secondaryPassword} onChange={(event) => setSecondaryPassword(event.target.value)} placeholder={securityState.configured ? "留空表示仅重新开启，不修改二级密码" : "首次开启时必须设置"} />
+                      <Input
+                        type="password"
+                        value={secondaryPassword}
+                        onChange={(event) => setSecondaryPassword(event.target.value)}
+                        placeholder={securityState.configured ? "留空表示仅重新开启，不修改二级密码" : "首次开启时必须设置"}
+                        className={securityInputClassName}
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">确认新二级密码</label>
-                      <Input type="password" value={secondaryConfirmPassword} onChange={(event) => setSecondaryConfirmPassword(event.target.value)} />
+                      <Input
+                        type="password"
+                        value={secondaryConfirmPassword}
+                        onChange={(event) => setSecondaryConfirmPassword(event.target.value)}
+                        className={securityInputClassName}
+                      />
                     </div>
                   </>
                 ) : null}
@@ -365,7 +416,7 @@ export function SettingsClient({
           </div>
         </SectionCard>
 
-        {groups.map((group) => (
+        {filteredGroups.map((group) => (
           <SectionCard key={group.title} title={group.title} description={`管理${group.title}相关的配置项。`}>
             <div className="divide-y divide-border rounded-xl border border-border bg-card">
               {group.items.map((item) => (
@@ -385,6 +436,14 @@ export function SettingsClient({
             </div>
           </SectionCard>
         ))}
+
+        {filteredGroups.length === 0 ? (
+          <SectionCard title="未找到匹配配置" description="试试更换关键字，或点击上方筛选标签切换分组。">
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+              当前没有匹配的设置项。
+            </div>
+          </SectionCard>
+        ) : null}
 
         <SectionCard title="危险操作区" description="这些操作可能会导致数据丢失或服务中断，请谨慎操作。" className="border-danger/20">
           <div className="divide-y divide-danger/10 rounded-xl border border-danger/20 bg-danger/5">

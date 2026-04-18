@@ -23,9 +23,11 @@ type ChannelTestResult struct {
 }
 
 type APIKey struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
+	ID           int64    `json:"id"`
+	Name         string   `json:"name"`
+	Enabled      bool     `json:"enabled"`
+	ChannelNames []string `json:"channel_names,omitempty"`
+	ModelAliases []string `json:"model_aliases,omitempty"`
 }
 
 type ModelMapping struct {
@@ -78,63 +80,63 @@ type RequestLogSummary struct {
 }
 
 type DashboardSummary struct {
-	ChannelsCount          int                     `json:"channels_count"`
-	ModelsCount            int                     `json:"models_count"`
-	RoutesCount            int                     `json:"routes_count"`
-	APIKeysCount           int                     `json:"api_keys_count"`
-	EnabledChannelsCount   int                     `json:"enabled_channels_count"`
-	DefaultChannel         string                  `json:"default_channel"`
-	ProviderCount          int                     `json:"provider_count"`
-	RoutingOverview        RoutingOverview         `json:"routing_overview"`
-	TodayRequests          int                     `json:"today_requests"`
-	TodaySuccessCount      int                     `json:"today_success_count"`
-	TodayErrorCount        int                     `json:"today_error_count"`
-	TotalRequests          int                     `json:"total_requests"`
-	SuccessCount           int                     `json:"success_count"`
-	ErrorCount             int                     `json:"error_count"`
-	AverageLatency         int64                   `json:"average_latency"`
-	PromptTokens           int64                   `json:"prompt_tokens"`
-	CompletionTokens       int64                   `json:"completion_tokens"`
-	TotalTokens            int64                   `json:"total_tokens"`
-	TotalMeteredRequests   int                     `json:"total_metered_requests"`
-	CacheHitCount          int                     `json:"cache_hit_count"`
-	CacheHitRate           float64                 `json:"cache_hit_rate"`
-	RequestsPerMinute      int                     `json:"requests_per_minute"`
-	RequestsPerMinuteSuccess int                   `json:"requests_per_minute_success"`
-	RequestsPerMinuteError int                     `json:"requests_per_minute_error"`
-	TokensPerMinute        int64                   `json:"tokens_per_minute"`
-	TokensPerMinuteMeteredRequests int             `json:"tokens_per_minute_metered_requests"`
-	DailyCounts            []DashboardDailyCount   `json:"daily_counts"`
-	TrafficSeries          []DashboardTrafficPoint `json:"traffic_series"`
-	RecentLogs             []DashboardRecentLog    `json:"recent_logs"`
-	ChannelMix             []DashboardShareItem    `json:"channel_mix"`
-	ModelRanking           []DashboardRankingItem  `json:"model_ranking"`
-	RuntimeRedisEnabled    bool                    `json:"runtime_redis_enabled"`
-	RuntimeRedisAddress    string                  `json:"runtime_redis_address"`
-	RuntimeRedisDB         int                     `json:"runtime_redis_db"`
-	RuntimeRedisTLSEnabled bool                    `json:"runtime_redis_tls_enabled"`
-	RuntimeRedisKeyPrefix  string                  `json:"runtime_redis_key_prefix"`
-	DispatchPause          bool                    `json:"dispatch_pause"`
-	DispatcherWorkers      int                     `json:"dispatcher_workers"`
-	QueueMode              string                  `json:"queue_mode"`
-	DefaultQueue           string                  `json:"default_queue"`
-	PriorityQueues         string                  `json:"priority_queues"`
-	QueueTTLSec            int                     `json:"queue_ttl_s"`
-	SyncHoldMs             int                     `json:"sync_hold_ms"`
-	RetryReserveRatio      float64                 `json:"retry_reserve_ratio"`
-	BacklogCap             int                     `json:"backlog_cap"`
-	MaxAttempts            int                     `json:"max_attempts"`
-	BackoffMode            string                  `json:"backoff_mode"`
-	BackoffDelayMs         int                     `json:"backoff_delay_ms"`
-	DeadLetterEnabled      bool                    `json:"dead_letter_enabled"`
-	MetricsEnabled         bool                    `json:"metrics_enabled"`
-	LongWaitThresholdSec   int                     `json:"long_wait_threshold_s"`
-	ShowWorkerStatus       bool                    `json:"show_worker_status"`
-	ShowQueueDepth         bool                    `json:"show_queue_depth"`
-	ShowRetryRate          bool                    `json:"show_retry_rate"`
-	AsyncEnabledChannels   int                     `json:"async_enabled_channels"`
-	TotalRPMLimit          int                     `json:"total_rpm_limit"`
-	TotalMaxInflight       int                     `json:"total_max_inflight"`
+	ChannelsCount                  int                     `json:"channels_count"`
+	ModelsCount                    int                     `json:"models_count"`
+	RoutesCount                    int                     `json:"routes_count"`
+	APIKeysCount                   int                     `json:"api_keys_count"`
+	EnabledChannelsCount           int                     `json:"enabled_channels_count"`
+	DefaultChannel                 string                  `json:"default_channel"`
+	ProviderCount                  int                     `json:"provider_count"`
+	RoutingOverview                RoutingOverview         `json:"routing_overview"`
+	TodayRequests                  int                     `json:"today_requests"`
+	TodaySuccessCount              int                     `json:"today_success_count"`
+	TodayErrorCount                int                     `json:"today_error_count"`
+	TotalRequests                  int                     `json:"total_requests"`
+	SuccessCount                   int                     `json:"success_count"`
+	ErrorCount                     int                     `json:"error_count"`
+	AverageLatency                 int64                   `json:"average_latency"`
+	PromptTokens                   int64                   `json:"prompt_tokens"`
+	CompletionTokens               int64                   `json:"completion_tokens"`
+	TotalTokens                    int64                   `json:"total_tokens"`
+	TotalMeteredRequests           int                     `json:"total_metered_requests"`
+	CacheHitCount                  int                     `json:"cache_hit_count"`
+	CacheHitRate                   float64                 `json:"cache_hit_rate"`
+	RequestsPerMinute              int                     `json:"requests_per_minute"`
+	RequestsPerMinuteSuccess       int                     `json:"requests_per_minute_success"`
+	RequestsPerMinuteError         int                     `json:"requests_per_minute_error"`
+	TokensPerMinute                int64                   `json:"tokens_per_minute"`
+	TokensPerMinuteMeteredRequests int                     `json:"tokens_per_minute_metered_requests"`
+	DailyCounts                    []DashboardDailyCount   `json:"daily_counts"`
+	TrafficSeries                  []DashboardTrafficPoint `json:"traffic_series"`
+	RecentLogs                     []DashboardRecentLog    `json:"recent_logs"`
+	ChannelMix                     []DashboardShareItem    `json:"channel_mix"`
+	ModelRanking                   []DashboardRankingItem  `json:"model_ranking"`
+	RuntimeRedisEnabled            bool                    `json:"runtime_redis_enabled"`
+	RuntimeRedisAddress            string                  `json:"runtime_redis_address"`
+	RuntimeRedisDB                 int                     `json:"runtime_redis_db"`
+	RuntimeRedisTLSEnabled         bool                    `json:"runtime_redis_tls_enabled"`
+	RuntimeRedisKeyPrefix          string                  `json:"runtime_redis_key_prefix"`
+	DispatchPause                  bool                    `json:"dispatch_pause"`
+	DispatcherWorkers              int                     `json:"dispatcher_workers"`
+	QueueMode                      string                  `json:"queue_mode"`
+	DefaultQueue                   string                  `json:"default_queue"`
+	PriorityQueues                 string                  `json:"priority_queues"`
+	QueueTTLSec                    int                     `json:"queue_ttl_s"`
+	SyncHoldMs                     int                     `json:"sync_hold_ms"`
+	RetryReserveRatio              float64                 `json:"retry_reserve_ratio"`
+	BacklogCap                     int                     `json:"backlog_cap"`
+	MaxAttempts                    int                     `json:"max_attempts"`
+	BackoffMode                    string                  `json:"backoff_mode"`
+	BackoffDelayMs                 int                     `json:"backoff_delay_ms"`
+	DeadLetterEnabled              bool                    `json:"dead_letter_enabled"`
+	MetricsEnabled                 bool                    `json:"metrics_enabled"`
+	LongWaitThresholdSec           int                     `json:"long_wait_threshold_s"`
+	ShowWorkerStatus               bool                    `json:"show_worker_status"`
+	ShowQueueDepth                 bool                    `json:"show_queue_depth"`
+	ShowRetryRate                  bool                    `json:"show_retry_rate"`
+	AsyncEnabledChannels           int                     `json:"async_enabled_channels"`
+	TotalRPMLimit                  int                     `json:"total_rpm_limit"`
+	TotalMaxInflight               int                     `json:"total_max_inflight"`
 }
 
 type DashboardDailyCount struct {
@@ -275,8 +277,10 @@ type UpdateChannelInput struct {
 }
 
 type CreateAPIKeyInput struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
+	Name         string   `json:"name"`
+	Enabled      bool     `json:"enabled"`
+	ChannelNames []string `json:"channel_names,omitempty"`
+	ModelAliases []string `json:"model_aliases,omitempty"`
 }
 
 type UpdateAPIKeyInput struct {
@@ -324,8 +328,17 @@ type UpdateModelRouteBindingInput struct {
 }
 
 type CreatedAPIKey struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	RawKey  string `json:"raw_key"`
-	Enabled bool   `json:"enabled"`
+	ID           int64    `json:"id"`
+	Name         string   `json:"name"`
+	RawKey       string   `json:"raw_key"`
+	Enabled      bool     `json:"enabled"`
+	ChannelNames []string `json:"channel_names,omitempty"`
+	ModelAliases []string `json:"model_aliases,omitempty"`
+}
+
+type APIKeyScope struct {
+	ID           int64
+	Name         string
+	ChannelNames []string
+	ModelAliases []string
 }

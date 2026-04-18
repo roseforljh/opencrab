@@ -458,7 +458,7 @@ func TestGatewayServiceStickyReordersFirstTier(t *testing.T) {
 	}
 }
 
-func TestGatewayServiceToolsRequireProtocolMatchedProvider(t *testing.T) {
+func TestGatewayServiceToolsCanBridgeToCompatibleProvider(t *testing.T) {
 	openaiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-openai`)}}}
 	claudeExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-claude`)}}}
 	service := newGatewayServiceForTest([]domain.GatewayRoute{
@@ -475,10 +475,10 @@ func TestGatewayServiceToolsRequireProtocolMatchedProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if string(result.Response.Body) != "ok-claude" {
-		t.Fatalf("unexpected response: %#v", result)
+	if string(result.Response.Body) != "ok-openai" {
+		t.Fatalf("unexpected response body: %s metadata=%#v", string(result.Response.Body), result.Metadata)
 	}
-	if claudeExecutor.calls != 1 || openaiExecutor.calls != 0 {
+	if claudeExecutor.calls != 0 || openaiExecutor.calls != 1 {
 		t.Fatalf("unexpected executor calls: openai=%d claude=%d", openaiExecutor.calls, claudeExecutor.calls)
 	}
 }
@@ -507,6 +507,85 @@ func TestGatewayServiceClaudeNativeHeadersRequireClaudeProvider(t *testing.T) {
 	}
 	if claudeExecutor.calls != 1 || openaiExecutor.calls != 0 {
 		t.Fatalf("unexpected executor calls: openai=%d claude=%d", openaiExecutor.calls, claudeExecutor.calls)
+	}
+}
+
+func TestGatewayServiceClaudeNativeMetadataRequireClaudeProvider(t *testing.T) {
+	openaiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-openai`)}}}
+	claudeExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-claude`)}}}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 1, ModelAlias: "m", UpstreamModel: "u-openai", Channel: domain.UpstreamChannel{Name: "openai-a", Provider: "openai"}, Priority: 1},
+		{ID: 2, ModelAlias: "m", UpstreamModel: "u-claude", Channel: domain.UpstreamChannel{Name: "claude-b", Provider: "claude"}, Priority: 2},
+	}, map[string]domain.Executor{"openai": openaiExecutor, "claude": claudeExecutor}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-claude-thinking", domain.GatewayRequest{
+		Protocol:  domain.ProtocolClaude,
+		Model:     "m",
+		Operation: domain.ProtocolOperationClaudeMessages,
+		Messages:  []domain.GatewayMessage{testGatewayMessage("user", "x")},
+		Metadata: map[string]json.RawMessage{
+			"thinking": json.RawMessage(`{"type":"enabled","budget_tokens":1024}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if string(result.Response.Body) != "ok-claude" {
+		t.Fatalf("unexpected response: %#v", result)
+	}
+	if claudeExecutor.calls != 1 || openaiExecutor.calls != 0 {
+		t.Fatalf("unexpected executor calls: openai=%d claude=%d", openaiExecutor.calls, claudeExecutor.calls)
+	}
+}
+
+func TestGatewayServiceResponsesSessionRequiresOpenAICompatibleRoute(t *testing.T) {
+	openaiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-openai`)}}}
+	claudeExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-claude`)}}}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 1, ModelAlias: "m", UpstreamModel: "u-claude", Channel: domain.UpstreamChannel{Name: "claude-b", Provider: "claude"}, Priority: 1},
+		{ID: 2, ModelAlias: "m", UpstreamModel: "u-openai", Channel: domain.UpstreamChannel{Name: "openai-a", Provider: "openai"}, Priority: 2},
+	}, map[string]domain.Executor{"openai": openaiExecutor, "claude": claudeExecutor}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-responses-session", domain.GatewayRequest{
+		Protocol:  domain.ProtocolOpenAI,
+		Operation: domain.ProtocolOperationOpenAIResponses,
+		Model:     "m",
+		Messages:  []domain.GatewayMessage{testGatewayMessage("user", "x")},
+		Session: &domain.GatewaySessionState{
+			PreviousResponseID: "resp_123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if string(result.Response.Body) != "ok-openai" {
+		t.Fatalf("unexpected response body: %s metadata=%#v", string(result.Response.Body), result.Metadata)
+	}
+	if claudeExecutor.calls != 0 || openaiExecutor.calls != 1 {
+		t.Fatalf("unexpected executor calls: openai=%d claude=%d", openaiExecutor.calls, claudeExecutor.calls)
+	}
+}
+
+func TestGatewayServiceBasicResponsesRequestCanBridgeToClaude(t *testing.T) {
+	claudeExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-claude`)}}}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 1, ModelAlias: "m", UpstreamModel: "u-claude", Channel: domain.UpstreamChannel{Name: "claude-b", Provider: "claude"}, Priority: 1},
+	}, map[string]domain.Executor{"claude": claudeExecutor}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-responses-bridge", domain.GatewayRequest{
+		Protocol:  domain.ProtocolOpenAI,
+		Operation: domain.ProtocolOperationOpenAIResponses,
+		Model:     "m",
+		Messages:  []domain.GatewayMessage{testGatewayMessage("user", "x")},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if string(result.Response.Body) != "ok-claude" {
+		t.Fatalf("unexpected response: %#v", result)
+	}
+	if claudeExecutor.calls != 1 {
+		t.Fatalf("unexpected executor calls: claude=%d", claudeExecutor.calls)
 	}
 }
 

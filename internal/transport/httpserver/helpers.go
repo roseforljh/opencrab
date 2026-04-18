@@ -16,7 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// writeJSON 负责把结构化数据写成 JSON 响应。
+// writeJSON 把结构化数据写成 JSON 响应。
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(statusCode)
@@ -244,6 +244,62 @@ func extractGatewayAPIKey(req *http.Request) string {
 	}
 
 	return ""
+}
+
+func ExtractGatewayAPIKey(req *http.Request) string {
+	return extractGatewayAPIKey(req)
+}
+
+func resolveGatewayAPIKey(deps Dependencies, req *http.Request) (string, domain.APIKeyScope, error) {
+	rawKey := extractGatewayAPIKey(req)
+	if rawKey == "" {
+		return "", domain.APIKeyScope{}, fmt.Errorf("缺少 API Key")
+	}
+	if deps.ResolveAPIKey != nil {
+		scope, found, err := deps.ResolveAPIKey(req.Context(), rawKey)
+		if err != nil {
+			return "", domain.APIKeyScope{}, err
+		}
+		if !found {
+			return "", domain.APIKeyScope{}, fmt.Errorf("API Key 无效或已禁用")
+		}
+		return rawKey, scope, nil
+	}
+	if deps.VerifyAPIKey == nil {
+		return "", domain.APIKeyScope{}, fmt.Errorf("api key verifier not configured")
+	}
+	allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
+	if err != nil {
+		return "", domain.APIKeyScope{}, err
+	}
+	if !allowed {
+		return "", domain.APIKeyScope{}, fmt.Errorf("API Key 无效或已禁用")
+	}
+	return rawKey, domain.APIKeyScope{}, nil
+}
+
+func applyAPIKeyScopeToGatewayRequest(gatewayReq *domain.GatewayRequest, scope domain.APIKeyScope) error {
+	if gatewayReq == nil {
+		return nil
+	}
+	if len(scope.ModelAliases) > 0 && !scopeListContains(scope.ModelAliases, gatewayReq.Model) {
+		return fmt.Errorf("API Key 不允许访问模型 %s", gatewayReq.Model)
+	}
+	if len(scope.ChannelNames) == 0 && len(scope.ModelAliases) == 0 {
+		return nil
+	}
+	gatewayReq.APIKeyScope = &scope
+	return nil
+}
+
+func scopeListContains(values []string, target string) bool {
+	normalizedTarget := strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == normalizedTarget {
+			return true
+		}
+	}
+	return false
 }
 
 func extractGatewaySessionID(req *http.Request) string {

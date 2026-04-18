@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 
 const statusOptions = [
   { value: "启用", dotClassName: "bg-success ring-2 ring-success/20" },
-  { value: "禁用", dotClassName: "bg-danger ring-2 ring-danger/20" }
+  { value: "禁用", dotClassName: "bg-danger ring-2 ring-danger/20" },
 ] as const;
 
 export function StatusSelect({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {

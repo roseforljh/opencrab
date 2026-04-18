@@ -14,6 +14,18 @@ const (
 	ProtocolGemini Protocol = "gemini"
 )
 
+type ProtocolOperation string
+
+const (
+	ProtocolOperationOpenAIChatCompletions ProtocolOperation = "chat_completions"
+	ProtocolOperationOpenAIResponses       ProtocolOperation = "responses"
+	ProtocolOperationOpenAIRealtime        ProtocolOperation = "realtime"
+	ProtocolOperationClaudeMessages        ProtocolOperation = "messages"
+	ProtocolOperationClaudeCountTokens     ProtocolOperation = "count_tokens"
+	ProtocolOperationGeminiGenerateContent ProtocolOperation = "generate_content"
+	ProtocolOperationGeminiStreamGenerate  ProtocolOperation = "stream_generate_content"
+)
+
 type UnifiedChatRequest struct {
 	Protocol Protocol `json:"protocol"`
 	Model    string   `json:"model"`

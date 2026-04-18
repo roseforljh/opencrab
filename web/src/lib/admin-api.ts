@@ -1,4 +1,4 @@
-export type AdminChannel = {
+﻿export type AdminChannel = {
   id: number;
   name: string;
   provider: string;
@@ -16,6 +16,8 @@ export type AdminApiKey = {
   id: number;
   name: string;
   enabled: boolean;
+  channel_names?: string[];
+  model_aliases?: string[];
 };
 
 export type AdminCreatedApiKey = {
@@ -23,6 +25,8 @@ export type AdminCreatedApiKey = {
   name: string;
   raw_key: string;
   enabled: boolean;
+  channel_names?: string[];
+  model_aliases?: string[];
 };
 
 export type AdminModel = {
@@ -237,3 +241,4 @@ export function formatLatency(value: number) {
 export function toEnabledStatus(enabled: boolean) {
   return enabled ? "启用" : "禁用";
 }
+

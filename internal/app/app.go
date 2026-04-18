@@ -223,6 +223,9 @@ func New() (*App, error) {
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) {
 			return store.VerifyAPIKey(ctx, db, rawKey)
 		},
+		ResolveAPIKey: func(ctx context.Context, rawKey string) (domain.APIKeyScope, bool, error) {
+			return store.ResolveAPIKey(ctx, db, rawKey)
+		},
 		CreateRequestLog: func(ctx context.Context, item domain.RequestLog) error {
 			return store.CreateRequestLog(ctx, db, item)
 		},
@@ -256,6 +259,16 @@ func New() (*App, error) {
 				return nil, err
 			}
 			gatewayReq := domain.GatewayRequest{Protocol: domain.ProtocolClaude, Model: unified.Model, ToolCallPolicy: domain.GatewayToolCallAllow}
+			if scope, found, scopeErr := store.ResolveAPIKey(ctx, db, httpserver.ExtractGatewayAPIKey(req)); scopeErr == nil && found {
+				if len(scope.ModelAliases) > 0 && !containsString(scope.ModelAliases, gatewayReq.Model) {
+					return nil, fmt.Errorf("API Key 不允许访问模型 %s", gatewayReq.Model)
+				}
+				if len(scope.ChannelNames) > 0 || len(scope.ModelAliases) > 0 {
+					gatewayReq.APIKeyScope = &scope
+				}
+			} else if scopeErr != nil {
+				return nil, scopeErr
+			}
 			for _, message := range unified.Messages {
 				gatewayReq.Messages = append(gatewayReq.Messages, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, Metadata: message.Metadata})
 			}
@@ -414,4 +427,14 @@ func buildSystemSettingGroups(appConfig config.Config, items []domain.SystemSett
 			},
 		},
 	}
+}
+
+func containsString(values []string, target string) bool {
+	normalizedTarget := strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == normalizedTarget {
+			return true
+		}
+	}
+	return false
 }

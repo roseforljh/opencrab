@@ -30,18 +30,13 @@ type responsesWebSocketEnvelope struct {
 
 func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if deps.ExecuteGateway == nil || deps.VerifyAPIKey == nil || deps.ResponseSessions == nil {
+		if deps.ExecuteGateway == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) || deps.ResponseSessions == nil {
 			http.Error(w, "responses websocket handler not configured", http.StatusNotImplemented)
 			return
 		}
-		rawKey := extractGatewayAPIKey(req)
-		if rawKey == "" {
-			http.Error(w, "缺少 API Key", http.StatusUnauthorized)
-			return
-		}
-		allowed, err := deps.VerifyAPIKey(req.Context(), rawKey)
-		if err != nil || !allowed {
-			http.Error(w, "API Key 无效或已禁用", http.StatusUnauthorized)
+		_, scope, err := resolveGatewayAPIKey(deps, req)
+		if err != nil {
+			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
 			return
 		}
 		conn, err := responsesUpgrader.Upgrade(w, req, nil)
@@ -64,6 +59,10 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 			gatewayReq, protocol, decodeErr := decodeOpenAIResponsesGatewayRequest(payload, req)
 			if decodeErr != nil {
 				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": decodeErr.Error()}})
+				continue
+			}
+			if scopeErr := applyAPIKeyScopeToGatewayRequest(&gatewayReq, scope); scopeErr != nil {
+				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": scopeErr.Error()}})
 				continue
 			}
 			if responsesGenerateDisabled(payload) {
@@ -125,7 +124,7 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 func buildResponsesWebSocketPayload(frame []byte, lastModel string, lastResponseID string) ([]byte, string, string, error) {
 	var envelope responsesWebSocketEnvelope
 	if err := json.Unmarshal(frame, &envelope); err != nil {
-		return nil, "", "", fmt.Errorf("解析 WebSocket 消息失败: %w", err)
+		return nil, "", "", fmt.Errorf("瑙ｆ瀽 WebSocket 娑堟伅澶辫触: %w", err)
 	}
 	switch strings.TrimSpace(envelope.Type) {
 	case "response.create", "":
@@ -157,7 +156,7 @@ func buildResponsesWebSocketPayload(frame []byte, lastModel string, lastResponse
 			model = strings.TrimSpace(lastModel)
 		}
 		if model == "" {
-			return nil, "", "", fmt.Errorf("response.append 缺少 model")
+			return nil, "", "", fmt.Errorf("response.append 缂哄皯 model")
 		}
 		payload := map[string]any{"model": model, "previous_response_id": previous, "input": json.RawMessage(`[]`)}
 		if len(envelope.Input) > 0 {
@@ -165,11 +164,11 @@ func buildResponsesWebSocketPayload(frame []byte, lastModel string, lastResponse
 		}
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return nil, "", "", fmt.Errorf("编码 response.append 失败: %w", err)
+			return nil, "", "", fmt.Errorf("缂栫爜 response.append 澶辫触: %w", err)
 		}
 		return encoded, model, previous, nil
 	default:
-		return nil, "", "", fmt.Errorf("暂不支持的 WebSocket 消息类型: %s", envelope.Type)
+		return nil, "", "", fmt.Errorf("鏆備笉鏀寔鐨?WebSocket 娑堟伅绫诲瀷: %s", envelope.Type)
 	}
 }
 

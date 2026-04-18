@@ -62,6 +62,7 @@ type Dependencies struct {
 	CreateModelRoute               func(ctx context.Context, input domain.CreateModelRouteInput) (domain.ModelRoute, error)
 	UpdateModelRoute               func(ctx context.Context, id int64, input domain.UpdateModelRouteInput) error
 	DeleteModelRoute               func(ctx context.Context, id int64) error
+	ResolveAPIKey                  func(ctx context.Context, rawKey string) (domain.APIKeyScope, bool, error)
 	VerifyAPIKey                   func(ctx context.Context, rawKey string) (bool, error)
 	CreateRequestLog               func(ctx context.Context, item domain.RequestLog) error
 	GetGatewayRuntimeSettings      func(ctx context.Context) (domain.GatewayRuntimeSettings, error)
@@ -818,6 +819,12 @@ func NewRouter(deps Dependencies) http.Handler {
 				}
 				if err := validateUpdateSystemSettingInput(&input); err != nil {
 					statusCode := http.StatusBadRequest
+					if strings.HasPrefix(strings.TrimSpace(input.Key), "admin.") {
+						statusCode = http.StatusForbidden
+					}
+					if strings.Contains(err.Error(), "不能通过系统设置接口修改") {
+						statusCode = http.StatusForbidden
+					}
 					if strings.Contains(err.Error(), "不能通过系统设置接口修改") {
 						statusCode = http.StatusForbidden
 					}

@@ -26,7 +26,7 @@ export function StaticTable<T>({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+    <div className="overflow-x-auto overflow-y-hidden rounded-xl border border-border bg-background shadow-sm">
       <table className="min-w-full divide-y divide-border/50 text-sm">
         <thead className="bg-secondary/30 text-left text-muted-foreground">
           <tr>

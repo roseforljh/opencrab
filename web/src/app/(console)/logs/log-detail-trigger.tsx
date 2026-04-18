@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,51 @@ function parseLogDetails(value: string): LogDetailsSummary {
   }
 }
 
+function HorizontalScrollJson({ children }: { children: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const handleWheel = (event: globalThis.WheelEvent) => {
+      if (!event.shiftKey) {
+        return;
+      }
+
+      if (container.scrollWidth <= container.clientWidth) {
+        return;
+      }
+
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (delta === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      container.scrollLeft += delta;
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className="overflow-x-auto rounded-xl border border-border/60 bg-background [scrollbar-gutter:stable]"
+    >
+      <pre className="min-w-full w-max p-4 font-mono text-xs leading-6 text-muted-foreground">
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<AdminRequestLogDetail | null>(null);
@@ -128,7 +173,11 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
       description={`${formatDateTime(row.created_at)} · ${row.model} · ${selectedChannel} · ${statusText}`}
       triggerLabel="查看详情"
       trigger={
-        <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10 hover:text-primary">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 whitespace-nowrap rounded-md border-border/60 bg-muted/20 px-2.5 text-[11px] font-semibold text-foreground/88 shadow-none hover:border-primary/35 hover:bg-primary/10 hover:text-primary"
+        >
           查看详情
         </Button>
       }
@@ -255,23 +304,17 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">附加详情</h3>
-            <pre className="overflow-x-auto rounded-xl border border-border/60 bg-background p-4 font-mono text-xs leading-6 text-muted-foreground">
-              {formatJsonBlock(detail.details)}
-            </pre>
+            <HorizontalScrollJson>{formatJsonBlock(detail.details)}</HorizontalScrollJson>
           </div>
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">请求体</h3>
-            <pre className="overflow-x-auto rounded-xl border border-border/60 bg-background p-4 font-mono text-xs leading-6 text-muted-foreground">
-              {formatJsonBlock(detail.request_body)}
-            </pre>
+            <HorizontalScrollJson>{formatJsonBlock(detail.request_body)}</HorizontalScrollJson>
           </div>
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">响应体</h3>
-            <pre className="overflow-x-auto rounded-xl border border-border/60 bg-background p-4 font-mono text-xs leading-6 text-muted-foreground">
-              {formatJsonBlock(detail.response_body)}
-            </pre>
+            <HorizontalScrollJson>{formatJsonBlock(detail.response_body)}</HorizontalScrollJson>
           </div>
         </div>
       ) : null}

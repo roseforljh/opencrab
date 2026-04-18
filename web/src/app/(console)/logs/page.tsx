@@ -121,7 +121,8 @@ const columns: StaticTableColumn<LogRow>[] = [
   },
   {
     header: "模型",
-    cell: (row) => <span className="font-medium text-foreground">{row.model}</span>
+    cell: (row) => <span className="whitespace-nowrap font-medium text-foreground">{row.model}</span>,
+    className: "whitespace-nowrap"
   },
   {
     header: "渠道",
@@ -199,7 +200,11 @@ export default async function LogsPage() {
             data={rows}
             emptyTitle="暂无请求日志"
             emptyDescription="当前还没有请求进入日志表，发起一次模型请求后这里会出现最新记录。"
-            rowAction={(row) => <LogDetailTrigger row={row.raw} />}
+            rowAction={(row) => (
+              <div className="flex justify-end whitespace-nowrap">
+                <LogDetailTrigger row={row.raw} />
+              </div>
+            )}
           />
         ) : null}
       </SectionCard>

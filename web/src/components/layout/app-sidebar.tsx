@@ -48,11 +48,11 @@ export function AppSidebar() {
 
   return (
     <aside
-      className={`hidden h-screen shrink-0 border-r border-border bg-background transition-[width] duration-300 ease-[var(--ease-emphasized)] lg:flex lg:flex-col ${
+      className={`hidden h-screen shrink-0 self-start overflow-hidden border-r border-border bg-background transition-[width] duration-300 ease-[var(--ease-emphasized)] lg:sticky lg:top-0 lg:flex lg:flex-col ${
         collapsed ? "w-20" : "w-64"
       }`}
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6">
         <div className={`mb-8 ${collapsed ? "px-0" : "px-2"}`}>
           <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"}`}>
             <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden">

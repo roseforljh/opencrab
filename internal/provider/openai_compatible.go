@@ -141,3 +141,14 @@ func buildChatCompletionsURL(endpoint string) string {
 	}
 	return trimmed + "/v1/chat/completions"
 }
+
+func buildResponsesURL(endpoint string) string {
+	trimmed := strings.TrimRight(endpoint, "/")
+	if strings.HasSuffix(trimmed, "/responses") {
+		return trimmed
+	}
+	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v4") {
+		return trimmed + "/responses"
+	}
+	return trimmed + "/v1/responses"
+}
