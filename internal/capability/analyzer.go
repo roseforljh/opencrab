@@ -14,7 +14,7 @@ func AnalyzeGatewayRequest(req domain.GatewayRequest) RequestProfile {
 	analyzeOpenAIMetadata(required, req)
 	analyzeClaudeMetadata(required, req)
 	analyzeGeminiMetadata(required, req)
-	analyzeTools(required, req.Tools)
+	analyzeTools(required, req.Protocol, req.Operation, req.Tools)
 
 	if req.Session != nil {
 		if strings.TrimSpace(req.Session.PreviousResponseID) != "" {
@@ -38,6 +38,12 @@ func AnalyzeGatewayRequest(req domain.GatewayRequest) RequestProfile {
 		if requiresAny(required, CapabilityBuiltinWebSearch, CapabilityBuiltinFileSearch, CapabilityBuiltinRemoteMCP, CapabilityBuiltinComputerUse, CapabilityBuiltinShell, CapabilityBuiltinApplyPatch, CapabilityBuiltinCodeInterpreter, CapabilityBuiltinImageGeneration) {
 			return RequestProfile{SourceProtocol: req.Protocol, SourceOperation: req.Operation, RequiredCapabilities: required, PreferredTargetOp: domain.ProtocolOperationOpenAIResponses}
 		}
+		return RequestProfile{SourceProtocol: req.Protocol, SourceOperation: req.Operation, RequiredCapabilities: required, PreferredTargetOp: domain.ProtocolOperationOpenAIResponses}
+	}
+	if req.Operation == domain.ProtocolOperationOpenAIRealtime {
+		return RequestProfile{SourceProtocol: req.Protocol, SourceOperation: req.Operation, RequiredCapabilities: required, PreferredTargetOp: domain.ProtocolOperationOpenAIResponses}
+	}
+	if req.Operation == domain.ProtocolOperationCodexResponses {
 		return RequestProfile{SourceProtocol: req.Protocol, SourceOperation: req.Operation, RequiredCapabilities: required, PreferredTargetOp: domain.ProtocolOperationOpenAIResponses}
 	}
 
@@ -124,19 +130,30 @@ func analyzeClaudeMetadata(required map[Capability]struct{}, req domain.GatewayR
 	if hasRawMetadataKey(req.Metadata, "cache_control") {
 		addCapability(required, CapabilityClaudePromptCaching)
 	}
-	if hasRawMetadataKey(req.Metadata, "container") || hasRawMetadataKey(req.Metadata, "context_management") || hasRawMetadataKey(req.Metadata, "mcp_servers") {
+	if hasRawMetadataKey(req.Metadata, "container") {
+		addCapability(required, CapabilityClaudeContainer)
+		addCapability(required, CapabilityClaudeBetaHeader)
+	}
+	if hasRawMetadataKey(req.Metadata, "context_management") {
+		addCapability(required, CapabilityClaudeContextManagement)
+		addCapability(required, CapabilityClaudeBetaHeader)
+	}
+	if hasRawMetadataKey(req.Metadata, "mcp_servers") {
+		addCapability(required, CapabilityClaudeMCPServers)
 		addCapability(required, CapabilityClaudeBetaHeader)
 	}
 }
 
 func analyzeGeminiMetadata(required map[Capability]struct{}, req domain.GatewayRequest) {
 	if config, ok := req.Metadata["generationConfig"]; ok {
-		addCapability(required, CapabilityGeminiGenerationConfig)
 		if rawJSONContains(config, "responseSchema", "response_schema", "responseJsonSchema", "response_mime_type", "responseMimeType") {
 			addCapability(required, CapabilityGeminiStructuredOutputs)
 		}
 		if rawJSONContains(config, "thinkingConfig", "thinking_config") {
 			addCapability(required, CapabilityGeminiThinking)
+		}
+		if rawJSONContains(config, "candidateCount", "candidate_count", "stopSequences", "stop_sequences", "maxOutputTokens", "max_output_tokens", "temperature", "topP", "top_p", "topK", "top_k", "presencePenalty", "presence_penalty", "frequencyPenalty", "frequency_penalty", "responseLogprobs", "response_logprobs", "logprobs", "seed") {
+			addCapability(required, CapabilityGeminiGenerationConfig)
 		}
 	}
 	if hasRawMetadataKey(req.Metadata, "safetySettings") {
@@ -145,15 +162,18 @@ func analyzeGeminiMetadata(required map[Capability]struct{}, req domain.GatewayR
 	if hasRawMetadataKey(req.Metadata, "toolConfig") {
 		addCapability(required, CapabilityGeminiToolConfig)
 	}
-}
-
-func analyzeTools(required map[Capability]struct{}, tools []json.RawMessage) {
-	for _, raw := range tools {
-		analyzeRawTool(required, raw)
+	if hasRawMetadataKey(req.Metadata, "cachedContent") || hasRawMetadataKey(req.Metadata, "cached_content") {
+		addCapability(required, CapabilityGeminiCachedContent)
 	}
 }
 
-func analyzeRawTool(required map[Capability]struct{}, raw json.RawMessage) {
+func analyzeTools(required map[Capability]struct{}, protocol domain.Protocol, operation domain.ProtocolOperation, tools []json.RawMessage) {
+	for _, raw := range tools {
+		analyzeRawTool(required, protocol, operation, raw)
+	}
+}
+
+func analyzeRawTool(required map[Capability]struct{}, protocol domain.Protocol, operation domain.ProtocolOperation, raw json.RawMessage) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &payload); err == nil {
 		if toolType := decodeRawToolType(payload); toolType != "" {
@@ -169,8 +189,11 @@ func analyzeRawTool(required map[Capability]struct{}, raw json.RawMessage) {
 			case "mcp", "remote_mcp":
 				addCapability(required, CapabilityBuiltinRemoteMCP)
 			case "computer_use", "computer_use_preview", "computer-preview", "computer":
-				addCapability(required, CapabilityBuiltinComputerUse)
-				addCapability(required, CapabilityClaudeComputerUse)
+				if protocol == domain.ProtocolClaude || operation == domain.ProtocolOperationClaudeMessages {
+					addCapability(required, CapabilityClaudeComputerUse)
+				} else {
+					addCapability(required, CapabilityBuiltinComputerUse)
+				}
 			case "shell":
 				addCapability(required, CapabilityBuiltinShell)
 			case "apply_patch":
@@ -226,6 +249,8 @@ func defaultOperationForProtocol(protocol domain.Protocol, stream bool) domain.P
 			return domain.ProtocolOperationGeminiStreamGenerate
 		}
 		return domain.ProtocolOperationGeminiGenerateContent
+	case domain.ProtocolCodex:
+		return domain.ProtocolOperationCodexResponses
 	default:
 		return domain.ProtocolOperationOpenAIChatCompletions
 	}

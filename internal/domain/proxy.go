@@ -73,6 +73,7 @@ type GatewayMessage struct {
 	Role      string                     `json:"role"`
 	Parts     []UnifiedPart              `json:"parts"`
 	ToolCalls []UnifiedToolCall          `json:"tool_calls,omitempty"`
+	InputItem json.RawMessage            `json:"input_item,omitempty"`
 	Metadata  map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 

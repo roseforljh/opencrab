@@ -81,7 +81,7 @@ func (s *ResponseSessionStore) PutContext(ctx context.Context, session httpserve
 func transcriptFromUnified(messages []domain.UnifiedMessage) []domain.GatewayMessage {
 	result := make([]domain.GatewayMessage, 0, len(messages))
 	for _, message := range messages {
-		result = append(result, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, Metadata: message.Metadata})
+		result = append(result, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, InputItem: message.InputItem, Metadata: message.Metadata})
 	}
 	return result
 }

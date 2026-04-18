@@ -179,6 +179,32 @@ func TestOpenAIExecutorUsesResponsesEndpointForNativeResponses(t *testing.T) {
 	}
 }
 
+func TestOpenAIExecutorReturnsNativeResponsesStreamWhenRequested(t *testing.T) {
+	body := &trackingReadCloser{reader: strings.NewReader("event: response.created\ndata: {}\n\n")}
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://api.openai.com/v1/responses" {
+			t.Fatalf("unexpected url: %s", req.URL.String())
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: body}, nil
+	})}
+
+	result, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Stream:    true,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if result.Stream == nil || body.readCalls != 0 {
+		t.Fatalf("expected native stream result: %#v readCalls=%d", result, body.readCalls)
+	}
+}
+
 func TestOpenAIExecutorStripsResponsesOnlyFields(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -309,5 +335,419 @@ func TestGeminiExecutorUsesStreamGenerateContentURLWhenStreamEnabled(t *testing.
 	}
 	if result.Stream == nil {
 		t.Fatalf("expected stream result: %#v", result)
+	}
+}
+
+func TestGeminiExecutorTransformsOpenAIStructuredOutputsToGenerationConfig(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"response_format": json.RawMessage(`{"type":"json_schema","json_schema":{"name":"answer","schema":{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if _, exists := captured["response_format"]; exists {
+		t.Fatalf("unexpected response_format leak: %#v", captured)
+	}
+	config, ok := captured["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing generationConfig: %#v", captured)
+	}
+	if config["responseMimeType"] != "application/json" {
+		t.Fatalf("unexpected responseMimeType: %#v", config)
+	}
+	if _, ok := config["responseSchema"].(map[string]any); !ok {
+		t.Fatalf("missing responseSchema: %#v", config)
+	}
+}
+
+func TestOpenAIExecutorTransformsGeminiStructuredOutputsToResponseFormat(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolGemini,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"generationConfig": json.RawMessage(`{"responseMimeType":"application/json","responseSchema":{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if _, exists := captured["generationConfig"]; exists {
+		t.Fatalf("unexpected generationConfig leak: %#v", captured)
+	}
+	responseFormat, ok := captured["response_format"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing response_format: %#v", captured)
+	}
+	if responseFormat["type"] != "json_schema" {
+		t.Fatalf("unexpected response_format: %#v", responseFormat)
+	}
+	jsonSchema, ok := responseFormat["json_schema"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing json_schema: %#v", responseFormat)
+	}
+	if _, ok := jsonSchema["schema"].(map[string]any); !ok {
+		t.Fatalf("missing response_format schema: %#v", jsonSchema)
+	}
+}
+
+func TestGeminiExecutorTransformsOpenAIReasoningToThinkingConfig(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"reasoning": json.RawMessage(`{"effort":"high","summary":"auto"}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	config, ok := captured["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing generationConfig: %#v", captured)
+	}
+	thinkingConfig, ok := config["thinkingConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing thinkingConfig: %#v", config)
+	}
+	if thinkingConfig["thinkingBudget"] == nil || thinkingConfig["includeThoughts"] != true {
+		t.Fatalf("unexpected thinkingConfig: %#v", thinkingConfig)
+	}
+	if _, exists := captured["reasoning"]; exists {
+		t.Fatalf("unexpected reasoning leak: %#v", captured)
+	}
+}
+
+func TestClaudeExecutorTransformsOpenAIReasoningToThinking(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+
+	_, err := NewClaudeExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
+		UpstreamModel: "claude-3-5-sonnet",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"reasoning": json.RawMessage(`{"effort":"medium"}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if _, exists := captured["reasoning"]; exists {
+		t.Fatalf("unexpected reasoning leak: %#v", captured)
+	}
+	thinking, ok := captured["thinking"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing thinking: %#v", captured)
+	}
+	if thinking["type"] != "enabled" {
+		t.Fatalf("unexpected thinking payload: %#v", thinking)
+	}
+}
+
+func TestOpenAIExecutorTransformsGeminiCodeExecutionTool(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-4o-mini",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolGemini,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:    []json.RawMessage{json.RawMessage(`{"codeExecution":{}}`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "code_interpreter" {
+		t.Fatalf("unexpected tool payload: %#v", tool)
+	}
+}
+
+func TestGeminiExecutorTransformsOpenAICodeInterpreterTool(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:    []json.RawMessage{json.RawMessage(`{"type":"code_interpreter","container":{"type":"auto"}}`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	if _, ok := tool["codeExecution"].(map[string]any); !ok {
+		t.Fatalf("unexpected tool payload: %#v", tool)
+	}
+}
+
+func TestOpenAIExecutorTransformsClaudeMCPServersToResponsesTool(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"mcp_servers": json.RawMessage(`[{"name":"repo","type":"url","url":"https://example.com/mcp"}]`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "mcp" || tool["server_url"] != "https://example.com/mcp" {
+		t.Fatalf("unexpected mcp tool: %#v", tool)
+	}
+	if _, exists := captured["mcp_servers"]; exists {
+		t.Fatalf("unexpected mcp_servers leak: %#v", captured)
+	}
+}
+
+func TestClaudeExecutorTransformsOpenAIMCPToolAndAddsBetaHeader(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.Header.Get("anthropic-beta"), "mcp-client-2025-11-20") {
+			t.Fatalf("unexpected anthropic-beta: %s", req.Header.Get("anthropic-beta"))
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+
+	_, err := NewClaudeExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
+		UpstreamModel: "claude-3-5-sonnet",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:    []json.RawMessage{json.RawMessage(`{"type":"mcp","server_label":"repo","server_url":"https://example.com/mcp"}`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if _, exists := captured["tools"]; exists {
+		t.Fatalf("unexpected tools leak in Claude payload: %#v", captured)
+	}
+	servers, ok := captured["mcp_servers"].([]any)
+	if !ok || len(servers) != 1 {
+		t.Fatalf("unexpected mcp_servers payload: %#v", captured)
+	}
+	server := servers[0].(map[string]any)
+	if server["url"] != "https://example.com/mcp" {
+		t.Fatalf("unexpected mcp server payload: %#v", server)
+	}
+}
+
+func TestClaudeExecutorTransformsOpenAICodeInterpreterToolToContainer(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.Header.Get("anthropic-beta"), "code-execution-2025-08-25") {
+			t.Fatalf("unexpected anthropic-beta: %s", req.Header.Get("anthropic-beta"))
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
+	})}
+
+	_, err := NewClaudeExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "claude", Endpoint: "https://api.anthropic.com", APIKey: "claude-key"},
+		UpstreamModel: "claude-3-5-sonnet",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:    []json.RawMessage{json.RawMessage(`{"type":"code_interpreter","container":{"type":"auto"}}`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if _, exists := captured["container"]; !exists {
+		t.Fatalf("missing Claude container: %#v", captured)
+	}
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected Claude tools: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "code_execution_20250825" {
+		t.Fatalf("unexpected Claude code execution tool: %#v", tool)
+	}
+}
+
+func TestOpenAIExecutorTransformsClaudeContainerToCodeInterpreter(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"container": json.RawMessage(`{"type":"auto"}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected OpenAI tools: %#v", captured)
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "code_interpreter" {
+		t.Fatalf("unexpected code interpreter tool: %#v", tool)
+	}
+	if _, exists := captured["container"]; exists {
+		t.Fatalf("unexpected Claude container leak: %#v", captured)
 	}
 }

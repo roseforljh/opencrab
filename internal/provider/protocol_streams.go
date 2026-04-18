@@ -83,6 +83,14 @@ func EncodeClaudeChatStream(resp domain.UnifiedChatResponse) ([]byte, error) {
 	return []byte(strings.Join(events, "")), nil
 }
 
+func EncodeGeminiChatStream(resp domain.UnifiedChatResponse) ([]byte, error) {
+	body, err := EncodeGeminiChatResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+	return []byte("data: " + string(body) + "\n\n"), nil
+}
+
 func mustOpenAISSE(payload map[string]any) string {
 	body, _ := json.Marshal(payload)
 	return fmt.Sprintf("data: %s\n\n", string(body))

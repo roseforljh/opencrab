@@ -27,6 +27,9 @@ const (
 	CapabilityClaudeToolChoiceForced  Capability = "claude_tool_choice_forced"
 	CapabilityClaudePromptCaching     Capability = "claude_prompt_caching"
 	CapabilityClaudeComputerUse       Capability = "claude_computer_use"
+	CapabilityClaudeMCPServers        Capability = "claude_mcp_servers"
+	CapabilityClaudeContainer         Capability = "claude_container"
+	CapabilityClaudeContextManagement Capability = "claude_context_management"
 	CapabilityGeminiGenerationConfig  Capability = "gemini_generation_config"
 	CapabilityGeminiSafetySettings    Capability = "gemini_safety_settings"
 	CapabilityGeminiToolConfig        Capability = "gemini_tool_config"
@@ -36,6 +39,7 @@ const (
 	CapabilityGeminiURLContext        Capability = "gemini_url_context"
 	CapabilityGeminiCodeExecution     Capability = "gemini_code_execution"
 	CapabilityGeminiThoughtSignatures Capability = "gemini_thought_signatures"
+	CapabilityGeminiCachedContent     Capability = "gemini_cached_content"
 	CapabilityMultimodalImage         Capability = "multimodal_image"
 	CapabilityMultimodalAudio         Capability = "multimodal_audio"
 	CapabilityMultimodalFile          Capability = "multimodal_file"
@@ -62,6 +66,7 @@ func Operations() []string {
 	return []string{
 		string(domain.ProtocolOperationOpenAIChatCompletions),
 		string(domain.ProtocolOperationOpenAIResponses),
+		string(domain.ProtocolOperationCodexResponses),
 		string(domain.ProtocolOperationOpenAIRealtime),
 		string(domain.ProtocolOperationClaudeMessages),
 		string(domain.ProtocolOperationClaudeCountTokens),
@@ -94,6 +99,9 @@ func AllCapabilities() []string {
 		string(CapabilityClaudeToolChoiceForced),
 		string(CapabilityClaudePromptCaching),
 		string(CapabilityClaudeComputerUse),
+		string(CapabilityClaudeMCPServers),
+		string(CapabilityClaudeContainer),
+		string(CapabilityClaudeContextManagement),
 		string(CapabilityGeminiGenerationConfig),
 		string(CapabilityGeminiSafetySettings),
 		string(CapabilityGeminiToolConfig),
@@ -103,6 +111,7 @@ func AllCapabilities() []string {
 		string(CapabilityGeminiURLContext),
 		string(CapabilityGeminiCodeExecution),
 		string(CapabilityGeminiThoughtSignatures),
+		string(CapabilityGeminiCachedContent),
 		string(CapabilityMultimodalImage),
 		string(CapabilityMultimodalAudio),
 		string(CapabilityMultimodalFile),

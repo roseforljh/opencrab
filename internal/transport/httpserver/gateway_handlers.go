@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"opencrab/internal/domain"
 	"opencrab/internal/provider"
+	"opencrab/internal/transform"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -126,7 +128,31 @@ func HandleOpenAIResponses(deps Dependencies) http.HandlerFunc {
 			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
 			return
 		}
-		writeResponsesGatewayResult(deps, w, req, body, result, startedAt)
+		writeResponsesGatewayResult(deps, w, req, body, result, startedAt, transform.Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIResponses})
+	}
+}
+
+func HandleCodexResponses(deps Dependencies) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if wantsAsyncAdmission(req) {
+			accepted, err := acceptGatewayRequest(deps, req, decodeCodexGatewayRequest)
+			if err != nil {
+				renderGatewayError(deps, w, err)
+				return
+			}
+			if tryWriteSyncBridgeResponse(deps, w, req, accepted) {
+				return
+			}
+			writeJSON(w, http.StatusAccepted, accepted)
+			return
+		}
+		body, result, protocol, startedAt, err := executeGatewayRequest(deps, req, decodeCodexGatewayRequest)
+		if err != nil {
+			logGatewayFailureSummary(deps, req, body, protocol, err, startedAt)
+			renderGatewayError(deps, w, err)
+			return
+		}
+		writeResponsesGatewayResult(deps, w, req, body, result, startedAt, transform.Surface{Protocol: domain.ProtocolCodex, Operation: domain.ProtocolOperationCodexResponses})
 	}
 }
 
@@ -273,8 +299,9 @@ func executeGatewayRequest(deps Dependencies, req *http.Request, decode gatewayD
 		gatewayReq.AffinityKey = extractSessionAffinityKey(req, gatewayReq, settings)
 		gatewayReq.RuntimeSettings = &settings
 	}
-	if protocol == domain.ProtocolOpenAI {
-		gatewayReq = mergePreviousResponse(deps.ResponseSessions, gatewayReq)
+	gatewayReq, err = preprocessGatewayRequest(deps.ResponseSessions, gatewayReq)
+	if err != nil {
+		return body, nil, protocol, startedAt, err
 	}
 	result, err := deps.ExecuteGateway(req.Context(), middleware.GetReqID(req.Context()), gatewayReq)
 	if err != nil {
@@ -589,53 +616,59 @@ func mustGatewaySSEEvent(event string, payload map[string]any) string {
 }
 
 func decodeOpenAIGatewayRequest(body []byte, _ *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
-	unified, err := provider.DecodeOpenAIChatRequest(body)
+	request, err := transform.NormalizeGatewayRequest(transform.Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIChatCompletions}, body, transform.NormalizeOptions{})
 	if err != nil {
 		return domain.GatewayRequest{}, "", err
 	}
-	request := unifiedToGatewayRequest(unified, nil, nil)
-	request.Operation = domain.ProtocolOperationOpenAIChatCompletions
 	return request, domain.ProtocolOpenAI, nil
 }
 
 func decodeOpenAIResponsesGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
-	unified, err := provider.DecodeOpenAIResponsesRequest(body)
-	if err != nil {
-		return domain.GatewayRequest{}, "", err
-	}
-	unified.Stream = false
-	session, err := provider.DecodeOpenAIResponsesSession(body)
-	if err != nil {
-		return domain.GatewayRequest{}, "", err
-	}
-	request := unifiedToGatewayRequest(unified, enrichRequestHeaders(req, []string{"OpenAI-Beta", "X-Stainless-Helper-Method", "X-Stainless-Retry-Count", "X-Stainless-Timeout"}), session)
-	request.Operation = domain.ProtocolOperationOpenAIResponses
-	return request, domain.ProtocolOpenAI, nil
+	request, err := transform.NormalizeGatewayRequest(
+		transform.Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIResponses},
+		body,
+		transform.NormalizeOptions{Headers: enrichRequestHeaders(req, []string{"OpenAI-Beta", "X-Stainless-Helper-Method", "X-Stainless-Retry-Count", "X-Stainless-Timeout"})},
+	)
+	return request, domain.ProtocolOpenAI, err
 }
 
 func decodeClaudeGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
-	unified, err := provider.DecodeClaudeChatRequest(body)
-	if err != nil {
-		return domain.GatewayRequest{}, "", err
-	}
-	request := unifiedToGatewayRequest(unified, enrichRequestHeaders(req, []string{"anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"}), nil)
-	request.Operation = domain.ProtocolOperationClaudeMessages
-	return request, domain.ProtocolClaude, nil
+	request, err := transform.NormalizeGatewayRequest(
+		transform.Surface{Protocol: domain.ProtocolClaude, Operation: domain.ProtocolOperationClaudeMessages},
+		body,
+		transform.NormalizeOptions{Headers: enrichRequestHeaders(req, []string{"anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"})},
+	)
+	return request, domain.ProtocolClaude, err
 }
 
 func decodeGeminiGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
-	unified, err := provider.DecodeGeminiChatRequest(body, chi.URLParam(req, "model"))
+	operation := domain.ProtocolOperationGeminiGenerateContent
+	forceStream := false
+	if strings.Contains(req.URL.Path, ":streamGenerateContent") {
+		forceStream = true
+		operation = domain.ProtocolOperationGeminiStreamGenerate
+	}
+	request, err := transform.NormalizeGatewayRequest(
+		transform.Surface{Protocol: domain.ProtocolGemini, Operation: operation},
+		body,
+		transform.NormalizeOptions{PathModel: chi.URLParam(req, "model"), Headers: enrichRequestHeaders(req, nil), ForceStream: forceStream},
+	)
 	if err != nil {
 		return domain.GatewayRequest{}, "", err
 	}
-	operation := domain.ProtocolOperationGeminiGenerateContent
-	if strings.Contains(req.URL.Path, ":streamGenerateContent") {
-		unified.Stream = true
-		operation = domain.ProtocolOperationGeminiStreamGenerate
-	}
-	request := unifiedToGatewayRequest(unified, enrichRequestHeaders(req, nil), nil)
-	request.Operation = operation
 	return request, domain.ProtocolGemini, nil
+}
+
+func decodeCodexGatewayRequest(body []byte, req *http.Request) (domain.GatewayRequest, domain.Protocol, error) {
+	request, err := transform.NormalizeGatewayRequest(
+		transform.Surface{Protocol: domain.ProtocolCodex, Operation: domain.ProtocolOperationCodexResponses},
+		body,
+		transform.NormalizeOptions{Headers: enrichRequestHeaders(req, []string{"OpenAI-Beta", "X-Stainless-Helper-Method", "X-Stainless-Retry-Count", "X-Stainless-Timeout"})},
+	)
+	if err != nil {
+		return domain.GatewayRequest{}, "", err
+	}
+	return request, domain.ProtocolCodex, nil
 }
 
 func DecodeStoredGatewayRequest(protocol domain.Protocol, path string, body []byte, headerJSON string) (domain.GatewayRequest, error) {
@@ -649,6 +682,9 @@ func DecodeStoredGatewayRequest(protocol domain.Protocol, path string, body []by
 		return request, err
 	case domain.ProtocolGemini:
 		request, _, err := decodeGeminiGatewayRequest(body, req)
+		return request, err
+	case domain.ProtocolCodex:
+		request, _, err := decodeCodexGatewayRequest(body, req)
 		return request, err
 	case domain.ProtocolOpenAI:
 		if strings.Contains(strings.TrimSpace(path), "/responses") {
@@ -682,8 +718,9 @@ func DecodeStoredGatewayJobRequest(store ResponseSessionStore, settingsStore fun
 			req.RuntimeSettings = &settings
 		}
 	}
-	if job.Protocol == domain.ProtocolOpenAI {
-		req = mergePreviousResponse(store, req)
+	req, err = preprocessGatewayRequest(store, req)
+	if err != nil {
+		return domain.GatewayRequest{}, err
 	}
 	return req, nil
 }
@@ -709,7 +746,7 @@ func buildStoredGatewayRequest(path string, headerJSON string) (*http.Request, e
 func unifiedToGatewayRequest(unified domain.UnifiedChatRequest, headers map[string]string, session *domain.GatewaySessionState) domain.GatewayRequest {
 	messages := make([]domain.GatewayMessage, 0, len(unified.Messages))
 	for _, message := range unified.Messages {
-		messages = append(messages, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, Metadata: message.Metadata})
+		messages = append(messages, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, InputItem: message.InputItem, Metadata: message.Metadata})
 	}
 	policy := domain.GatewayToolCallReject
 	if len(unified.Tools) > 0 || hasToolMessages(messages) || session != nil && len(session.ToolResults) > 0 {
@@ -732,7 +769,7 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 		return
 	}
 	providerName := normalizedHeaderProvider(result.Response.Headers)
-	if requestWantsStream(requestBody) && shouldSynthesizeProtocolStream(protocol, providerName) {
+	if requestWantsStreamForProtocol(protocol, req, requestBody) && shouldSynthesizeProtocolStream(protocol, providerName) {
 		unified, err := decodeUnifiedByProvider(providerName, result.Response.Body)
 		if err == nil {
 			encoded, headers, streamErr := encodeProtocolStream(protocol, unified)
@@ -747,7 +784,7 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 			}
 		}
 	}
-	resp := encodeGatewayResponseForProtocol(result.Response, protocol)
+	resp := encodeGatewayResponseForSurface(result.Response, defaultSurfaceForProtocol(protocol, false))
 	if err := deps.CopyProxy(w, resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -755,12 +792,20 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 	logGatewayRequestSummary(deps, req, requestBody, resp.StatusCode, resp.Headers, resp.Body, startedAt, result.Metadata)
 }
 
-func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, result *domain.ExecutionResult, startedAt time.Time) {
+func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, result *domain.ExecutionResult, startedAt time.Time, surface transform.Surface) {
+	if result != nil && result.Stream != nil {
+		if err := deps.CopyStream(w, result.Stream); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		logGatewayRequestSummary(deps, req, requestBody, result.Stream.StatusCode, result.Stream.Headers, nil, startedAt, result.Metadata)
+		return
+	}
 	if result == nil || result.Response == nil {
 		http.Error(w, "empty gateway result", http.StatusBadGateway)
 		return
 	}
-	resp := encodeGatewayResponseForProtocol(result.Response, domain.ProtocolOpenAI)
+	resp := encodeGatewayResponseForSurface(result.Response, surface)
 	providerName := normalizedHeaderProvider(resp.Headers)
 	unified, err := decodeUnifiedByProvider(providerName, resp.Body)
 	if err != nil {
@@ -769,11 +814,11 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 		}
 		return
 	}
-	streamRequested := requestWantsStream(requestBody)
+	streamRequested := requestWantsStreamForProtocol(surface.Protocol, req, requestBody)
 	if deps.ResponseSessions != nil {
 		storeResponseSession(deps.ResponseSessions, req, requestBody, unified)
 	}
-	encoded, headers, err := encodeResponsesProxyResponse(unified, streamRequested)
+	encoded, headers, err := transform.RenderClientResponse(surface, unified, streamRequested)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -786,60 +831,24 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 	logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata)
 }
 
-func encodeGatewayResponseForProtocol(resp *domain.ProxyResponse, protocol domain.Protocol) *domain.ProxyResponse {
+func encodeGatewayResponseForSurface(resp *domain.ProxyResponse, surface transform.Surface) *domain.ProxyResponse {
 	providerName := normalizedHeaderProvider(resp.Headers)
-	if protocolMatchesProvider(protocol, providerName) {
+	if protocolMatchesProvider(surface.Protocol, providerName) {
 		return resp
 	}
 	unified, err := decodeUnifiedByProvider(providerName, resp.Body)
 	if err != nil {
 		return resp
 	}
-	encoded, err := encodeUnifiedByProtocol(protocol, unified)
+	encoded, headers, err := transform.RenderClientResponse(surface, unified, false)
 	if err != nil {
 		return resp
 	}
-	headers := cloneHeaderMap(resp.Headers)
-	headers["Content-Type"] = []string{"application/json"}
 	return &domain.ProxyResponse{StatusCode: resp.StatusCode, Headers: headers, Body: encoded}
 }
 
 func decodeUnifiedByProvider(providerName string, body []byte) (domain.UnifiedChatResponse, error) {
-	switch providerName {
-	case "claude":
-		return provider.DecodeClaudeChatResponse(body)
-	case "gemini":
-		return provider.DecodeGeminiChatResponse(body)
-	default:
-		if looksLikeOpenAIResponsesPayload(body) {
-			return provider.DecodeOpenAIResponsesResponse(body)
-		}
-		return provider.DecodeOpenAIChatResponse(body)
-	}
-}
-
-func looksLikeOpenAIResponsesPayload(body []byte) bool {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return false
-	}
-	var objectType string
-	if err := json.Unmarshal(raw["object"], &objectType); err == nil && strings.TrimSpace(objectType) == "response" {
-		return true
-	}
-	_, hasOutput := raw["output"]
-	return hasOutput
-}
-
-func encodeUnifiedByProtocol(protocol domain.Protocol, resp domain.UnifiedChatResponse) ([]byte, error) {
-	switch protocol {
-	case domain.ProtocolClaude:
-		return provider.EncodeClaudeChatResponse(resp)
-	case domain.ProtocolGemini:
-		return provider.EncodeGeminiChatResponse(resp)
-	default:
-		return provider.EncodeOpenAIChatResponse(resp)
-	}
+	return transform.DecodeUpstreamResponse(providerName, body)
 }
 
 func normalizedHeaderProvider(headers map[string][]string) string {
@@ -852,6 +861,8 @@ func protocolMatchesProvider(protocol domain.Protocol, providerName string) bool
 		return providerName == "claude"
 	case domain.ProtocolGemini:
 		return providerName == "gemini"
+	case domain.ProtocolCodex:
+		return providerName == "" || providerName == "openai" || providerName == "openrouter" || providerName == "glm" || providerName == "kimi" || providerName == "minimax"
 	default:
 		return providerName == "" || providerName == "openai" || providerName == "openrouter" || providerName == "glm" || providerName == "kimi" || providerName == "minimax"
 	}
@@ -1048,6 +1059,13 @@ func requestWantsStream(body []byte) bool {
 	return payload.Stream
 }
 
+func requestWantsStreamForProtocol(protocol domain.Protocol, req *http.Request, body []byte) bool {
+	if protocol == domain.ProtocolGemini && req != nil && strings.Contains(req.URL.Path, ":streamGenerateContent") {
+		return true
+	}
+	return requestWantsStream(body)
+}
+
 func encodeResponsesProxyResponse(resp domain.UnifiedChatResponse, stream bool) ([]byte, map[string][]string, error) {
 	if stream {
 		body, err := provider.EncodeOpenAIResponsesStream(resp)
@@ -1068,6 +1086,10 @@ func shouldSynthesizeProtocolStream(protocol domain.Protocol, providerName strin
 	switch protocol {
 	case domain.ProtocolClaude:
 		return providerName != "claude"
+	case domain.ProtocolGemini:
+		return providerName != "gemini"
+	case domain.ProtocolCodex:
+		return providerName != "openai" && providerName != "openrouter" && providerName != "glm" && providerName != "kimi" && providerName != "minimax"
 	case domain.ProtocolOpenAI:
 		return providerName != "openai" && providerName != "openrouter" && providerName != "glm" && providerName != "kimi" && providerName != "minimax"
 	default:
@@ -1076,19 +1098,22 @@ func shouldSynthesizeProtocolStream(protocol domain.Protocol, providerName strin
 }
 
 func encodeProtocolStream(protocol domain.Protocol, resp domain.UnifiedChatResponse) ([]byte, map[string][]string, error) {
+	return transform.RenderClientResponse(defaultSurfaceForProtocol(protocol, true), resp, true)
+}
+
+func defaultSurfaceForProtocol(protocol domain.Protocol, stream bool) transform.Surface {
 	switch protocol {
 	case domain.ProtocolClaude:
-		body, err := provider.EncodeClaudeChatStream(resp)
-		if err != nil {
-			return nil, nil, err
+		return transform.Surface{Protocol: domain.ProtocolClaude, Operation: domain.ProtocolOperationClaudeMessages}
+	case domain.ProtocolGemini:
+		if stream {
+			return transform.Surface{Protocol: domain.ProtocolGemini, Operation: domain.ProtocolOperationGeminiStreamGenerate}
 		}
-		return body, map[string][]string{"Content-Type": {"text/event-stream"}, "Cache-Control": {"no-cache"}, "Connection": {"keep-alive"}}, nil
+		return transform.Surface{Protocol: domain.ProtocolGemini, Operation: domain.ProtocolOperationGeminiGenerateContent}
+	case domain.ProtocolCodex:
+		return transform.Surface{Protocol: domain.ProtocolCodex, Operation: domain.ProtocolOperationCodexResponses}
 	default:
-		body, err := provider.EncodeOpenAIChatStream(resp)
-		if err != nil {
-			return nil, nil, err
-		}
-		return body, map[string][]string{"Content-Type": {"text/event-stream"}, "Cache-Control": {"no-cache"}, "Connection": {"keep-alive"}}, nil
+		return transform.Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIChatCompletions}
 	}
 }
 
@@ -1134,10 +1159,10 @@ func storeResponseSession(store ResponseSessionStore, req *http.Request, request
 	}
 	if unifiedReq, err := provider.DecodeOpenAIResponsesRequest(requestBody); err == nil {
 		for _, message := range unifiedReq.Messages {
-			transcript = append(transcript, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, Metadata: message.Metadata})
+			transcript = append(transcript, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, InputItem: message.InputItem, Metadata: message.Metadata})
 		}
 	}
-	transcript = append(transcript, domain.GatewayMessage{Role: resp.Message.Role, Parts: resp.Message.Parts, ToolCalls: resp.Message.ToolCalls, Metadata: resp.Message.Metadata})
+	transcript = append(transcript, domain.GatewayMessage{Role: resp.Message.Role, Parts: resp.Message.Parts, ToolCalls: resp.Message.ToolCalls, InputItem: resp.Message.InputItem, Metadata: resp.Message.Metadata})
 	transcript = repairGatewayTranscript(transcript)
 	store.Put(ResponseSession{ResponseID: resp.ID, SessionID: sessionID, Model: resp.Model, Messages: transcript, UpdatedAt: time.Now()})
 }
@@ -1155,6 +1180,303 @@ func mergePreviousResponse(store ResponseSessionStore, gatewayReq domain.Gateway
 	history = append(history, gatewayReq.Messages...)
 	merged.Messages = history
 	return merged
+}
+
+func preprocessGatewayRequest(store ResponseSessionStore, gatewayReq domain.GatewayRequest) (domain.GatewayRequest, error) {
+	if gatewayReq.Protocol == domain.ProtocolOpenAI {
+		gatewayReq = mergePreviousResponse(store, gatewayReq)
+	}
+	if gatewayReq.Protocol == domain.ProtocolGemini {
+		gatewayReq = mergeGeminiCachedContent(store, gatewayReq)
+		var err error
+		gatewayReq, err = expandGeminiURLContext(gatewayReq)
+		if err != nil {
+			return gatewayReq, err
+		}
+	}
+	gatewayReq = applyClaudeContextManagement(gatewayReq)
+	return gatewayReq, nil
+}
+
+func mergeGeminiCachedContent(store ResponseSessionStore, gatewayReq domain.GatewayRequest) domain.GatewayRequest {
+	if store == nil {
+		return gatewayReq
+	}
+	cacheName := cachedContentNameFromMetadata(gatewayReq.Metadata)
+	if strings.TrimSpace(cacheName) == "" {
+		return gatewayReq
+	}
+	previous, ok := store.Get(cacheName)
+	if !ok {
+		return gatewayReq
+	}
+	merged := gatewayReq
+	history := append([]domain.GatewayMessage(nil), previous.Messages...)
+	history = append(history, gatewayReq.Messages...)
+	merged.Messages = history
+	if merged.Metadata != nil {
+		delete(merged.Metadata, "cachedContent")
+		delete(merged.Metadata, "cached_content")
+		if len(merged.Metadata) == 0 {
+			merged.Metadata = nil
+		}
+	}
+	return merged
+}
+
+var urlContextPattern = regexp.MustCompile(`https?://[^\s<>"')]+`)
+var htmlTagPattern = regexp.MustCompile(`(?s)<[^>]+>`)
+
+func expandGeminiURLContext(gatewayReq domain.GatewayRequest) (domain.GatewayRequest, error) {
+	if !requestHasGeminiURLContextTool(gatewayReq.Tools) {
+		return gatewayReq, nil
+	}
+	urls := collectRequestURLs(gatewayReq.Messages)
+	if len(urls) == 0 {
+		return gatewayReq, nil
+	}
+	contextMessages := make([]domain.GatewayMessage, 0, len(urls))
+	for _, targetURL := range urls {
+		message, err := fetchURLContextMessage(targetURL)
+		if err != nil {
+			return gatewayReq, err
+		}
+		if len(message.Parts) == 0 {
+			continue
+		}
+		contextMessages = append(contextMessages, message)
+	}
+	if len(contextMessages) == 0 {
+		return gatewayReq, nil
+	}
+	expanded := gatewayReq
+	expanded.Messages = append(contextMessages, expanded.Messages...)
+	expanded.Tools = stripGeminiURLContextTools(expanded.Tools)
+	return expanded, nil
+}
+
+func requestHasGeminiURLContextTool(tools []json.RawMessage) bool {
+	for _, raw := range tools {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			continue
+		}
+		if payload["urlContext"] != nil || payload["url_context"] != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func stripGeminiURLContextTools(tools []json.RawMessage) []json.RawMessage {
+	if len(tools) == 0 {
+		return nil
+	}
+	filtered := make([]json.RawMessage, 0, len(tools))
+	for _, raw := range tools {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			filtered = append(filtered, raw)
+			continue
+		}
+		if payload["urlContext"] != nil || payload["url_context"] != nil {
+			continue
+		}
+		filtered = append(filtered, raw)
+	}
+	return filtered
+}
+
+func collectRequestURLs(messages []domain.GatewayMessage) []string {
+	seen := map[string]struct{}{}
+	urls := make([]string, 0)
+	appendURL := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		urls = append(urls, value)
+	}
+	for _, message := range messages {
+		for _, part := range message.Parts {
+			for _, match := range urlContextPattern.FindAllString(part.Text, -1) {
+				appendURL(match)
+			}
+			for _, key := range []string{"url", "file_uri"} {
+				if raw, ok := part.Metadata[key]; ok {
+					var value string
+					if err := json.Unmarshal(raw, &value); err == nil {
+						appendURL(value)
+					}
+				}
+			}
+		}
+	}
+	return urls
+}
+
+func fetchURLContextMessage(targetURL string) (domain.GatewayMessage, error) {
+	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	if err != nil {
+		return domain.GatewayMessage{}, fmt.Errorf("构建 URL Context 请求失败: %w", err)
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return domain.GatewayMessage{}, fmt.Errorf("抓取 URL Context 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return domain.GatewayMessage{}, fmt.Errorf("抓取 URL Context 失败: upstream returned %d", resp.StatusCode)
+	}
+	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "image/") {
+		return domain.GatewayMessage{
+			Role: "user",
+			Parts: []domain.UnifiedPart{
+				{Type: "text", Text: "Referenced URL context"},
+				{Type: "image", Metadata: map[string]json.RawMessage{"url": marshalGatewayRawString(targetURL), "mime_type": marshalGatewayRawString(strings.Split(contentType, ";")[0])}},
+			},
+		}, nil
+	}
+	if strings.Contains(contentType, "pdf") {
+		return domain.GatewayMessage{
+			Role: "user",
+			Parts: []domain.UnifiedPart{
+				{Type: "text", Text: "Referenced URL context"},
+				{Type: "document", Metadata: map[string]json.RawMessage{"url": marshalGatewayRawString(targetURL), "mime_type": marshalGatewayRawString("application/pdf")}},
+			},
+		}, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return domain.GatewayMessage{}, fmt.Errorf("读取 URL Context 失败: %w", err)
+	}
+	text := sanitizeFetchedURLText(string(body), contentType)
+	if strings.TrimSpace(text) == "" {
+		return domain.GatewayMessage{}, nil
+	}
+	return domain.GatewayMessage{
+		Role: "system",
+		Parts: []domain.UnifiedPart{{Type: "text", Text: "URL context from " + targetURL + ":\n" + text}},
+	}, nil
+}
+
+func sanitizeFetchedURLText(body string, contentType string) string {
+	if strings.Contains(contentType, "html") {
+		replacer := strings.NewReplacer("<br>", "\n", "<br/>", "\n", "<br />", "\n", "</p>", "\n", "</div>", "\n", "</li>", "\n")
+		body = replacer.Replace(body)
+		body = htmlTagPattern.ReplaceAllString(body, " ")
+	}
+	body = strings.ReplaceAll(body, "\r", "")
+	lines := strings.Split(body, "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	body = strings.Join(filtered, "\n")
+	if len(body) > 12000 {
+		body = body[:12000]
+	}
+	return body
+}
+
+func marshalGatewayRawString(value string) json.RawMessage {
+	body, _ := json.Marshal(value)
+	return body
+}
+
+func applyClaudeContextManagement(gatewayReq domain.GatewayRequest) domain.GatewayRequest {
+	raw := gatewayReq.Metadata["context_management"]
+	if len(raw) == 0 {
+		return gatewayReq
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return gatewayReq
+	}
+	edited := false
+	if clear, ok := decodeContextManagementBoolean(payload, "clear_function_results", "clear_tool_uses"); ok && clear {
+		gatewayReq.Messages = clearHistoricalToolUses(gatewayReq.Messages)
+		edited = true
+	}
+	if clear, ok := decodeContextManagementBoolean(payload, "clear_thinking"); ok && clear {
+		gatewayReq.Messages = clearHistoricalThinking(gatewayReq.Messages)
+		edited = true
+	}
+	if edited {
+		gatewayReq.Messages = repairGatewayTranscript(gatewayReq.Messages)
+	}
+	return gatewayReq
+}
+
+func decodeContextManagementBoolean(payload map[string]json.RawMessage, keys ...string) (bool, bool) {
+	for _, key := range keys {
+		value, ok := payload[key]
+		if !ok {
+			continue
+		}
+		var flag bool
+		if err := json.Unmarshal(value, &flag); err == nil {
+			return flag, true
+		}
+	}
+	return false, false
+}
+
+func clearHistoricalToolUses(messages []domain.GatewayMessage) []domain.GatewayMessage {
+	cleared := make([]domain.GatewayMessage, 0, len(messages))
+	for _, message := range messages {
+		if strings.EqualFold(message.Role, "tool") {
+			continue
+		}
+		next := message
+		next.ToolCalls = nil
+		if len(next.Parts) > 0 {
+			filteredParts := make([]domain.UnifiedPart, 0, len(next.Parts))
+			for _, part := range next.Parts {
+				switch part.Type {
+				case "tool_result", "function_response", "computer_call", "computer_call_output", "mcp_call", "mcp_list_tools", "mcp_approval_request", "custom_tool_call", "code_interpreter_call", "image_generation_call", "local_shell_call", "local_shell_call_output", "shell_call_output", "apply_patch_call", "apply_patch_call_output":
+					continue
+				default:
+					filteredParts = append(filteredParts, part)
+				}
+			}
+			next.Parts = filteredParts
+		}
+		if len(next.Parts) == 0 && len(next.ToolCalls) == 0 && strings.EqualFold(next.Role, "assistant") {
+			continue
+		}
+		cleared = append(cleared, next)
+	}
+	return cleared
+}
+
+func clearHistoricalThinking(messages []domain.GatewayMessage) []domain.GatewayMessage {
+	cleared := make([]domain.GatewayMessage, 0, len(messages))
+	for _, message := range messages {
+		next := message
+		if len(next.Parts) > 0 {
+			filteredParts := make([]domain.UnifiedPart, 0, len(next.Parts))
+			for _, part := range next.Parts {
+				if part.Type == "reasoning" {
+					continue
+				}
+				filteredParts = append(filteredParts, part)
+			}
+			next.Parts = filteredParts
+		}
+		cleared = append(cleared, next)
+	}
+	return cleared
 }
 
 func extractPreviousResponseID(body []byte) (string, bool) {

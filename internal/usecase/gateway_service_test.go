@@ -542,6 +542,29 @@ func TestGatewayServiceClaudeNativeMetadataRequireClaudeProvider(t *testing.T) {
 	}
 }
 
+func TestGatewayServiceFallsBackToTranslatedOpenAIRouteWhenNoClaudeRouteExists(t *testing.T) {
+	openaiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-openai`)}}}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 1, ModelAlias: "m", UpstreamModel: "u-openai", Channel: domain.UpstreamChannel{Name: "openai-a", Provider: "openai"}, Priority: 1},
+	}, map[string]domain.Executor{"openai": openaiExecutor}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-reject", domain.GatewayRequest{
+		Protocol:  domain.ProtocolClaude,
+		Operation: domain.ProtocolOperationClaudeMessages,
+		Model:     "m",
+		Messages:  []domain.GatewayMessage{testGatewayMessage("user", "x")},
+		Metadata: map[string]json.RawMessage{
+			"thinking": json.RawMessage(`{"type":"enabled","budget_tokens":1024}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(result.Response.Body) != "ok-openai" || openaiExecutor.calls != 1 {
+		t.Fatalf("unexpected result: %#v calls=%d", result, openaiExecutor.calls)
+	}
+}
+
 func TestGatewayServiceResponsesSessionRequiresOpenAICompatibleRoute(t *testing.T) {
 	openaiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-openai`)}}}
 	claudeExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-claude`)}}}

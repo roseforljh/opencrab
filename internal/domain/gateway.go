@@ -12,6 +12,7 @@ const (
 	ProtocolOpenAI Protocol = "openai"
 	ProtocolClaude Protocol = "claude"
 	ProtocolGemini Protocol = "gemini"
+	ProtocolCodex  Protocol = "codex"
 )
 
 type ProtocolOperation string
@@ -19,6 +20,7 @@ type ProtocolOperation string
 const (
 	ProtocolOperationOpenAIChatCompletions ProtocolOperation = "chat_completions"
 	ProtocolOperationOpenAIResponses       ProtocolOperation = "responses"
+	ProtocolOperationCodexResponses        ProtocolOperation = "codex_responses"
 	ProtocolOperationOpenAIRealtime        ProtocolOperation = "realtime"
 	ProtocolOperationClaudeMessages        ProtocolOperation = "messages"
 	ProtocolOperationClaudeCountTokens     ProtocolOperation = "count_tokens"
@@ -40,13 +42,18 @@ type UnifiedMessage struct {
 	Role      string                     `json:"role"`
 	Parts     []UnifiedPart              `json:"parts"`
 	ToolCalls []UnifiedToolCall          `json:"tool_calls,omitempty"`
+	InputItem json.RawMessage            `json:"input_item,omitempty"`
 	Metadata  map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 type UnifiedPart struct {
-	Type     string                     `json:"type"`
-	Text     string                     `json:"text,omitempty"`
-	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
+	Type          string                     `json:"type"`
+	Text          string                     `json:"text,omitempty"`
+	Order         *int                       `json:"order,omitempty"`
+	InputItem     json.RawMessage            `json:"input_item,omitempty"`
+	OutputItem    json.RawMessage            `json:"output_item,omitempty"`
+	NativePayload json.RawMessage            `json:"native_payload,omitempty"`
+	Metadata      map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 type UnifiedChatResponse struct {
@@ -60,10 +67,14 @@ type UnifiedChatResponse struct {
 }
 
 type UnifiedToolCall struct {
-	ID        string                     `json:"id,omitempty"`
-	Name      string                     `json:"name"`
-	Arguments json.RawMessage            `json:"arguments,omitempty"`
-	Metadata  map[string]json.RawMessage `json:"metadata,omitempty"`
+	ID            string                     `json:"id,omitempty"`
+	Name          string                     `json:"name"`
+	Arguments     json.RawMessage            `json:"arguments,omitempty"`
+	Order         *int                       `json:"order,omitempty"`
+	InputItem     json.RawMessage            `json:"input_item,omitempty"`
+	OutputItem    json.RawMessage            `json:"output_item,omitempty"`
+	NativePayload json.RawMessage            `json:"native_payload,omitempty"`
+	Metadata      map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 type UnifiedStreamEvent struct {
@@ -108,7 +119,7 @@ func (r UnifiedChatRequest) ValidateCore() error {
 		}
 
 		if len(message.Parts) == 0 {
-			if len(message.ToolCalls) == 0 {
+			if len(message.ToolCalls) == 0 && len(message.InputItem) == 0 {
 				return fmt.Errorf("messages[%d].parts 不能为空", i)
 			}
 		}

@@ -18,6 +18,8 @@ import (
 	store "opencrab/internal/store/sqlite"
 	"opencrab/internal/transport/httpserver"
 	"opencrab/internal/usecase"
+
+	"github.com/gorilla/websocket"
 )
 
 // App 表示当前后端服务的应用实例。
@@ -292,6 +294,34 @@ func New() (*App, error) {
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
 			return gatewayService.Execute(ctx, requestID, req)
 		},
+		SelectDirectRoute: func(ctx context.Context, model string, providerName string, scope *domain.APIKeyScope) (domain.GatewayRoute, error) {
+			routes, err := gatewayStore.ListEnabledRoutesByModel(ctx, model)
+			if err != nil {
+				return domain.GatewayRoute{}, err
+			}
+			targetProvider := domain.NormalizeProvider(providerName)
+			now := time.Now()
+			for _, route := range routes {
+				if domain.NormalizeProvider(route.Channel.Provider) != targetProvider {
+					continue
+				}
+				if scope != nil {
+					if len(scope.ModelAliases) > 0 && !containsString(scope.ModelAliases, route.ModelAlias) {
+						continue
+					}
+					if len(scope.ChannelNames) > 0 && !containsString(scope.ChannelNames, route.Channel.Name) {
+						continue
+					}
+				}
+				if strings.TrimSpace(route.CooldownUntil) != "" {
+					if until, parseErr := time.Parse(time.RFC3339, route.CooldownUntil); parseErr == nil && until.After(now) {
+						continue
+					}
+				}
+				return route, nil
+			}
+			return domain.GatewayRoute{}, domain.ErrNoAvailableRoute(model)
+		},
 		CountClaudeTokens: func(ctx context.Context, req *http.Request, body []byte) (*domain.ProxyResponse, error) {
 			unified, err := provider.DecodeClaudeChatRequest(body)
 			if err != nil {
@@ -309,7 +339,7 @@ func New() (*App, error) {
 				return nil, scopeErr
 			}
 			for _, message := range unified.Messages {
-				gatewayReq.Messages = append(gatewayReq.Messages, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, Metadata: message.Metadata})
+				gatewayReq.Messages = append(gatewayReq.Messages, domain.GatewayMessage{Role: message.Role, Parts: message.Parts, ToolCalls: message.ToolCalls, InputItem: message.InputItem, Metadata: message.Metadata})
 			}
 			settings, settingsErr := runtimeConfigStore.GetGatewayRuntimeSettings(ctx)
 			if settingsErr == nil {
@@ -326,6 +356,21 @@ func New() (*App, error) {
 				return nil, err
 			}
 			return provider.ForwardClaudeCountTokens(ctx, client, selected.Channel, encoded, req.Header.Get("anthropic-version"), req.Header.Get("anthropic-beta"))
+		},
+		ForwardGeminiCachedContentCreate: func(ctx context.Context, route domain.GatewayRoute, body []byte) (*domain.ProxyResponse, error) {
+			return provider.ForwardGeminiCachedContentCreate(ctx, client, route.Channel, body)
+		},
+		ForwardGeminiCachedContentGet: func(ctx context.Context, route domain.GatewayRoute, name string) (*domain.ProxyResponse, error) {
+			return provider.ForwardGeminiCachedContentGet(ctx, client, route.Channel, name)
+		},
+		ForwardOpenAIRealtimeClientSecret: func(ctx context.Context, route domain.GatewayRoute, body []byte) (*domain.ProxyResponse, error) {
+			return provider.ForwardOpenAIRealtimeClientSecret(ctx, client, route.Channel, body)
+		},
+		ForwardOpenAIRealtimeCall: func(ctx context.Context, route domain.GatewayRoute, contentType string, body []byte, rawQuery string) (*domain.ProxyResponse, error) {
+			return provider.ForwardOpenAIRealtimeCall(ctx, client, route.Channel, contentType, body, rawQuery)
+		},
+		DialOpenAIRealtime: func(ctx context.Context, route domain.GatewayRoute, req *http.Request) (*websocket.Conn, *http.Response, error) {
+			return provider.DialOpenAIRealtime(ctx, route.Channel, req)
 		},
 		ResponseSessions: responseSessions,
 		CopyProxy:        provider.CopyResponse,

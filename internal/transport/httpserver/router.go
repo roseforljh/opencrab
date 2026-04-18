@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/websocket"
 )
 
 // healthResponse 是健康检查接口的统一返回结构。
@@ -76,7 +77,13 @@ type Dependencies struct {
 	GetGatewayJobByIdempotencyKey  func(ctx context.Context, ownerKeyHash string, idempotencyKey string) (domain.GatewayJob, error)
 	UpdateGatewayJobStatus         func(ctx context.Context, requestID string, status domain.GatewayJobStatus, responseStatusCode int, responseBody string, errorMessage string, completedAt string) error
 	ExecuteGateway                 func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error)
+	SelectDirectRoute             func(ctx context.Context, model string, provider string, scope *domain.APIKeyScope) (domain.GatewayRoute, error)
 	CountClaudeTokens              func(ctx context.Context, req *http.Request, body []byte) (*domain.ProxyResponse, error)
+	ForwardGeminiCachedContentCreate func(ctx context.Context, route domain.GatewayRoute, body []byte) (*domain.ProxyResponse, error)
+	ForwardGeminiCachedContentGet    func(ctx context.Context, route domain.GatewayRoute, name string) (*domain.ProxyResponse, error)
+	ForwardOpenAIRealtimeClientSecret func(ctx context.Context, route domain.GatewayRoute, body []byte) (*domain.ProxyResponse, error)
+	ForwardOpenAIRealtimeCall        func(ctx context.Context, route domain.GatewayRoute, contentType string, body []byte, rawQuery string) (*domain.ProxyResponse, error)
+	DialOpenAIRealtime              func(ctx context.Context, route domain.GatewayRoute, req *http.Request) (*websocket.Conn, *http.Response, error)
 	ResponseSessions               ResponseSessionStore
 	CopyProxy                      func(w http.ResponseWriter, resp *domain.ProxyResponse) error
 	CopyStream                     func(w http.ResponseWriter, stream *domain.StreamResult) error
@@ -911,10 +918,16 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Post("/v1/chat/completions", HandleGatewayChatCompletions(deps))
 	r.Post("/v1/responses", HandleOpenAIResponses(deps))
 	r.Get("/v1/responses", HandleOpenAIResponsesWebSocket(deps))
+	r.Post("/v1/realtime/client_secrets", HandleOpenAIRealtimeClientSecrets(deps))
+	r.Post("/v1/realtime/calls", HandleOpenAIRealtimeCalls(deps))
+	r.Get("/v1/realtime", HandleOpenAIRealtime(deps))
+	r.Post("/v1/codex/responses", HandleCodexResponses(deps))
 	r.Get("/v1/requests/{requestID}", HandleGatewayRequestStatus(deps))
 	r.Get("/v1/requests/{requestID}/events", HandleGatewayRequestEvents(deps))
 	r.Post("/v1/messages", HandleClaudeMessages(deps))
 	r.Post("/v1/messages/count_tokens", HandleClaudeCountTokens(deps))
+	r.Post("/v1beta/cachedContents", HandleGeminiCachedContentCreate(deps))
+	r.Get("/v1beta/cachedContents/{cacheID}", HandleGeminiCachedContentGet(deps))
 	r.Post("/v1beta/models/{model}:generateContent", HandleGeminiGenerateContent(deps))
 	r.Post("/v1beta/models/{model}:streamGenerateContent", HandleGeminiStreamGenerateContent(deps))
 	return r

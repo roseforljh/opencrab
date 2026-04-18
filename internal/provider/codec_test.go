@@ -224,6 +224,127 @@ func TestResponsesCodecRequestEncodeAndResponseDecode(t *testing.T) {
 	if decodedResp.ID != "resp_1" || decodedResp.Message.Parts[0].Text != "pong" || len(decodedResp.Message.ToolCalls) != 1 {
 		t.Fatalf("unexpected decoded responses response: %+v", decodedResp)
 	}
+	if len(decodedResp.Message.ToolCalls[0].OutputItem) == 0 {
+		t.Fatalf("expected responses output item in IR field, got %+v", decodedResp.Message.ToolCalls[0])
+	}
+}
+
+func TestResponsesCodecPreservesReasoningAndBuiltInToolOutputItems(t *testing.T) {
+	decodedResp, err := DecodeOpenAIResponsesResponse([]byte(`{
+		"id":"resp_2",
+		"object":"response",
+		"status":"completed",
+		"model":"gpt-5.4",
+		"output":[
+			{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"first step"},{"type":"summary_text","text":"second step"}]},
+			{"id":"ws_1","type":"web_search_call","status":"completed","action":{"query":"OpenCrab"}}
+		],
+		"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses response: %v", err)
+	}
+	if len(decodedResp.Message.Parts) != 2 {
+		t.Fatalf("unexpected parts: %+v", decodedResp.Message.Parts)
+	}
+	if decodedResp.Message.Parts[0].Type != "reasoning" || !strings.Contains(decodedResp.Message.Parts[0].Text, "first step") {
+		t.Fatalf("unexpected reasoning part: %+v", decodedResp.Message.Parts[0])
+	}
+	if decodedResp.Message.Parts[1].Type != "web_search_call" {
+		t.Fatalf("unexpected built-in tool part: %+v", decodedResp.Message.Parts[1])
+	}
+	if len(decodedResp.Message.Parts[0].OutputItem) == 0 || len(decodedResp.Message.Parts[1].OutputItem) == 0 {
+		t.Fatalf("expected responses output items in IR fields: %+v", decodedResp.Message.Parts)
+	}
+
+	encoded, err := EncodeOpenAIResponsesResponse(decodedResp)
+	if err != nil {
+		t.Fatalf("encode responses response: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"type":"reasoning"`) || !strings.Contains(string(encoded), `"type":"web_search_call"`) {
+		t.Fatalf("unexpected encoded responses response: %s", string(encoded))
+	}
+}
+
+func TestResponsesCodecPreservesBuiltInToolInputItems(t *testing.T) {
+	decoded, err := DecodeOpenAIResponsesRequest([]byte(`{
+		"model":"gpt-5.4",
+		"input":[
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"keep this"}]},
+			{"type":"web_search_call","id":"ws_1","status":"completed","action":{"query":"OpenCrab"}},
+			{"role":"user","content":[{"type":"input_text","text":"ping"}]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if len(decoded.Messages) != 3 {
+		t.Fatalf("unexpected decoded messages: %+v", decoded.Messages)
+	}
+	if decoded.Messages[0].Parts[0].Type != "reasoning" || decoded.Messages[1].Parts[0].Type != "web_search_call" {
+		t.Fatalf("unexpected preserved input parts: %+v", decoded.Messages)
+	}
+	if len(decoded.Messages[0].Parts[0].InputItem) == 0 || len(decoded.Messages[1].Parts[0].InputItem) == 0 {
+		t.Fatalf("expected responses input items in IR fields: %+v", decoded.Messages)
+	}
+
+	encoded, err := EncodeOpenAIResponsesRequest(decoded, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"type":"reasoning"`) || !strings.Contains(string(encoded), `"type":"web_search_call"`) {
+		t.Fatalf("unexpected re-encoded responses request: %s", string(encoded))
+	}
+}
+
+func TestResponsesCodecPreservesFunctionCallInputItemShape(t *testing.T) {
+	decoded, err := DecodeOpenAIResponsesRequest([]byte(`{
+		"model":"gpt-5.4",
+		"input":[
+			{"type":"function_call","call_id":"fc_1","name":"opencode","arguments":"{\"prompt\":\"ping\"}","status":"completed"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if len(decoded.Messages) != 1 || len(decoded.Messages[0].ToolCalls) != 1 {
+		t.Fatalf("unexpected decoded request: %+v", decoded)
+	}
+	if len(decoded.Messages[0].ToolCalls[0].InputItem) == 0 {
+		t.Fatalf("expected function call input item in IR field: %+v", decoded.Messages[0].ToolCalls[0])
+	}
+	encoded, err := EncodeOpenAIResponsesRequest(decoded, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"type":"function_call"`) || !strings.Contains(string(encoded), `"status":"completed"`) {
+		t.Fatalf("unexpected re-encoded function call item: %s", string(encoded))
+	}
+}
+
+func TestResponsesCodecPreservesFunctionCallOutputItemShape(t *testing.T) {
+	decoded, err := DecodeOpenAIResponsesRequest([]byte(`{
+		"model":"gpt-5.4",
+		"input":[
+			{"type":"function_call_output","call_id":"fc_1","output":"done","status":"completed"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if len(decoded.Messages) != 1 || decoded.Messages[0].Role != "tool" {
+		t.Fatalf("unexpected decoded request: %+v", decoded)
+	}
+	if len(decoded.Messages[0].InputItem) == 0 {
+		t.Fatalf("expected function call output item in IR field: %+v", decoded.Messages[0])
+	}
+	encoded, err := EncodeOpenAIResponsesRequest(decoded, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"type":"function_call_output"`) || !strings.Contains(string(encoded), `"status":"completed"`) {
+		t.Fatalf("unexpected re-encoded function call output item: %s", string(encoded))
+	}
 }
 
 func TestClaudeCodecToolUseAndResult(t *testing.T) {
@@ -238,8 +359,45 @@ func TestClaudeCodecToolUseAndResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode claude tool_result request: %v", err)
 	}
-	if !strings.Contains(string(data), `"tool_result"`) || !strings.Contains(string(data), `"tools"`) {
+	if !strings.Contains(string(data), `"tool_result"`) || !strings.Contains(string(data), `"tools"`) || !strings.Contains(string(data), `"role":"user"`) || strings.Contains(string(data), `"role":"tool"`) {
 		t.Fatalf("unexpected claude payload: %s", string(data))
+	}
+}
+
+func TestClaudeCodecPreservesStructuredToolResultBlocks(t *testing.T) {
+	req, err := DecodeClaudeChatRequest([]byte(`{
+		"model":"claude-sonnet",
+		"messages":[
+			{
+				"role":"user",
+				"content":[
+					{"type":"tool_result","tool_use_id":"toolu_1","is_error":true,"content":[{"type":"text","text":"broken"}]},
+					{"type":"text","text":"after"}
+				]
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode claude request: %v", err)
+	}
+	if req.Messages[0].Role != "tool" || req.Messages[0].Parts[0].Text != "broken" {
+		t.Fatalf("unexpected decoded tool result message: %+v", req.Messages[0])
+	}
+	if len(req.Messages[0].Parts[0].NativePayload) == 0 {
+		t.Fatalf("expected claude native payload, got %+v", req.Messages[0].Parts[0])
+	}
+
+	encoded, err := EncodeClaudeChatRequest(req)
+	if err != nil {
+		t.Fatalf("encode claude request: %v", err)
+	}
+	for _, snippet := range []string{`"role":"user"`, `"tool_result"`, `"is_error":true`, `"after"`} {
+		if !strings.Contains(string(encoded), snippet) {
+			t.Fatalf("expected %s in encoded payload: %s", snippet, string(encoded))
+		}
+	}
+	if strings.Contains(string(encoded), `"role":"tool"`) {
+		t.Fatalf("unexpected tool role leak: %s", string(encoded))
 	}
 }
 
@@ -278,6 +436,34 @@ func TestClaudeCodecDisablesManualThinkingForOpus47(t *testing.T) {
 	}
 }
 
+func TestClaudeCodecPreservesAdvancedTopLevelMetadata(t *testing.T) {
+	req, err := DecodeClaudeChatRequest([]byte(`{
+		"model":"claude-sonnet-4-5",
+		"messages":[{"role":"user","content":[{"type":"text","text":"ping"}]}],
+		"mcp_servers":[{"name":"repo","type":"url","url":"https://example.com/mcp"}],
+		"container":{"type":"auto"},
+		"context_management":{"clear_function_results":false}
+	}`))
+	if err != nil {
+		t.Fatalf("decode claude request: %v", err)
+	}
+	for _, key := range []string{"mcp_servers", "container", "context_management"} {
+		if len(req.Metadata[key]) == 0 {
+			t.Fatalf("expected metadata %s to be preserved, got %+v", key, req.Metadata)
+		}
+	}
+
+	encoded, err := EncodeClaudeChatRequest(req)
+	if err != nil {
+		t.Fatalf("encode claude request: %v", err)
+	}
+	for _, snippet := range []string{`"mcp_servers"`, `"container"`, `"context_management"`} {
+		if !strings.Contains(string(encoded), snippet) {
+			t.Fatalf("expected %s in encoded payload: %s", snippet, string(encoded))
+		}
+	}
+}
+
 func TestGeminiCodecFunctionCallAndResponse(t *testing.T) {
 	decoded, err := DecodeGeminiChatResponse([]byte(`{"modelVersion":"gemini-2.0-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[{"functionCall":{"id":"fc_1","name":"opencode","args":{"prompt":"ping"}}}]}}]}`))
 	if err != nil {
@@ -286,12 +472,185 @@ func TestGeminiCodecFunctionCallAndResponse(t *testing.T) {
 	if len(decoded.Message.ToolCalls) != 1 || decoded.Message.ToolCalls[0].Name != "opencode" {
 		t.Fatalf("unexpected gemini tool calls: %+v", decoded.Message.ToolCalls)
 	}
+	if decoded.Message.ToolCalls[0].Order == nil || len(decoded.Message.ToolCalls[0].NativePayload) == 0 {
+		t.Fatalf("expected gemini tool call IR fields, got %+v", decoded.Message.ToolCalls[0])
+	}
 	data, err := EncodeGeminiChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolGemini, Model: "gemini-2.0-flash", Messages: []domain.UnifiedMessage{{Role: "tool", Parts: []domain.UnifiedPart{{Type: "function_response", Metadata: map[string]json.RawMessage{"id": json.RawMessage(`"fc_1"`), "name": json.RawMessage(`"opencode"`), "response": json.RawMessage(`{"ok":true}`)}}}}}, Tools: []json.RawMessage{json.RawMessage(`{"functionDeclarations":[{"name":"opencode"}]}`)}})
 	if err != nil {
 		t.Fatalf("encode gemini functionResponse request: %v", err)
 	}
 	if !strings.Contains(string(data), `"functionResponse"`) || !strings.Contains(string(data), `"tools"`) {
 		t.Fatalf("unexpected gemini payload: %s", string(data))
+	}
+
+	encodedResp, err := EncodeGeminiChatResponse(decoded)
+	if err != nil {
+		t.Fatalf("encode gemini functionCall response: %v", err)
+	}
+	if !strings.Contains(string(encodedResp), `"functionCall"`) {
+		t.Fatalf("expected functionCall in encoded gemini response: %s", string(encodedResp))
+	}
+}
+
+func TestGeminiCodecPreservesFunctionResponsePayloadAndPartOrder(t *testing.T) {
+	req, err := DecodeGeminiChatRequest([]byte(`{
+		"model":"gemini-2.5-pro",
+		"contents":[
+			{
+				"role":"user",
+				"parts":[
+					{"functionResponse":{"id":"fc_1","name":"lookup","response":{"ok":true},"parts":[{"text":"raw"}]}}
+				]
+			}
+		]
+	}`), "")
+	if err != nil {
+		t.Fatalf("decode gemini request: %v", err)
+	}
+	encodedReq, err := EncodeGeminiChatRequest(req)
+	if err != nil {
+		t.Fatalf("encode gemini request: %v", err)
+	}
+	for _, snippet := range []string{`"functionResponse"`, `"parts":[{"text":"raw"}]`, `"name":"lookup"`} {
+		if !strings.Contains(string(encodedReq), snippet) {
+			t.Fatalf("expected %s in encoded gemini request: %s", snippet, string(encodedReq))
+		}
+	}
+	if len(req.Messages[0].Parts[0].NativePayload) == 0 {
+		t.Fatalf("expected gemini request native payload, got %+v", req.Messages[0].Parts[0])
+	}
+
+	resp, err := DecodeGeminiChatResponse([]byte(`{
+		"modelVersion":"gemini-2.5-pro",
+		"candidates":[{
+			"finishReason":"STOP",
+			"content":{
+				"role":"model",
+				"parts":[
+					{"text":"before"},
+					{"functionCall":{"id":"fc_1","name":"lookup","args":{"q":"ping"}},"thoughtSignature":"sig_1"}
+				]
+			}
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("decode gemini response: %v", err)
+	}
+	encodedResp, err := EncodeGeminiChatResponse(resp)
+	if err != nil {
+		t.Fatalf("encode gemini response: %v", err)
+	}
+	textIndex := strings.Index(string(encodedResp), `"text":"before"`)
+	callIndex := strings.Index(string(encodedResp), `"functionCall"`)
+	if textIndex < 0 || callIndex < 0 || textIndex > callIndex {
+		t.Fatalf("expected text part before functionCall: %s", string(encodedResp))
+	}
+	if !strings.Contains(string(encodedResp), `"thoughtSignature":"sig_1"`) {
+		t.Fatalf("expected thoughtSignature in encoded gemini response: %s", string(encodedResp))
+	}
+	if resp.Message.Parts[0].Order == nil || resp.Message.ToolCalls[0].Order == nil || len(resp.Message.ToolCalls[0].NativePayload) == 0 {
+		t.Fatalf("expected gemini response IR ordering/native fields, got parts=%+v calls=%+v", resp.Message.Parts, resp.Message.ToolCalls)
+	}
+}
+
+func TestResponsesStreamBuildsDetailedBuiltInToolEvents(t *testing.T) {
+	resp, err := DecodeOpenAIResponsesResponse([]byte(`{
+		"id":"resp_stream",
+		"object":"response",
+		"status":"completed",
+		"model":"gpt-5.4",
+		"output":[
+			{"id":"rs_1","type":"reasoning","summary":[{"type":"summary_text","text":"step one"}]},
+			{"id":"ws_1","type":"web_search_call","status":"completed","action":{"query":"OpenCrab"}},
+			{"id":"mcp_1","type":"mcp_call","status":"completed","arguments":"{\"path\":\"README.md\"}"},
+			{"id":"ct_1","type":"custom_tool_call","status":"completed","input":"echo hi"},
+			{"id":"ci_1","type":"code_interpreter_call","status":"completed","code":"print(1)"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses response: %v", err)
+	}
+
+	events, err := BuildOpenAIResponsesEvents(resp)
+	if err != nil {
+		t.Fatalf("build responses events: %v", err)
+	}
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal responses events: %v", err)
+	}
+	for _, snippet := range []string{
+		`"response.reasoning_summary_part.added"`,
+		`"response.web_search_call.completed"`,
+		`"response.mcp_call_arguments.done"`,
+		`"response.custom_tool_call_input.done"`,
+		`"response.code_interpreter_call.code.done"`,
+	} {
+		if !strings.Contains(string(encoded), snippet) {
+			t.Fatalf("expected %s in responses events: %s", snippet, string(encoded))
+		}
+	}
+}
+
+func TestGeminiCodecPreservesAdvancedTopLevelMetadata(t *testing.T) {
+	req, err := DecodeGeminiChatRequest([]byte(`{
+		"model":"gemini-2.5-pro",
+		"cachedContent":"cachedContents/123",
+		"contents":[{"role":"user","parts":[{"text":"ping"}]}],
+		"tools":[{"googleSearch":{}},{"urlContext":{}},{"codeExecution":{}}],
+		"generationConfig":{"thinkingConfig":{"includeThoughts":true}}
+	}`), "")
+	if err != nil {
+		t.Fatalf("decode gemini request: %v", err)
+	}
+	if len(req.Metadata["cachedContent"]) == 0 || len(req.Metadata["generationConfig"]) == 0 {
+		t.Fatalf("expected gemini metadata to be preserved, got %+v", req.Metadata)
+	}
+
+	encoded, err := EncodeGeminiChatRequest(req)
+	if err != nil {
+		t.Fatalf("encode gemini request: %v", err)
+	}
+	for _, snippet := range []string{`"cachedContent"`, `"googleSearch"`, `"urlContext"`, `"codeExecution"`, `"thinkingConfig"`} {
+		if !strings.Contains(string(encoded), snippet) {
+			t.Fatalf("expected %s in encoded payload: %s", snippet, string(encoded))
+		}
+	}
+}
+
+func TestGeminiCodecPreservesThoughtSignatureAndUnknownPartBlocks(t *testing.T) {
+	resp, err := DecodeGeminiChatResponse([]byte(`{
+		"modelVersion":"gemini-2.5-pro",
+		"candidates":[{
+			"finishReason":"STOP",
+			"content":{
+				"role":"model",
+				"parts":[
+					{"text":"pong","thoughtSignature":"abc123"},
+					{"executableCode":{"language":"python","code":"print(1)"}}
+				]
+			}
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("decode gemini response: %v", err)
+	}
+	if len(resp.Message.Parts) != 2 {
+		t.Fatalf("unexpected parts: %+v", resp.Message.Parts)
+	}
+	if string(resp.Message.Parts[0].Metadata["thoughtSignature"]) != `"abc123"` {
+		t.Fatalf("expected thought signature metadata, got %+v", resp.Message.Parts[0].Metadata)
+	}
+	if resp.Message.Parts[1].Type == "text" {
+		t.Fatalf("expected unknown part block to be preserved, got %+v", resp.Message.Parts[1])
+	}
+
+	encoded, err := EncodeGeminiChatResponse(resp)
+	if err != nil {
+		t.Fatalf("encode gemini response: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"thoughtSignature":"abc123"`) || !strings.Contains(string(encoded), `"executableCode"`) {
+		t.Fatalf("unexpected encoded gemini response: %s", string(encoded))
 	}
 }
 

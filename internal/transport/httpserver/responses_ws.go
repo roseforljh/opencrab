@@ -10,6 +10,7 @@ import (
 
 	"opencrab/internal/domain"
 	"opencrab/internal/provider"
+	"opencrab/internal/transform"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
@@ -91,7 +92,7 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": "empty gateway result"}})
 				continue
 			}
-			resp := encodeGatewayResponseForProtocol(result.Response, domain.ProtocolOpenAI)
+			resp := encodeGatewayResponseForSurface(result.Response, transform.Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIResponses})
 			providerName := normalizedHeaderProvider(resp.Headers)
 			unified, decodeRespErr := decodeUnifiedByProvider(providerName, resp.Body)
 			if decodeRespErr != nil {

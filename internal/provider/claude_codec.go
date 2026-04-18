@@ -152,7 +152,11 @@ func encodeClaudeMessages(messages []domain.UnifiedMessage) ([]map[string]any, [
 		}
 		item := map[string]any{}
 		mergeRawFields(item, message.Metadata)
-		item["role"] = message.Role
+		role := message.Role
+		if strings.EqualFold(strings.TrimSpace(role), "tool") {
+			role = "user"
+		}
+		item["role"] = role
 		item["content"] = content
 		out = append(out, item)
 	}
@@ -180,18 +184,69 @@ func encodeClaudeMessageBlocks(message domain.UnifiedMessage) ([]map[string]any,
 		return nil, err
 	}
 	if strings.EqualFold(strings.TrimSpace(message.Role), "tool") {
-		toolUseID := decodeStringRaw(message.Metadata["tool_call_id"])
-		content := firstUnifiedText(message)
-		return []map[string]any{{"type": "tool_result", "tool_use_id": toolUseID, "content": content}}, nil
+		return buildClaudeToolResultBlocks(message)
 	}
 	for _, call := range message.ToolCalls {
+		block := map[string]any{}
+		mergeRawFields(block, call.Metadata)
 		var input any = map[string]any{}
 		if len(call.Arguments) > 0 {
 			_ = json.Unmarshal(call.Arguments, &input)
 		}
-		blocks = append(blocks, map[string]any{"type": "tool_use", "id": call.ID, "name": call.Name, "input": input})
+		block["type"] = "tool_use"
+		block["id"] = call.ID
+		block["name"] = call.Name
+		block["input"] = input
+		blocks = append(blocks, block)
 	}
 	return blocks, nil
+}
+
+func buildClaudeToolResultBlocks(message domain.UnifiedMessage) ([]map[string]any, error) {
+	toolBlocks := make([]map[string]any, 0, len(message.Parts))
+	tailParts := make([]domain.UnifiedPart, 0, len(message.Parts))
+	for _, part := range message.Parts {
+		if len(part.NativePayload) > 0 {
+			var block map[string]any
+			if err := json.Unmarshal(part.NativePayload, &block); err != nil {
+				return nil, err
+			}
+			toolBlocks = append(toolBlocks, block)
+			continue
+		}
+		tailParts = append(tailParts, part)
+	}
+	if len(toolBlocks) == 0 {
+		toolUseID := decodeStringRaw(message.Metadata["tool_call_id"])
+		content, err := encodeClaudeToolResultContent(tailParts)
+		if err != nil {
+			return nil, err
+		}
+		toolBlocks = append(toolBlocks, map[string]any{
+			"type":        "tool_result",
+			"tool_use_id": toolUseID,
+			"content":     content,
+		})
+		tailParts = nil
+	}
+	if len(tailParts) == 0 {
+		return toolBlocks, nil
+	}
+	extraBlocks, err := encodeClaudeContentBlocks(tailParts)
+	if err != nil {
+		return nil, err
+	}
+	return append(toolBlocks, extraBlocks...), nil
+}
+
+func encodeClaudeToolResultContent(parts []domain.UnifiedPart) (any, error) {
+	if len(parts) == 0 {
+		return "", nil
+	}
+	if len(parts) == 1 && parts[0].Type == "text" && len(parts[0].Metadata) == 0 {
+		return parts[0].Text, nil
+	}
+	return encodeClaudeContentBlocks(parts)
 }
 
 func encodeClaudeContentBlock(part domain.UnifiedPart) (map[string]any, error) {
@@ -303,6 +358,7 @@ func decodeClaudeMessage(raw map[string]json.RawMessage) (domain.UnifiedMessage,
 	parts := make([]domain.UnifiedPart, 0, len(blocks))
 	toolCalls := make([]domain.UnifiedToolCall, 0)
 	toolResultMode := false
+	messageMetadata := collectUnknownFields(raw, "role", "content")
 	for i, block := range blocks {
 		part, call, isToolResult, err := decodeClaudeContentBlock(block)
 		if err != nil {
@@ -314,13 +370,21 @@ func decodeClaudeMessage(raw map[string]json.RawMessage) (domain.UnifiedMessage,
 		}
 		if isToolResult {
 			toolResultMode = true
+			if rawToolUseID, found := decodeClaudeToolResultID(part); found {
+				if messageMetadata == nil {
+					messageMetadata = map[string]json.RawMessage{}
+				}
+				if _, exists := messageMetadata["tool_call_id"]; !exists {
+					messageMetadata["tool_call_id"] = rawToolUseID
+				}
+			}
 		}
 		parts = append(parts, part)
 	}
 	if toolResultMode {
 		role = "tool"
 	}
-	return domain.UnifiedMessage{Role: role, Parts: parts, ToolCalls: toolCalls, Metadata: collectUnknownFields(raw, "role", "content")}, nil
+	return domain.UnifiedMessage{Role: role, Parts: parts, ToolCalls: toolCalls, Metadata: messageMetadata}, nil
 }
 
 func decodeClaudeContentBlock(raw map[string]json.RawMessage) (domain.UnifiedPart, domain.UnifiedToolCall, bool, error) {
@@ -354,17 +418,65 @@ func decodeClaudeContentBlock(raw map[string]json.RawMessage) (domain.UnifiedPar
 		}
 		return domain.UnifiedPart{}, domain.UnifiedToolCall{ID: id, Name: name, Arguments: arguments, Metadata: collectUnknownFields(raw, "type", "id", "name", "input")}, false, nil
 	case "tool_result":
-		metadata = cloneRawMap(metadata)
-		if toolUseIDRaw, ok := raw["tool_use_id"]; ok {
-			metadata["tool_call_id"] = append(json.RawMessage(nil), toolUseIDRaw...)
+		rawBlock, err := json.Marshal(raw)
+		if err != nil {
+			return domain.UnifiedPart{}, domain.UnifiedToolCall{}, false, err
 		}
-		var content string
-		_ = decodeRawString(raw, "content", &content, false)
-		return domain.UnifiedPart{Type: "text", Text: content, Metadata: metadata}, domain.UnifiedToolCall{}, true, nil
+		content := decodeClaudeToolResultText(raw["content"])
+		partType := "tool_result"
+		if strings.TrimSpace(content) != "" {
+			partType = "text"
+		}
+		return domain.UnifiedPart{Type: partType, Text: content, NativePayload: rawBlock, Metadata: metadata}, domain.UnifiedToolCall{}, true, nil
 	default:
 		metadata = cloneRawMap(raw)
 		return domain.UnifiedPart{Type: blockType, Metadata: metadata}, domain.UnifiedToolCall{}, false, nil
 	}
+}
+
+func decodeClaudeToolResultID(part domain.UnifiedPart) (json.RawMessage, bool) {
+	rawBlock := part.NativePayload
+	if len(rawBlock) == 0 {
+		return nil, false
+	}
+	var block map[string]json.RawMessage
+	if err := json.Unmarshal(rawBlock, &block); err != nil {
+		return nil, false
+	}
+	toolUseID, ok := block["tool_use_id"]
+	if !ok || len(toolUseID) == 0 {
+		return nil, false
+	}
+	return append(json.RawMessage(nil), toolUseID...), true
+}
+
+func decodeClaudeToolResultText(rawContent json.RawMessage) string {
+	if len(rawContent) == 0 {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(rawContent, &text); err == nil {
+		return text
+	}
+	var blocks []map[string]json.RawMessage
+	if err := json.Unmarshal(rawContent, &blocks); err != nil {
+		return ""
+	}
+	parts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		var blockType string
+		if err := decodeRawString(block, "type", &blockType, false); err != nil {
+			continue
+		}
+		if blockType != "text" {
+			continue
+		}
+		var text string
+		if err := decodeRawString(block, "text", &text, false); err == nil && strings.TrimSpace(text) != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func normalizeClaudeCompatibilityPayload(payload map[string]any) error {

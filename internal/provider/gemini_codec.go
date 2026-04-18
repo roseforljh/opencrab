@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"opencrab/internal/domain"
@@ -139,7 +140,7 @@ func EncodeGeminiChatResponse(resp domain.UnifiedChatResponse) ([]byte, error) {
 	if resp.Model != "" {
 		payload["modelVersion"] = resp.Model
 	}
-	parts, err := encodeGeminiParts(resp.Message.Parts)
+	parts, err := encodeGeminiMessageParts(resp.Message)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +165,7 @@ func encodeGeminiMessages(messages []domain.UnifiedMessage) (map[string]any, []m
 	var systemInstruction map[string]any
 	out := make([]map[string]any, 0, len(messages))
 	for i, message := range messages {
-		parts, err := encodeGeminiParts(message.Parts)
+		parts, err := encodeGeminiMessageParts(message)
 		if err != nil {
 			return nil, nil, fmt.Errorf("messages[%d]: %w", i, err)
 		}
@@ -187,6 +188,48 @@ func encodeGeminiMessages(messages []domain.UnifiedMessage) (map[string]any, []m
 	return systemInstruction, out, nil
 }
 
+func encodeGeminiMessageParts(message domain.UnifiedMessage) ([]map[string]any, error) {
+	type orderedPart struct {
+		order int
+		item  map[string]any
+	}
+
+	ordered := make([]orderedPart, 0, len(message.Parts)+len(message.ToolCalls))
+	nextOrder := 0
+	appendOrdered := func(order int, item map[string]any) {
+		if order < 0 {
+			order = nextOrder
+		}
+		nextOrder++
+		ordered = append(ordered, orderedPart{order: order, item: item})
+	}
+
+	for i, part := range message.Parts {
+		item, err := encodeGeminiPart(part)
+		if err != nil {
+			return nil, fmt.Errorf("parts[%d]: %w", i, err)
+		}
+		appendOrdered(geminiPartOrder(part.Order), item)
+	}
+	for i, call := range message.ToolCalls {
+		item, err := encodeGeminiToolCallPart(call)
+		if err != nil {
+			return nil, fmt.Errorf("tool_calls[%d]: %w", i, err)
+		}
+		appendOrdered(geminiPartOrder(call.Order), item)
+	}
+
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].order < ordered[j].order
+	})
+
+	out := make([]map[string]any, 0, len(ordered))
+	for _, item := range ordered {
+		out = append(out, item.item)
+	}
+	return out, nil
+}
+
 func encodeGeminiParts(parts []domain.UnifiedPart) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(parts))
 	for i, part := range parts {
@@ -200,6 +243,12 @@ func encodeGeminiParts(parts []domain.UnifiedPart) ([]map[string]any, error) {
 }
 
 func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {
+	if len(part.NativePayload) > 0 {
+		var item map[string]any
+		if err := json.Unmarshal(part.NativePayload, &item); err == nil {
+			return item, nil
+		}
+	}
 	item := map[string]any{}
 	mergeRawFields(item, part.Metadata)
 	desc := extractMediaDescriptor(part)
@@ -230,6 +279,23 @@ func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {
 			return item, nil
 		}
 		return nil, fmt.Errorf("Gemini 暂不支持 part 类型: %s", part.Type)
+	}
+	return item, nil
+}
+
+func encodeGeminiToolCallPart(call domain.UnifiedToolCall) (map[string]any, error) {
+	if len(call.NativePayload) > 0 {
+		var item map[string]any
+		if err := json.Unmarshal(call.NativePayload, &item); err == nil {
+			return item, nil
+		}
+	}
+	item := map[string]any{}
+	mergeRawFields(item, call.Metadata)
+	item["functionCall"] = map[string]any{
+		"id":   call.ID,
+		"name": call.Name,
+		"args": rawJSONToAny(call.Arguments),
 	}
 	return item, nil
 }
@@ -272,12 +338,43 @@ func decodeGeminiContent(content map[string]json.RawMessage) (domain.UnifiedMess
 			return domain.UnifiedMessage{}, fmt.Errorf("parts[%d]: %w", i, err)
 		}
 		if part.Type == "function_call" {
-			toolCalls = append(toolCalls, domain.UnifiedToolCall{ID: decodeStringRaw(part.Metadata["id"]), Name: decodeStringRaw(part.Metadata["name"]), Arguments: append(json.RawMessage(nil), part.Metadata["arguments"]...), Metadata: collectUnknownFields(part.Metadata, "id", "name", "arguments")})
+			callMetadata := collectUnknownFields(part.Metadata, "id", "name", "arguments")
+			if callMetadata == nil {
+				callMetadata = map[string]json.RawMessage{}
+			}
+			order := i
+			toolCalls = append(toolCalls, domain.UnifiedToolCall{
+				ID:            decodeStringRaw(part.Metadata["id"]),
+				Name:          decodeStringRaw(part.Metadata["name"]),
+				Arguments:     append(json.RawMessage(nil), part.Metadata["arguments"]...),
+				Order:         &order,
+				NativePayload: append(json.RawMessage(nil), part.NativePayload...),
+				Metadata:      callMetadata,
+			})
 			continue
 		}
 		if part.Type == "function_response" {
 			toolResultMode = true
-			part = domain.UnifiedPart{Type: "text", Text: string(part.Metadata["response"]), Metadata: map[string]json.RawMessage{"tool_call_id": append(json.RawMessage(nil), part.Metadata["id"]...), "tool_name": append(json.RawMessage(nil), part.Metadata["name"]...)}}
+			part = domain.UnifiedPart{
+				Type: "text",
+				Text: decodeGeminiFunctionResponseText(part.Metadata["response"]),
+				Order: func() *int {
+					order := i
+					return &order
+				}(),
+				NativePayload: append(json.RawMessage(nil), part.NativePayload...),
+				Metadata: map[string]json.RawMessage{
+					"tool_call_id": append(json.RawMessage(nil), part.Metadata["id"]...),
+					"tool_name":    append(json.RawMessage(nil), part.Metadata["name"]...),
+				},
+			}
+		} else {
+			part.Metadata = cloneRawMap(part.Metadata)
+			if part.Metadata == nil {
+				part.Metadata = map[string]json.RawMessage{}
+			}
+			order := i
+			part.Order = &order
 		}
 		parts = append(parts, part)
 	}
@@ -308,16 +405,23 @@ func decodeGeminiSystemInstruction(systemRaw json.RawMessage) (domain.UnifiedMes
 }
 
 func decodeGeminiPart(raw map[string]json.RawMessage) (domain.UnifiedPart, error) {
+	rawPart, _ := json.Marshal(raw)
 	if textRaw, ok := raw["text"]; ok {
 		var text string
 		if err := json.Unmarshal(textRaw, &text); err != nil {
 			return domain.UnifiedPart{}, fmt.Errorf("text 格式非法: %w", err)
 		}
-		return domain.UnifiedPart{Type: "text", Text: text, Metadata: collectUnknownFields(raw, "text")}, nil
+		metadata := cloneRawMap(collectUnknownFields(raw, "text"))
+		if metadata == nil {
+			metadata = map[string]json.RawMessage{}
+		}
+		return domain.UnifiedPart{Type: "text", Text: text, NativePayload: rawPart, Metadata: metadata}, nil
 	}
-	metadata := collectUnknownFields(raw)
+	metadata := cloneRawMap(collectUnknownFields(raw))
+	if metadata == nil {
+		metadata = map[string]json.RawMessage{}
+	}
 	if functionCallRaw, ok := raw["functionCall"]; ok {
-		metadata = cloneRawMap(metadata)
 		metadata["functionCall"] = append(json.RawMessage(nil), functionCallRaw...)
 		var call map[string]json.RawMessage
 		if err := json.Unmarshal(functionCallRaw, &call); err != nil {
@@ -326,10 +430,9 @@ func decodeGeminiPart(raw map[string]json.RawMessage) (domain.UnifiedPart, error
 		metadata["id"] = append(json.RawMessage(nil), call["id"]...)
 		metadata["name"] = append(json.RawMessage(nil), call["name"]...)
 		metadata["arguments"] = append(json.RawMessage(nil), call["args"]...)
-		return domain.UnifiedPart{Type: "function_call", Metadata: metadata}, nil
+		return domain.UnifiedPart{Type: "function_call", NativePayload: rawPart, Metadata: metadata}, nil
 	}
 	if functionResponseRaw, ok := raw["functionResponse"]; ok {
-		metadata = cloneRawMap(metadata)
 		metadata["functionResponse"] = append(json.RawMessage(nil), functionResponseRaw...)
 		var response map[string]json.RawMessage
 		if err := json.Unmarshal(functionResponseRaw, &response); err != nil {
@@ -338,26 +441,52 @@ func decodeGeminiPart(raw map[string]json.RawMessage) (domain.UnifiedPart, error
 		metadata["id"] = append(json.RawMessage(nil), response["id"]...)
 		metadata["name"] = append(json.RawMessage(nil), response["name"]...)
 		metadata["response"] = append(json.RawMessage(nil), response["response"]...)
-		return domain.UnifiedPart{Type: "function_response", Metadata: metadata}, nil
+		return domain.UnifiedPart{Type: "function_response", NativePayload: rawPart, Metadata: metadata}, nil
 	}
 	if inlineRaw, ok := raw["inlineData"]; ok {
-		metadata = cloneRawMap(metadata)
 		metadata["inlineData"] = append(json.RawMessage(nil), inlineRaw...)
 		desc := extractMediaDescriptor(domain.UnifiedPart{Metadata: metadata})
 		partType := partTypeFromMime(desc.MimeType)
 		metadata = enrichPartMetadata(partType, metadata, desc)
-		return domain.UnifiedPart{Type: partType, Metadata: metadata}, nil
+		return domain.UnifiedPart{Type: partType, NativePayload: rawPart, Metadata: metadata}, nil
 	}
 	if fileRaw, ok := raw["fileData"]; ok {
-		metadata = cloneRawMap(metadata)
 		metadata["fileData"] = append(json.RawMessage(nil), fileRaw...)
 		desc := extractMediaDescriptor(domain.UnifiedPart{Metadata: metadata})
 		partType := partTypeFromMime(desc.MimeType)
 		metadata = enrichPartMetadata(partType, metadata, desc)
-		return domain.UnifiedPart{Type: partType, Metadata: metadata}, nil
+		return domain.UnifiedPart{Type: partType, NativePayload: rawPart, Metadata: metadata}, nil
 	}
 	metadata = cloneRawMap(raw)
-	return domain.UnifiedPart{Type: "file", Metadata: metadata}, nil
+	if metadata == nil {
+		metadata = map[string]json.RawMessage{}
+	}
+	inferredType := "unknown"
+	for key := range raw {
+		if strings.TrimSpace(key) != "" {
+			inferredType = key
+			break
+		}
+	}
+	return domain.UnifiedPart{Type: inferredType, NativePayload: rawPart, Metadata: metadata}, nil
+}
+
+func geminiPartOrder(order *int) int {
+	if order == nil {
+		return -1
+	}
+	return *order
+}
+
+func decodeGeminiFunctionResponseText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 func resolveGeminiModel(pathModel string, bodyModel string) (string, error) {

@@ -238,36 +238,167 @@ func BuildOpenAIResponsesEvents(resp domain.UnifiedChatResponse) ([]map[string]a
 	if usage != nil {
 		responseObject["usage"] = usage
 	}
-	events := make([]map[string]any, 0, 8)
+	events := make([]map[string]any, 0, 16)
 	events = append(events, map[string]any{"type": "response.created", "response": map[string]any{"id": responseID, "object": "response", "created_at": createdAt, "status": "in_progress", "model": resp.Model}})
 	events = append(events, map[string]any{"type": "response.in_progress", "response": map[string]any{"id": responseID, "object": "response", "created_at": createdAt, "status": "in_progress", "model": resp.Model}})
-	if len(resp.Message.ToolCalls) > 0 {
-		for idx, call := range resp.Message.ToolCalls {
-			itemID := call.ID
-			if itemID == "" {
-				itemID = fmt.Sprintf("fc_%d", idx+1)
-			}
-			item := map[string]any{"id": itemID, "type": "function_call", "call_id": itemID, "name": call.Name, "arguments": string(call.Arguments)}
-			events = append(events, map[string]any{"type": "response.output_item.added", "output_index": idx, "item": item})
-			events = append(events, map[string]any{"type": "response.function_call_arguments.delta", "output_index": idx, "item_id": itemID, "delta": string(call.Arguments)})
-			events = append(events, map[string]any{"type": "response.function_call_arguments.done", "output_index": idx, "item_id": itemID, "arguments": string(call.Arguments)})
-			events = append(events, map[string]any{"type": "response.output_item.done", "output_index": idx, "item": item})
-		}
-	} else {
-		itemID := "msg_1"
-		item := map[string]any{"id": itemID, "type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": outputText}}}
-		if outputText == "" {
-			item["content"] = []map[string]any{}
-		}
-		events = append(events, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item})
-		if outputText != "" {
-			events = append(events, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": itemID, "content_index": 0, "delta": outputText})
-			events = append(events, map[string]any{"type": "response.output_text.done", "output_index": 0, "item_id": itemID, "content_index": 0, "text": outputText})
-		}
-		events = append(events, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item})
+	for idx, item := range output {
+		itemID := resolveResponsesEventItemID(item, idx)
+		item["id"] = itemID
+		events = append(events, map[string]any{"type": "response.output_item.added", "output_index": idx, "item": item})
+		appendResponsesItemEvents(&events, idx, itemID, item)
+		events = append(events, map[string]any{"type": "response.output_item.done", "output_index": idx, "item": item})
 	}
 	events = append(events, map[string]any{"type": "response.completed", "response": responseObject})
 	return events, nil
+}
+
+func resolveResponsesEventItemID(item map[string]any, outputIndex int) string {
+	if id, ok := item["id"].(string); ok && strings.TrimSpace(id) != "" {
+		return id
+	}
+	itemType, _ := item["type"].(string)
+	switch itemType {
+	case "function_call":
+		return fmt.Sprintf("fc_%d", outputIndex+1)
+	case "message":
+		return fmt.Sprintf("msg_%d", outputIndex+1)
+	default:
+		return fmt.Sprintf("item_%d", outputIndex+1)
+	}
+}
+
+func appendResponsesItemEvents(events *[]map[string]any, outputIndex int, itemID string, item map[string]any) {
+	itemType, _ := item["type"].(string)
+	switch itemType {
+	case "message":
+		appendResponsesMessageEvents(events, outputIndex, itemID, item)
+	case "function_call":
+		arguments, _ := item["arguments"].(string)
+		*events = append(*events, map[string]any{"type": "response.function_call_arguments.delta", "output_index": outputIndex, "item_id": itemID, "delta": arguments})
+		*events = append(*events, map[string]any{"type": "response.function_call_arguments.done", "output_index": outputIndex, "item_id": itemID, "arguments": arguments})
+	case "reasoning":
+		appendResponsesReasoningEvents(events, outputIndex, itemID, item)
+	default:
+		appendResponsesStatusEvents(events, outputIndex, itemID, itemType, item)
+		appendResponsesStringFieldEvents(events, outputIndex, itemID, itemType, item)
+	}
+}
+
+func appendResponsesMessageEvents(events *[]map[string]any, outputIndex int, itemID string, item map[string]any) {
+	for contentIndex, part := range responsesAnySliceToMaps(item["content"]) {
+		*events = append(*events, map[string]any{
+			"type":          "response.content_part.added",
+			"output_index":  outputIndex,
+			"item_id":       itemID,
+			"content_index": contentIndex,
+			"part":          part,
+		})
+		partType, _ := part["type"].(string)
+		switch partType {
+		case "output_text":
+			text, _ := part["text"].(string)
+			*events = append(*events, map[string]any{"type": "response.output_text.delta", "output_index": outputIndex, "item_id": itemID, "content_index": contentIndex, "delta": text})
+			*events = append(*events, map[string]any{"type": "response.output_text.done", "output_index": outputIndex, "item_id": itemID, "content_index": contentIndex, "text": text})
+		case "refusal":
+			text, _ := part["refusal"].(string)
+			*events = append(*events, map[string]any{"type": "response.refusal.delta", "output_index": outputIndex, "item_id": itemID, "content_index": contentIndex, "delta": text})
+			*events = append(*events, map[string]any{"type": "response.refusal.done", "output_index": outputIndex, "item_id": itemID, "content_index": contentIndex, "refusal": text})
+		}
+		*events = append(*events, map[string]any{
+			"type":          "response.content_part.done",
+			"output_index":  outputIndex,
+			"item_id":       itemID,
+			"content_index": contentIndex,
+			"part":          part,
+		})
+	}
+}
+
+func appendResponsesReasoningEvents(events *[]map[string]any, outputIndex int, itemID string, item map[string]any) {
+	for summaryIndex, part := range responsesAnySliceToMaps(item["summary"]) {
+		*events = append(*events, map[string]any{
+			"type":          "response.reasoning_summary_part.added",
+			"output_index":  outputIndex,
+			"item_id":       itemID,
+			"summary_index": summaryIndex,
+			"part":          part,
+		})
+		partType, _ := part["type"].(string)
+		if partType == "summary_text" {
+			text, _ := part["text"].(string)
+			*events = append(*events, map[string]any{"type": "response.reasoning_summary_text.delta", "output_index": outputIndex, "item_id": itemID, "summary_index": summaryIndex, "delta": text})
+			*events = append(*events, map[string]any{"type": "response.reasoning_summary_text.done", "output_index": outputIndex, "item_id": itemID, "summary_index": summaryIndex, "text": text})
+		}
+		*events = append(*events, map[string]any{
+			"type":          "response.reasoning_summary_part.done",
+			"output_index":  outputIndex,
+			"item_id":       itemID,
+			"summary_index": summaryIndex,
+			"part":          part,
+		})
+	}
+}
+
+func appendResponsesStatusEvents(events *[]map[string]any, outputIndex int, itemID string, itemType string, item map[string]any) {
+	status, _ := item["status"].(string)
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return
+	}
+	*events = append(*events, map[string]any{
+		"type":         fmt.Sprintf("response.%s.%s", itemType, status),
+		"output_index": outputIndex,
+		"item_id":      itemID,
+		"item":         item,
+	})
+}
+
+func appendResponsesStringFieldEvents(events *[]map[string]any, outputIndex int, itemID string, itemType string, item map[string]any) {
+	type fieldMapping struct {
+		field   string
+		delta   string
+		done    string
+		doneKey string
+	}
+	mappings := map[string][]fieldMapping{
+		"mcp_call": {
+			{field: "arguments", delta: "response.mcp_call_arguments.delta", done: "response.mcp_call_arguments.done", doneKey: "arguments"},
+		},
+		"custom_tool_call": {
+			{field: "input", delta: "response.custom_tool_call_input.delta", done: "response.custom_tool_call_input.done", doneKey: "input"},
+		},
+		"code_interpreter_call": {
+			{field: "code", delta: "response.code_interpreter_call.code.delta", done: "response.code_interpreter_call.code.done", doneKey: "code"},
+		},
+		"apply_patch_call": {
+			{field: "patch", delta: "response.apply_patch_call.patch.delta", done: "response.apply_patch_call.patch.done", doneKey: "patch"},
+		},
+	}
+	for _, mapping := range mappings[itemType] {
+		value, _ := item[mapping.field].(string)
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		*events = append(*events, map[string]any{"type": mapping.delta, "output_index": outputIndex, "item_id": itemID, "delta": value})
+		*events = append(*events, map[string]any{"type": mapping.done, "output_index": outputIndex, "item_id": itemID, mapping.doneKey: value})
+	}
+}
+
+func responsesAnySliceToMaps(value any) []map[string]any {
+	switch typed := value.(type) {
+	case []map[string]any:
+		return typed
+	case []any:
+		items := make([]map[string]any, 0, len(typed))
+		for _, raw := range typed {
+			if item, ok := raw.(map[string]any); ok {
+				items = append(items, item)
+			}
+		}
+		return items
+	default:
+		return nil
+	}
 }
 
 func encodeResponsesInputFromMessages(messages []domain.UnifiedMessage) (string, []any, error) {
@@ -294,6 +425,13 @@ func encodeResponsesInputFromMessages(messages []domain.UnifiedMessage) (string,
 
 func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 	if strings.EqualFold(strings.TrimSpace(message.Role), "tool") {
+		if len(message.InputItem) > 0 {
+			var item map[string]any
+			if err := json.Unmarshal(message.InputItem, &item); err != nil {
+				return nil, err
+			}
+			return []any{item}, nil
+		}
 		return []any{map[string]any{
 			"type":    "function_call_output",
 			"call_id": decodeStringRaw(message.Metadata["tool_call_id"]),
@@ -302,18 +440,37 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 	}
 
 	items := make([]any, 0, 1+len(message.ToolCalls))
+	for _, part := range message.Parts {
+		if len(part.InputItem) > 0 {
+			var item map[string]any
+			if err := json.Unmarshal(part.InputItem, &item); err != nil {
+				return nil, err
+			}
+			items = append(items, item)
+		}
+	}
 	if len(message.Parts) > 0 {
-		content, err := encodeResponsesContent(message.Parts)
+		content, err := encodeResponsesContent(filterStandardResponsesParts(message.Parts))
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, map[string]any{
-			"type":    "message",
-			"role":    message.Role,
-			"content": content,
-		})
+		if len(content) > 0 {
+			items = append(items, map[string]any{
+				"type":    "message",
+				"role":    message.Role,
+				"content": content,
+			})
+		}
 	}
 	for idx, call := range message.ToolCalls {
+		if len(call.InputItem) > 0 {
+			var item map[string]any
+			if err := json.Unmarshal(call.InputItem, &item); err != nil {
+				return nil, err
+			}
+			items = append(items, item)
+			continue
+		}
 		callID := call.ID
 		if strings.TrimSpace(callID) == "" {
 			callID = fmt.Sprintf("fc_%d", idx+1)
@@ -388,11 +545,44 @@ func decodeResponsesOutput(raw json.RawMessage) (domain.UnifiedMessage, error) {
 					arguments = append(json.RawMessage(nil), rawArgs...)
 				}
 			}
+			rawItem, err := json.Marshal(item)
+			if err != nil {
+				return domain.UnifiedMessage{}, fmt.Errorf("output[%d] marshal: %w", i, err)
+			}
 			call := domain.UnifiedToolCall{Name: name, Arguments: arguments}
 			if callIDRaw, ok := item["call_id"]; ok {
 				_ = json.Unmarshal(callIDRaw, &call.ID)
 			}
+			call.Metadata = collectUnknownFields(item, "id", "type", "call_id", "name", "arguments")
+			if call.Metadata == nil {
+				call.Metadata = map[string]json.RawMessage{}
+			}
+			call.OutputItem = rawItem
 			message.ToolCalls = append(message.ToolCalls, call)
+		case "reasoning", "web_search_call", "file_search_call", "computer_call", "computer_call_output", "mcp_call", "mcp_list_tools", "mcp_approval_request", "custom_tool_call", "code_interpreter_call", "image_generation_call", "local_shell_call", "local_shell_call_output", "shell_call_output", "apply_patch_call", "apply_patch_call_output":
+			rawItem, err := json.Marshal(item)
+			if err != nil {
+				return domain.UnifiedMessage{}, fmt.Errorf("output[%d] marshal: %w", i, err)
+			}
+			part := domain.UnifiedPart{
+				Type:       itemType,
+				OutputItem: rawItem,
+			}
+			if itemType == "reasoning" {
+				if summary := decodeResponsesReasoningSummary(item); summary != "" {
+					part.Text = summary
+				}
+			}
+			message.Parts = append(message.Parts, part)
+		default:
+			rawItem, err := json.Marshal(item)
+			if err != nil {
+				return domain.UnifiedMessage{}, fmt.Errorf("output[%d] marshal: %w", i, err)
+			}
+			message.Parts = append(message.Parts, domain.UnifiedPart{
+				Type:       itemType,
+				OutputItem: rawItem,
+			})
 		}
 	}
 	if len(message.Parts) == 0 && len(message.ToolCalls) == 0 {
@@ -449,11 +639,15 @@ func decodeResponsesInputItem(raw json.RawMessage) ([]domain.UnifiedMessage, err
 	case "function_call_output":
 		var output string
 		_ = decodeRawString(item, "output", &output, false)
+		rawItem, err := json.Marshal(item)
+		if err != nil {
+			return nil, fmt.Errorf("item marshal 失败: %w", err)
+		}
 		metadata := map[string]json.RawMessage{}
 		if callID, ok := item["call_id"]; ok {
 			metadata["tool_call_id"] = append(json.RawMessage(nil), callID...)
 		}
-		return []domain.UnifiedMessage{{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: output}}, Metadata: metadata}}, nil
+		return []domain.UnifiedMessage{{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: output}}, InputItem: rawItem, Metadata: metadata}}, nil
 	case "function_call":
 		var name string
 		_ = decodeRawString(item, "name", &name, true)
@@ -466,7 +660,11 @@ func decodeResponsesInputItem(raw json.RawMessage) ([]domain.UnifiedMessage, err
 				args = append(json.RawMessage(nil), argsRaw...)
 			}
 		}
-		toolCall := domain.UnifiedToolCall{Name: name, Arguments: args}
+		rawItem, err := json.Marshal(item)
+		if err != nil {
+			return nil, fmt.Errorf("item marshal 失败: %w", err)
+		}
+		toolCall := domain.UnifiedToolCall{Name: name, Arguments: args, InputItem: rawItem}
 		if callID, ok := item["call_id"]; ok {
 			_ = json.Unmarshal(callID, &toolCall.ID)
 		}
@@ -488,6 +686,21 @@ func decodeResponsesInputItem(raw json.RawMessage) ([]domain.UnifiedMessage, err
 				return []domain.UnifiedMessage{{Role: role, Parts: []domain.UnifiedPart{{Type: "text", Text: text}}}}, nil
 			}
 		}
+	case "reasoning", "web_search_call", "file_search_call", "computer_call", "computer_call_output", "mcp_call", "mcp_list_tools", "mcp_approval_request", "custom_tool_call", "code_interpreter_call", "image_generation_call", "local_shell_call", "local_shell_call_output", "shell_call_output", "apply_patch_call", "apply_patch_call_output":
+		rawItem, err := json.Marshal(item)
+		if err != nil {
+			return nil, fmt.Errorf("item marshal 失败: %w", err)
+		}
+		part := domain.UnifiedPart{
+			Type:      itemType,
+			InputItem: rawItem,
+		}
+		if itemType == "reasoning" {
+			if summary := decodeResponsesReasoningSummary(item); summary != "" {
+				part.Text = summary
+			}
+		}
+		return []domain.UnifiedMessage{{Role: "assistant", Parts: []domain.UnifiedPart{part}}}, nil
 	}
 	return nil, fmt.Errorf("暂不支持的 Responses input item")
 }
@@ -533,29 +746,75 @@ func decodeResponsesContent(raw json.RawMessage) ([]domain.UnifiedPart, error) {
 	return parts, nil
 }
 
+func filterStandardResponsesParts(parts []domain.UnifiedPart) []domain.UnifiedPart {
+	filtered := make([]domain.UnifiedPart, 0, len(parts))
+	for _, part := range parts {
+		if len(part.InputItem) > 0 {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return filtered
+}
+
+func filterStandardResponsesOutputParts(parts []domain.UnifiedPart) []domain.UnifiedPart {
+	filtered := make([]domain.UnifiedPart, 0, len(parts))
+	for _, part := range parts {
+		if len(part.OutputItem) > 0 {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return filtered
+}
+
 func encodeResponsesOutput(message domain.UnifiedMessage) ([]map[string]any, string, error) {
+	items := make([]map[string]any, 0, len(message.ToolCalls)+len(message.Parts))
+	for _, part := range message.Parts {
+		if len(part.OutputItem) > 0 {
+			var item map[string]any
+			if err := json.Unmarshal(part.OutputItem, &item); err != nil {
+				return nil, "", err
+			}
+			items = append(items, item)
+		}
+	}
 	if len(message.ToolCalls) > 0 {
-		items := make([]map[string]any, 0, len(message.ToolCalls))
 		for idx, call := range message.ToolCalls {
+			if len(call.OutputItem) > 0 {
+				var item map[string]any
+				if err := json.Unmarshal(call.OutputItem, &item); err != nil {
+					return nil, "", err
+				}
+				items = append(items, item)
+				continue
+			}
 			callID := call.ID
 			if callID == "" {
 				callID = fmt.Sprintf("fc_%d", idx+1)
 			}
-			items = append(items, map[string]any{
+			itemType := "function_call"
+			if rawType := strings.TrimSpace(decodeStringRaw(call.Metadata["responses_item_type"])); rawType != "" {
+				itemType = rawType
+			}
+			item := map[string]any{
 				"id":        callID,
-				"type":      "function_call",
+				"type":      itemType,
 				"call_id":   callID,
 				"name":      call.Name,
 				"arguments": string(call.Arguments),
-			})
+			}
+			mergeRawFields(item, call.Metadata)
+			items = append(items, item)
 		}
-		return items, "", nil
 	}
-	content, err := encodeOpenAIMessageContent(message)
+	contentMessage := message
+	contentMessage.Parts = filterStandardResponsesOutputParts(message.Parts)
+	content, err := encodeOpenAIMessageContent(contentMessage)
 	if err != nil {
 		return nil, "", err
 	}
-	outputText := firstUnifiedText(message)
+	outputText := firstUnifiedText(contentMessage)
 	contentItems := []map[string]any{}
 	switch typed := content.(type) {
 	case string:
@@ -574,7 +833,13 @@ func encodeResponsesOutput(message domain.UnifiedMessage) ([]map[string]any, str
 	default:
 		contentItems = append(contentItems, map[string]any{"type": "output_text", "text": outputText})
 	}
-	return []map[string]any{{"id": "msg_1", "type": "message", "role": "assistant", "content": contentItems}}, outputText, nil
+	if len(contentItems) > 0 {
+		items = append(items, map[string]any{"id": "msg_1", "type": "message", "role": "assistant", "content": contentItems})
+	}
+	if len(items) == 0 {
+		items = append(items, map[string]any{"id": "msg_1", "type": "message", "role": "assistant", "content": []map[string]any{}})
+	}
+	return items, outputText, nil
 }
 
 func encodeResponsesUsage(usage map[string]int64) map[string]any {
@@ -600,4 +865,23 @@ func encodeResponsesUsage(usage map[string]int64) map[string]any {
 func mustSSEEvent(event string, payload map[string]any) string {
 	body, _ := json.Marshal(payload)
 	return fmt.Sprintf("event: %s\ndata: %s\n\n", event, string(body))
+}
+
+func decodeResponsesReasoningSummary(item map[string]json.RawMessage) string {
+	if summaryRaw, ok := item["summary"]; ok {
+		var summaryItems []map[string]json.RawMessage
+		if err := json.Unmarshal(summaryRaw, &summaryItems); err == nil {
+			parts := make([]string, 0, len(summaryItems))
+			for _, summaryItem := range summaryItems {
+				var text string
+				if err := decodeRawString(summaryItem, "text", &text, false); err == nil && strings.TrimSpace(text) != "" {
+					parts = append(parts, text)
+				}
+			}
+			if len(parts) > 0 {
+				return strings.Join(parts, "\n")
+			}
+		}
+	}
+	return ""
 }

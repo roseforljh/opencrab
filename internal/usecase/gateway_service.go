@@ -10,6 +10,7 @@ import (
 	"opencrab/internal/capability"
 	"opencrab/internal/domain"
 	"opencrab/internal/planner"
+	"opencrab/internal/reject"
 )
 
 const maxFallbackDepth = 3
@@ -166,7 +167,12 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 			state.fallbackStage = "model_alias_reentry"
 			return s.executeAlias(ctx, requestID, req, fallbackAlias, depth+1, state)
 		}
-		return nil, domain.ErrNoAvailableRoute(normalizedAlias)
+		reason := "no_viable_route"
+		if count := len(state.skips); count > 0 {
+			reason = state.skips[count-1].Reason
+		}
+		rejection := reject.NewEngine().Decide(routingReq, reason)
+		return nil, domain.NewExecutionError(fmt.Errorf("%s", rejection.Message), rejection.StatusCode, rejection.Retryable, false)
 	}
 
 	plans, strategy, err := s.arrangeRoutes(ctx, routingReq, available)
@@ -175,6 +181,14 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 	}
 	state.strategy = strategy
 	plans = s.applyStickyPreference(ctx, req, routingReq, plans, state)
+	executionPlan := planner.BuildExecutionPlan(ctx, s.capabilities, routingReq, routesFromPlans(plans), selectFallbackAlias(routeList), reject.NewEngine())
+	if executionPlan.Rejection != nil && len(executionPlan.Attempts) == 0 {
+		return nil, domain.NewExecutionError(fmt.Errorf("%s", executionPlan.Rejection.Message), executionPlan.Rejection.StatusCode, executionPlan.Rejection.Retryable, false)
+	}
+	attemptPlans := make(map[int64]planner.AttemptPlan, len(executionPlan.Attempts))
+	for _, attemptPlan := range executionPlan.Attempts {
+		attemptPlans[attemptPlan.Route.ID] = attemptPlan
+	}
 
 	var lastErr error
 	var activeGroup *routePlan
@@ -269,7 +283,9 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 		}
 
 		plannedReq := adaptRequestForProvider(routingReq, route.Channel.Provider)
-		if plannedOp, ok := state.plannedOps[route.ID]; ok && plannedOp != "" {
+		if attemptPlan, ok := attemptPlans[route.ID]; ok && attemptPlan.TargetOperation != "" {
+			plannedReq.Operation = attemptPlan.TargetOperation
+		} else if plannedOp, ok := state.plannedOps[route.ID]; ok && plannedOp != "" {
 			plannedReq.Operation = plannedOp
 		}
 
@@ -397,7 +413,7 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 	}
 
 	advanceGroup(activeGroup, activeGroup.startIndex)
-	fallbackAlias := selectFallbackAlias(routeList)
+	fallbackAlias := executionPlan.FallbackAlias
 	if fallbackAlias != "" {
 		state.decisionReason = "fallback_reentry"
 		state.fallbackStage = "model_alias_reentry"
@@ -467,6 +483,8 @@ func protocolMatchesProviderForExecution(protocol domain.Protocol, providerName 
 		return providerName == "claude"
 	case domain.ProtocolGemini:
 		return providerName == "gemini"
+	case domain.ProtocolCodex:
+		return providerName == "openai" || providerName == "openrouter" || providerName == "glm" || providerName == "kimi" || providerName == "minimax"
 	default:
 		return providerName == "openai" || providerName == "openrouter" || providerName == "glm" || providerName == "kimi" || providerName == "minimax"
 	}
@@ -529,13 +547,13 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 			})
 			continue
 		}
-		compatibility := planner.EvaluateGatewayRoute(ctx, s.capabilities, routingReq, route)
-		if !compatibility.Executable {
+		routePlan := planner.PlanRoute(ctx, s.capabilities, routingReq, route)
+		if !routePlan.Executable {
 			skip := domain.GatewaySkip{
 				RouteID:        route.ID,
 				ModelAlias:     route.ModelAlias,
 				Channel:        route.Channel.Name,
-				Reason:         compatibility.Reason,
+				Reason:         routePlan.Reason,
 				Provider:       route.Channel.Provider,
 				InvocationMode: route.InvocationMode,
 				Priority:       route.Priority,
@@ -560,7 +578,7 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 				Success:          false,
 				DecisionReason:   "route_skipped",
 				FallbackStage:    state.fallbackStage,
-				SkipReason:       compatibility.Reason,
+				SkipReason:       routePlan.Reason,
 				StickyHit:        false,
 				SelectedChannel:  route.Channel.Name,
 				AffinityKey:      req.AffinityKey,
@@ -570,8 +588,8 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 			})
 			continue
 		}
-		if compatibility.TargetOperation != "" {
-			state.plannedOps[route.ID] = compatibility.TargetOperation
+		if routePlan.TargetOperation != "" {
+			state.plannedOps[route.ID] = routePlan.TargetOperation
 		}
 		if active, until := routeInCooldown(route); active {
 			skip := domain.GatewaySkip{
@@ -681,6 +699,7 @@ func (s *GatewayService) arrangeRoutes(ctx context.Context, req domain.GatewayRe
 		}
 		strategy = value
 	}
+	routes = preferNativeProviderRoutes(req, routes)
 	ordered := prioritizeRoutesByInvocationMode(routes, req.Protocol)
 	if strategy != domain.RoutingStrategyRoundRobin || s.cursors == nil {
 		return wrapSequentialPlans(ordered, req.Protocol), strategy, nil
@@ -695,6 +714,14 @@ func wrapSequentialPlans(routes []domain.GatewayRoute, protocol domain.Protocol)
 		plans = append(plans, routePlan{route: route, bucketName: invocationBucketName(route, protocol), groupSize: 1, originalIndex: 0, startIndex: 0})
 	}
 	return plans
+}
+
+func routesFromPlans(plans []routePlan) []domain.GatewayRoute {
+	routes := make([]domain.GatewayRoute, 0, len(plans))
+	for _, plan := range plans {
+		routes = append(routes, plan.route)
+	}
+	return routes
 }
 
 func (s *GatewayService) rotateRoutes(ctx context.Context, req domain.GatewayRequest, routes []domain.GatewayRoute) ([]routePlan, error) {
@@ -921,6 +948,91 @@ func scopeListContains(items []string, target string) bool {
 	}
 	for _, item := range items {
 		if strings.TrimSpace(item) == normalizedTarget {
+			return true
+		}
+	}
+	return false
+}
+
+func preferNativeProviderRoutes(req domain.GatewayRequest, routes []domain.GatewayRoute) []domain.GatewayRoute {
+	preferredProvider := nativePreferredProvider(req)
+	if preferredProvider == "" || len(routes) <= 1 {
+		return routes
+	}
+	preferred := make([]domain.GatewayRoute, 0, len(routes))
+	fallback := make([]domain.GatewayRoute, 0, len(routes))
+	for _, route := range routes {
+		if domain.NormalizeProvider(route.Channel.Provider) == preferredProvider {
+			preferred = append(preferred, route)
+			continue
+		}
+		fallback = append(fallback, route)
+	}
+	if len(preferred) == 0 {
+		return routes
+	}
+	return append(preferred, fallback...)
+}
+
+func nativePreferredProvider(req domain.GatewayRequest) string {
+	profile := capability.AnalyzeGatewayRequest(req)
+	switch req.Protocol {
+	case domain.ProtocolClaude:
+		if requestHasAnyCapability(profile.RequiredCapabilities,
+			capability.CapabilityClaudeBetaHeader,
+			capability.CapabilityClaudeThinking,
+			capability.CapabilityClaudeToolChoiceForced,
+			capability.CapabilityClaudePromptCaching,
+			capability.CapabilityClaudeComputerUse,
+			capability.CapabilityClaudeMCPServers,
+			capability.CapabilityClaudeContainer,
+			capability.CapabilityClaudeContextManagement,
+		) {
+			return "claude"
+		}
+	case domain.ProtocolGemini:
+		if requestHasAnyCapability(profile.RequiredCapabilities,
+			capability.CapabilityGeminiGenerationConfig,
+			capability.CapabilityGeminiSafetySettings,
+			capability.CapabilityGeminiToolConfig,
+			capability.CapabilityGeminiThinking,
+			capability.CapabilityGeminiStructuredOutputs,
+			capability.CapabilityGeminiGoogleSearch,
+			capability.CapabilityGeminiURLContext,
+			capability.CapabilityGeminiCodeExecution,
+			capability.CapabilityGeminiThoughtSignatures,
+			capability.CapabilityGeminiCachedContent,
+		) {
+			return "gemini"
+		}
+	case domain.ProtocolOpenAI, domain.ProtocolCodex:
+		if requestHasAnyCapability(profile.RequiredCapabilities,
+			capability.CapabilityBuiltinWebSearch,
+			capability.CapabilityBuiltinFileSearch,
+			capability.CapabilityBuiltinRemoteMCP,
+			capability.CapabilityBuiltinComputerUse,
+			capability.CapabilityBuiltinShell,
+			capability.CapabilityBuiltinApplyPatch,
+			capability.CapabilityBuiltinCodeInterpreter,
+			capability.CapabilityBuiltinImageGeneration,
+			capability.CapabilityCustomTools,
+			capability.CapabilityParallelToolCalls,
+			capability.CapabilityStructuredOutputs,
+			capability.CapabilityReasoning,
+			capability.CapabilitySafetyIdentifier,
+			capability.CapabilityOpenAIResponsesSession,
+			capability.CapabilityOpenAIResponsesInclude,
+			capability.CapabilityOpenAIResponsesStore,
+		) {
+			return "openai"
+		}
+	}
+	return ""
+}
+
+func requestHasAnyCapability(required map[capability.Capability]struct{}, items ...capability.Capability) bool {
+	for _, item := range items {
+		if _, ok := required[item]; ok {
 			return true
 		}
 	}
