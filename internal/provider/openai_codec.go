@@ -214,6 +214,12 @@ func encodeOpenAIMessageContent(message domain.UnifiedMessage) (any, error) {
 }
 
 func encodeOpenAIPart(part domain.UnifiedPart) (map[string]any, error) {
+	if item, ok := decodePreservedMapItem(part.InputItem); ok {
+		return item, nil
+	}
+	if item, ok := decodePreservedMapItem(part.NativePayload); ok {
+		return item, nil
+	}
 	item := map[string]any{}
 	mergeRawFields(item, part.Metadata)
 	desc := extractMediaDescriptor(part)
@@ -266,6 +272,17 @@ func encodeOpenAIPart(part domain.UnifiedPart) (map[string]any, error) {
 		return nil, fmt.Errorf("OpenAI 暂不支持 part 类型: %s", part.Type)
 	}
 	return item, nil
+}
+
+func decodePreservedMapItem(raw json.RawMessage) (map[string]any, bool) {
+	if len(raw) == 0 {
+		return nil, false
+	}
+	var item map[string]any
+	if err := json.Unmarshal(raw, &item); err != nil || len(item) == 0 {
+		return nil, false
+	}
+	return item, true
 }
 
 func decodeOpenAIMessageContent(contentRaw json.RawMessage) ([]domain.UnifiedPart, error) {

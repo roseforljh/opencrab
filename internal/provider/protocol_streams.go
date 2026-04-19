@@ -27,7 +27,11 @@ func EncodeOpenAIChatStream(resp domain.UnifiedChatResponse) ([]byte, error) {
 	}
 	finish := resp.FinishReason
 	if finish == "" {
-		finish = "stop"
+		if len(resp.Message.ToolCalls) > 0 {
+			finish = "tool_calls"
+		} else {
+			finish = "stop"
+		}
 	}
 	chunks = append(chunks, mustOpenAISSE(map[string]any{"id": chunkID, "object": "chat.completion.chunk", "created": created, "model": resp.Model, "choices": []map[string]any{{"index": 0, "delta": map[string]any{}, "finish_reason": finish}}}))
 	chunks = append(chunks, "data: [DONE]\n\n")
@@ -53,19 +57,21 @@ func EncodeClaudeChatStream(resp domain.UnifiedChatResponse) ([]byte, error) {
 	}
 	messageStart := map[string]any{"type": "message_start", "message": map[string]any{"id": messageID, "type": "message", "role": "assistant", "model": resp.Model, "content": []any{}, "stop_reason": nil, "stop_sequence": nil, "usage": messageStartUsage}}
 	events = append(events, mustClaudeSSE("message_start", messageStart))
-	if len(resp.Message.ToolCalls) > 0 {
-		for idx, call := range resp.Message.ToolCalls {
-			events = append(events, mustClaudeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": idx, "content_block": map[string]any{"type": "tool_use", "id": call.ID, "name": call.Name, "input": map[string]any{}}}))
-			events = append(events, mustClaudeSSE("content_block_delta", map[string]any{"type": "content_block_delta", "index": idx, "delta": map[string]any{"type": "input_json_delta", "partial_json": string(call.Arguments)}}))
-			events = append(events, mustClaudeSSE("content_block_stop", map[string]any{"type": "content_block_stop", "index": idx}))
-		}
-	} else {
-		text := firstUnifiedText(resp.Message)
-		events = append(events, mustClaudeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}}))
+	blockIndex := 0
+	text := firstUnifiedText(resp.Message)
+	if text != "" || len(resp.Message.ToolCalls) == 0 {
+		events = append(events, mustClaudeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": blockIndex, "content_block": map[string]any{"type": "text", "text": ""}}))
 		if text != "" {
-			events = append(events, mustClaudeSSE("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": text}}))
+			events = append(events, mustClaudeSSE("content_block_delta", map[string]any{"type": "content_block_delta", "index": blockIndex, "delta": map[string]any{"type": "text_delta", "text": text}}))
 		}
-		events = append(events, mustClaudeSSE("content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}))
+		events = append(events, mustClaudeSSE("content_block_stop", map[string]any{"type": "content_block_stop", "index": blockIndex}))
+		blockIndex++
+	}
+	for _, call := range resp.Message.ToolCalls {
+		events = append(events, mustClaudeSSE("content_block_start", map[string]any{"type": "content_block_start", "index": blockIndex, "content_block": map[string]any{"type": "tool_use", "id": call.ID, "name": call.Name, "input": map[string]any{}}}))
+		events = append(events, mustClaudeSSE("content_block_delta", map[string]any{"type": "content_block_delta", "index": blockIndex, "delta": map[string]any{"type": "input_json_delta", "partial_json": string(call.Arguments)}}))
+		events = append(events, mustClaudeSSE("content_block_stop", map[string]any{"type": "content_block_stop", "index": blockIndex}))
+		blockIndex++
 	}
 	stopReason := resp.FinishReason
 	if stopReason == "" {

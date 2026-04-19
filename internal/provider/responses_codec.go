@@ -94,6 +94,10 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 	if err := req.ValidateCore(); err != nil {
 		return nil, err
 	}
+	req = projectOpenAIResponsesRequest(req, session)
+	if err := req.ValidateCore(); err != nil {
+		return nil, err
+	}
 
 	payload := map[string]any{}
 	metadata := filterResponsesRequestMetadata(cloneRawMap(req.Metadata))
@@ -267,6 +271,9 @@ func BuildOpenAIResponsesEvents(resp domain.UnifiedChatResponse) ([]map[string]a
 		events = append(events, map[string]any{"type": "response.output_item.done", "output_index": idx, "item": item})
 	}
 	events = append(events, map[string]any{"type": "response.completed", "response": responseObject})
+	for idx, event := range events {
+		event["sequence_number"] = idx
+	}
 	return events, nil
 }
 
@@ -805,7 +812,7 @@ func decodeResponsesInputItem(raw json.RawMessage) ([]domain.UnifiedMessage, err
 		if callID, ok := item["call_id"]; ok {
 			_ = json.Unmarshal(callID, &toolCall.ID)
 		}
-		return []domain.UnifiedMessage{{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{toolCall}, Parts: []domain.UnifiedPart{{Type: "text", Text: "tool_call"}}}}, nil
+		return []domain.UnifiedMessage{{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{toolCall}}}, nil
 	case "message", "":
 		if role == "" {
 			role = "user"
@@ -839,7 +846,32 @@ func decodeResponsesInputItem(raw json.RawMessage) ([]domain.UnifiedMessage, err
 		}
 		return []domain.UnifiedMessage{{Role: "assistant", Parts: []domain.UnifiedPart{part}}}, nil
 	}
-	return nil, fmt.Errorf("暂不支持的 Responses input item")
+	rawItem, err := json.Marshal(item)
+	if err != nil {
+		return nil, fmt.Errorf("item marshal 失败: %w", err)
+	}
+	normalizedRole := normalizeResponsesInputRole(role)
+	if normalizedRole == "tool" {
+		return []domain.UnifiedMessage{{Role: normalizedRole, InputItem: rawItem}}, nil
+	}
+	partType := strings.TrimSpace(itemType)
+	if partType == "" {
+		partType = "responses_input_item"
+	}
+	return []domain.UnifiedMessage{{Role: normalizedRole, Parts: []domain.UnifiedPart{{Type: partType, InputItem: rawItem}}}}, nil
+}
+
+func normalizeResponsesInputRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "system":
+		return "system"
+	case "user":
+		return "user"
+	case "tool":
+		return "tool"
+	default:
+		return "assistant"
+	}
 }
 
 func decodeResponsesContent(raw json.RawMessage) ([]domain.UnifiedPart, error) {

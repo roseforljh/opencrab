@@ -250,6 +250,12 @@ func encodeClaudeToolResultContent(parts []domain.UnifiedPart) (any, error) {
 }
 
 func encodeClaudeContentBlock(part domain.UnifiedPart) (map[string]any, error) {
+	if item, ok := decodePreservedMapItem(part.InputItem); ok {
+		return item, nil
+	}
+	if item, ok := decodePreservedMapItem(part.NativePayload); ok {
+		return item, nil
+	}
 	item := map[string]any{}
 	mergeRawFields(item, part.Metadata)
 	desc := extractMediaDescriptor(part)

@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-
 	"opencrab/internal/domain"
 )
 
 const anthropicVersion = "2023-06-01"
 const upstreamRequestTimeout = 15 * time.Second
+const responsesUpstreamRequestTimeout = 90 * time.Second
 
 type OpenAIExecutor struct {
 	client *http.Client
@@ -72,7 +72,7 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 OpenAI 请求失败: %w", err), 0, false, false)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, upstreamRequestTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, upstreamTimeoutForOperation(targetOperation))
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, payload.url, bytes.NewReader(payload.body))
 	if err != nil {
@@ -82,7 +82,7 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+input.Channel.APIKey)
 	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"authorization": {}, "content-type": {}, "accept": {}})
-	return doExecutorRequest(e.client, req, payload.stream, nil)
+	return doExecutorRequest(e.client, req, payload.stream, payloadDebugMetadata(normalizedProvider, targetOperation, payload))
 }
 
 func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
@@ -105,7 +105,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Claude 请求失败: %w", err), 0, false, false)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, upstreamRequestTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, upstreamTimeoutForOperation(domain.ProtocolOperationClaudeMessages))
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, payload.url, bytes.NewReader(payload.body))
 	if err != nil {
@@ -154,7 +154,7 @@ func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Gemini 请求失败: %w", err), 0, false, false)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, upstreamRequestTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, upstreamTimeoutForOperation(targetOperation))
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, payload.url, bytes.NewReader(payload.body))
 	if err != nil {
@@ -1000,9 +1000,9 @@ func rewriteClaudeToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
 		functionTool := map[string]any{
 			"type": "function",
 			"function": map[string]any{
-				"name":       name,
+				"name":        name,
 				"description": coalesceString(tool["description"]),
-				"parameters": tool["input_schema"],
+				"parameters":  tool["input_schema"],
 			},
 		}
 		if encoded, err := json.Marshal(functionTool); err == nil {
@@ -1348,7 +1348,7 @@ func doExecutorRequest(client *http.Client, req *http.Request, stream bool, debu
 		return nil, domain.NewExecutionError(attachPayloadDebugMetadata(fmt.Errorf("请求上游失败: %w", err), debugMetadata), 0, true, false)
 	}
 	headers := cloneHeaders(resp.Header)
-	if stream && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if stream && resp.StatusCode >= 200 && resp.StatusCode < 300 && isEventStreamResponse(resp.Header) {
 		return &domain.ExecutionResult{Stream: &domain.StreamResult{StatusCode: resp.StatusCode, Headers: headers, Body: resp.Body}}, nil
 	}
 	defer resp.Body.Close()
@@ -1364,6 +1364,10 @@ func doExecutorRequest(client *http.Client, req *http.Request, stream bool, debu
 		return nil, domain.NewExecutionError(attachPayloadDebugMetadata(fmt.Errorf("上游返回 %d: %s", resp.StatusCode, message), debugMetadata), resp.StatusCode, domain.IsRetryableStatusCode(resp.StatusCode), false)
 	}
 	return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: resp.StatusCode, Headers: headers, Body: body}}, nil
+}
+
+func isEventStreamResponse(header http.Header) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(header.Get("Content-Type"))), "text/event-stream")
 }
 
 func cloneHeaders(header http.Header) map[string][]string {
@@ -1385,6 +1389,7 @@ func payloadDebugMetadata(provider string, operation domain.ProtocolOperation, p
 		"upstream_operation":       string(operation),
 		"upstream_request_url":     payload.url,
 		"upstream_request_stream":  fmt.Sprintf("%t", payload.stream),
+		"upstream_payload_bytes":   fmt.Sprintf("%d", len(payload.body)),
 		"upstream_payload_sha256":  hex.EncodeToString(digest[:]),
 		"upstream_payload_preview": preview,
 	}
@@ -1404,6 +1409,21 @@ func buildFocusedPayloadPreview(body []byte) string {
 		if value, ok := raw[key]; ok {
 			focused[key] = value
 		}
+	}
+	if input, ok := raw["input"].([]any); ok {
+		focused["input_count"] = len(input)
+		if typeCounts := collectResponseInputTypeCounts(input); len(typeCounts) > 0 {
+			focused["input_type_counts"] = typeCounts
+		}
+	}
+	if instructions, ok := raw["instructions"].(string); ok {
+		focused["instructions_length"] = len(instructions)
+	}
+	if previousResponseID, ok := raw["previous_response_id"].(string); ok && strings.TrimSpace(previousResponseID) != "" {
+		focused["has_previous_response_id"] = true
+	}
+	if tools, ok := raw["tools"].([]any); ok {
+		focused["tools_count"] = len(tools)
 	}
 	if focusedContentsCount, ok := raw["contents"].([]any); ok {
 		focused["contents_count"] = len(focusedContentsCount)
@@ -1457,12 +1477,33 @@ func collectGeminiContentExtraKeys(contents []any) map[string][]string {
 	return extraByIndex
 }
 
+func collectResponseInputTypeCounts(input []any) map[string]int {
+	counts := map[string]int{}
+	for _, item := range input {
+		payload, ok := item.(map[string]any)
+		if !ok {
+			counts["unknown"]++
+			continue
+		}
+		itemType, _ := payload["type"].(string)
+		itemType = strings.TrimSpace(itemType)
+		if itemType == "" {
+			itemType = "unknown"
+		}
+		counts[itemType]++
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
 func attachPayloadDebugMetadata(err error, metadata map[string]string) error {
 	if err == nil || len(metadata) == 0 {
 		return err
 	}
 	parts := []string{err.Error()}
-	for _, key := range []string{"upstream_provider", "upstream_operation", "upstream_request_url", "upstream_request_stream", "upstream_payload_sha256", "upstream_payload_preview"} {
+	for _, key := range []string{"upstream_provider", "upstream_operation", "upstream_request_url", "upstream_request_stream", "upstream_payload_bytes", "upstream_payload_sha256", "upstream_payload_preview"} {
 		if value := strings.TrimSpace(metadata[key]); value != "" {
 			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
 		}
@@ -1511,6 +1552,13 @@ func shouldUseNativeUpstreamStream(req domain.GatewayRequest, targetProvider str
 	default:
 		return false
 	}
+}
+
+func upstreamTimeoutForOperation(operation domain.ProtocolOperation) time.Duration {
+	if operation == domain.ProtocolOperationOpenAIResponses {
+		return responsesUpstreamRequestTimeout
+	}
+	return upstreamRequestTimeout
 }
 
 func inferGatewaySourceOperation(req domain.GatewayRequest) domain.ProtocolOperation {

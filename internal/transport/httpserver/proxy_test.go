@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,7 +86,7 @@ func TestProxyResponsesConvertsChatCompletionResponse(t *testing.T) {
 	}
 }
 
-func TestProxyResponsesJSONRequestWithStreamHeaderReturnsJSONBody(t *testing.T) {
+func TestProxyResponsesJSONRequestWithStreamHeaderReturnsSyntheticStream(t *testing.T) {
 	router := NewRouter(Dependencies{
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
@@ -103,21 +103,18 @@ func TestProxyResponsesJSONRequestWithStreamHeaderReturnsJSONBody(t *testing.T) 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
-		t.Fatalf("expected json content-type, got %q", got)
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("expected event-stream content-type, got %q", got)
 	}
-	if strings.Contains(rec.Body.String(), "event: response.created") {
-		t.Fatalf("expected json body, got synthetic stream: %s", rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
-		t.Fatalf("expected assistant output_text in json body: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "event: response.created") || !strings.Contains(rec.Body.String(), "event: response.completed") || !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
+		t.Fatalf("expected synthetic responses stream body, got: %s", rec.Body.String())
 	}
 }
 
 func TestProxyResponsesLogsRenderedProxyWriteFailureWithoutOverwritingStatus(t *testing.T) {
 	logger, records := newCaptureLogger()
 	router := NewRouter(Dependencies{
-		Logger: logger,
+		Logger:       logger,
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
 			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)}}, nil
@@ -174,7 +171,7 @@ func TestProxyResponsesReturnsSyntheticStream(t *testing.T) {
 	}
 }
 
-func TestProxyResponsesPassesThroughNativeResponsesStream(t *testing.T) {
+func TestProxyResponsesPassesThroughNativeResponsesStreamForStreamingClients(t *testing.T) {
 	router := NewRouter(Dependencies{
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
@@ -184,7 +181,7 @@ func TestProxyResponsesPassesThroughNativeResponsesStream(t *testing.T) {
 			return &domain.ExecutionResult{Stream: &domain.StreamResult{
 				StatusCode: http.StatusOK,
 				Headers:    map[string][]string{"Content-Type": {"text/event-stream"}, "X-Opencrab-Provider": {"openai"}},
-				Body:       io.NopCloser(strings.NewReader("event: response.created\ndata: {}\n\ndata: [DONE]\n\n")),
+				Body:       io.NopCloser(strings.NewReader("event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-4.1\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-4.1\",\"output\":[{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"pong\"}]}],\"output_text\":\"pong\"}}\n\ndata: [DONE]\n\n")),
 			}}, nil
 		},
 		CopyProxy:  copyProxyForTest,
@@ -198,8 +195,11 @@ func TestProxyResponsesPassesThroughNativeResponsesStream(t *testing.T) {
 		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "event: response.created") || !strings.Contains(body, "data: [DONE]") {
+	if !strings.Contains(body, "event: response.created") || !strings.Contains(body, "event: response.completed") || !strings.Contains(body, "data: [DONE]") {
 		t.Fatalf("unexpected native stream body: %s", body)
+	}
+	if strings.Contains(body, "response.output_item.added") || strings.Contains(body, "response.output_text.delta") {
+		t.Fatalf("streaming clients should receive passthrough native responses events, got: %s", body)
 	}
 }
 
@@ -228,15 +228,15 @@ func TestProxyCodexResponsesRendersResponsesShape(t *testing.T) {
 	}
 }
 
-func TestProxyResponsesMergesPreviousResponseTranscript(t *testing.T) {
+func TestProxyResponsesUsesUpstreamPreviousResponseContinuation(t *testing.T) {
 	var callCount int
-	var captured []domain.GatewayMessage
+	var captured domain.GatewayRequest
 	store := NewMemoryResponseSessionStore(16)
 	router := NewRouter(Dependencies{
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
 			callCount++
-			captured = append([]domain.GatewayMessage(nil), req.Messages...)
+			captured = req
 			body := `{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
 			if callCount == 2 {
 				body = `{"id":"chatcmpl-test-2","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"again"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
@@ -261,20 +261,110 @@ func TestProxyResponsesMergesPreviousResponseTranscript(t *testing.T) {
 	if secondRec.Code != http.StatusOK {
 		t.Fatalf("unexpected second response: %d %s", secondRec.Code, secondRec.Body.String())
 	}
-	if len(captured) < 3 {
-		t.Fatalf("expected merged transcript, got %#v", captured)
+	if len(captured.Messages) != 1 || captured.Messages[0].Role != "user" || captured.Messages[0].Parts[0].Text != "next" {
+		t.Fatalf("expected delta-only continuation, got %#v", captured.Messages)
+	}
+	if captured.Session == nil || captured.Session.PreviousResponseID != "chatcmpl-test" {
+		t.Fatalf("expected previous_response_id to stay intact, got %#v", captured.Session)
+	}
+}
+
+func TestProxyResponsesTrimsDuplicatedTranscriptPrefixWhenContinuing(t *testing.T) {
+	var callCount int
+	var captured domain.GatewayRequest
+	store := NewMemoryResponseSessionStore(16)
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			callCount++
+			captured = req
+			body := `{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+			if callCount == 2 {
+				body = `{"id":"chatcmpl-test-2","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"again"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+			}
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(body)}}, nil
+		},
+		ResponseSessions: store,
+		CopyProxy:        copyProxyForTest,
+		CopyStream:       copyStreamForTest,
+	})
+	first := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","input":"ping"}`))
+	first.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	firstRec := httptest.NewRecorder()
+	router.ServeHTTP(firstRec, first)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("unexpected first response: %d %s", firstRec.Code, firstRec.Body.String())
+	}
+	second := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","previous_response_id":"chatcmpl-test","input":[{"role":"user","content":[{"type":"input_text","text":"ping"}]},{"role":"assistant","content":[{"type":"output_text","text":"pong"}]},{"role":"user","content":[{"type":"input_text","text":"next"}]}]}`))
+	second.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	secondRec := httptest.NewRecorder()
+	router.ServeHTTP(secondRec, second)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("unexpected second response: %d %s", secondRec.Code, secondRec.Body.String())
+	}
+	if len(captured.Messages) != 1 || captured.Messages[0].Role != "user" || captured.Messages[0].Parts[0].Text != "next" {
+		t.Fatalf("expected duplicated prefix to be trimmed, got %#v", captured.Messages)
+	}
+	if captured.Session == nil || captured.Session.PreviousResponseID != "chatcmpl-test" {
+		t.Fatalf("expected previous_response_id to stay intact, got %#v", captured.Session)
+	}
+}
+
+func TestProxyResponsesCollapsesFullTranscriptContinuationToLatestTail(t *testing.T) {
+	var callCount int
+	var captured domain.GatewayRequest
+	store := NewMemoryResponseSessionStore(16)
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			callCount++
+			captured = req
+			body := `{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+			if callCount == 2 {
+				body = `{"id":"chatcmpl-test-2","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"again"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+			}
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(body)}}, nil
+		},
+		ResponseSessions: store,
+		CopyProxy:        copyProxyForTest,
+		CopyStream:       copyStreamForTest,
+	})
+	first := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","input":"ping"}`))
+	first.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	firstRec := httptest.NewRecorder()
+	router.ServeHTTP(firstRec, first)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("unexpected first response: %d %s", firstRec.Code, firstRec.Body.String())
+	}
+	second := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","previous_response_id":"chatcmpl-test","input":[{"role":"system","content":[{"type":"input_text","text":"rules"}]},{"role":"user","content":[{"type":"input_text","text":"ping"}]},{"role":"assistant","content":[{"type":"output_text","text":"pong"}]},{"role":"user","content":[{"type":"input_text","text":"continue"}]},{"role":"user","content":[{"type":"input_text","text":"continue 2"}]}]}`))
+	second.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	secondRec := httptest.NewRecorder()
+	router.ServeHTTP(secondRec, second)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("unexpected second response: %d %s", secondRec.Code, secondRec.Body.String())
+	}
+	if len(captured.Messages) != 3 {
+		t.Fatalf("expected collapsed continuation tail, got %#v", captured.Messages)
+	}
+	if captured.Messages[0].Role != "system" || captured.Messages[1].Parts[0].Text != "continue" || captured.Messages[2].Parts[0].Text != "continue 2" {
+		t.Fatalf("unexpected collapsed messages: %#v", captured.Messages)
+	}
+	if captured.Session == nil || captured.Session.PreviousResponseID != "chatcmpl-test" {
+		t.Fatalf("expected previous_response_id to stay intact, got %#v", captured.Session)
 	}
 }
 
 func TestResponsesWebSocketCreateAndAppend(t *testing.T) {
 	store := NewMemoryResponseSessionStore(16)
+	requests := make([]domain.GatewayRequest, 0, 2)
 	server := httptest.NewServer(NewRouter(Dependencies{
 		VerifyAPIKey:     func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ResponseSessions: store,
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			requests = append(requests, req)
 			text := "pong"
 			id := "resp_1"
-			if len(req.Messages) > 2 {
+			if len(requests) == 2 {
 				text = "again"
 				id = "resp_2"
 			}
@@ -321,6 +411,15 @@ func TestResponsesWebSocketCreateAndAppend(t *testing.T) {
 	}
 	if !seenSecondCompleted {
 		t.Fatalf("did not receive append response.completed")
+	}
+	if len(requests) != 2 {
+		t.Fatalf("expected two gateway executions, got %d", len(requests))
+	}
+	if len(requests[1].Messages) != 1 || requests[1].Messages[0].Role != "user" || requests[1].Messages[0].Parts[0].Text != "next" {
+		t.Fatalf("expected append to stay delta-only, got %#v", requests[1].Messages)
+	}
+	if requests[1].Session == nil || requests[1].Session.PreviousResponseID != "resp_1" {
+		t.Fatalf("expected append to preserve previous response id, got %#v", requests[1].Session)
 	}
 }
 
@@ -397,8 +496,8 @@ func TestRealtimeWebSocketConversationAndResponse(t *testing.T) {
 	if err := conn.WriteJSON(map[string]any{
 		"type": "conversation.item.create",
 		"item": map[string]any{
-			"type": "message",
-			"role": "user",
+			"type":    "message",
+			"role":    "user",
 			"content": []map[string]any{{"type": "input_text", "text": "ping"}},
 		},
 	}); err != nil {
@@ -476,11 +575,14 @@ func TestClaudeContextManagementClearsToolHistoryBeforeExecution(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
 	}
-	if len(captured.Messages) != 2 {
-		t.Fatalf("unexpected merged messages: %#v", captured.Messages)
+	if len(captured.Messages) != 1 {
+		t.Fatalf("native responses continuation should not replay stored history: %#v", captured.Messages)
 	}
-	if captured.Messages[0].Role != "assistant" || len(captured.Messages[0].ToolCalls) != 0 || len(captured.Messages[0].Parts) != 1 || captured.Messages[0].Parts[0].Text != "visible" {
-		t.Fatalf("context management did not clear history as expected: %#v", captured.Messages)
+	if captured.Messages[0].Role != "user" || len(captured.Messages[0].Parts) != 1 || captured.Messages[0].Parts[0].Text != "ping" {
+		t.Fatalf("unexpected request payload after fix: %#v", captured.Messages)
+	}
+	if captured.Session == nil || captured.Session.PreviousResponseID != "resp_ctx_1" {
+		t.Fatalf("previous response id should be preserved: %#v", captured.Session)
 	}
 }
 
@@ -905,7 +1007,7 @@ func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing
 	var logged domain.RequestLog
 	logger, records := newCaptureLogger()
 	router := NewRouter(Dependencies{
-		Logger: logger,
+		Logger:       logger,
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
 			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`)}, Metadata: &domain.GatewayExecutionMetadata{DegradedSuccess: false, AttemptCount: 1, SelectedChannel: "openai-upstream"}}, nil

@@ -111,6 +111,14 @@ func CopyStreamResponse(w http.ResponseWriter, stream *domain.StreamResult) erro
 	}
 	w.WriteHeader(stream.StatusCode)
 	flusher, _ := w.(http.Flusher)
+	if flusher != nil {
+		if isSSEHeader(stream.Headers) {
+			if _, err := io.WriteString(w, ": opencrab bootstrap\n\n"); err != nil {
+				return fmt.Errorf("写入流式启动帧失败: %w", err)
+			}
+		}
+		flusher.Flush()
+	}
 	buf := make([]byte, 1024)
 	for {
 		n, err := stream.Body.Read(buf)
@@ -129,6 +137,20 @@ func CopyStreamResponse(w http.ResponseWriter, stream *domain.StreamResult) erro
 			return fmt.Errorf("读取流式上游响应失败: %w", err)
 		}
 	}
+}
+
+func isSSEHeader(headers map[string][]string) bool {
+	for key, values := range headers {
+		if !strings.EqualFold(key, "Content-Type") {
+			continue
+		}
+		for _, value := range values {
+			if strings.Contains(strings.ToLower(value), "text/event-stream") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func buildChatCompletionsURL(endpoint string) string {

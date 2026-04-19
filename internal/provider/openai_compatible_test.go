@@ -1,6 +1,13 @@
 package provider
 
-import "testing"
+import (
+	"io"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"opencrab/internal/domain"
+)
 
 func TestBuildChatCompletionsURL(t *testing.T) {
 	tests := []struct {
@@ -102,5 +109,39 @@ func TestBuildGeminiStreamGenerateContentURL(t *testing.T) {
 				t.Fatalf("expected %s, got %s", tt.expect, got)
 			}
 		})
+	}
+}
+
+func TestCopyStreamResponsePrependsSSEBootstrapComment(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := CopyStreamResponse(rec, &domain.StreamResult{
+		StatusCode: 200,
+		Headers:    map[string][]string{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("event: response.created\ndata: {}\n\n")),
+	})
+	if err != nil {
+		t.Fatalf("copy stream response: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.HasPrefix(body, ": opencrab bootstrap\n\n") {
+		t.Fatalf("expected bootstrap comment prefix, got: %q", body)
+	}
+	if !strings.Contains(body, "event: response.created") {
+		t.Fatalf("expected upstream event in body, got: %q", body)
+	}
+}
+
+func TestCopyStreamResponseDoesNotPrependBootstrapForJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := CopyStreamResponse(rec, &domain.StreamResult{
+		StatusCode: 200,
+		Headers:    map[string][]string{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+	})
+	if err != nil {
+		t.Fatalf("copy stream response: %v", err)
+	}
+	if strings.HasPrefix(rec.Body.String(), ": opencrab bootstrap") {
+		t.Fatalf("did not expect bootstrap comment for json stream: %q", rec.Body.String())
 	}
 }

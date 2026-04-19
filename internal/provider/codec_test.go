@@ -63,6 +63,66 @@ func TestOpenAICodecRoundTripAndMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenAICodecPreservesUnknownInputItemOnEncode(t *testing.T) {
+	data, err := EncodeOpenAIChatRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-4o-mini",
+		Messages: []domain.UnifiedMessage{{
+			Role: "user",
+			Parts: []domain.UnifiedPart{{
+				Type:      "mystery_block",
+				InputItem: json.RawMessage(`{"type":"mystery_block","foo":1}`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("encode openai unknown part: %v", err)
+	}
+	if !strings.Contains(string(data), `"type":"mystery_block"`) || !strings.Contains(string(data), `"foo":1`) {
+		t.Fatalf("unexpected encoded openai payload: %s", string(data))
+	}
+}
+
+func TestClaudeCodecPreservesUnknownInputItemOnEncode(t *testing.T) {
+	data, err := EncodeClaudeChatRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolClaude,
+		Model:    "claude-3-5-haiku-latest",
+		Messages: []domain.UnifiedMessage{{
+			Role: "user",
+			Parts: []domain.UnifiedPart{{
+				Type:      "mystery_block",
+				InputItem: json.RawMessage(`{"type":"mystery_block","foo":1}`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("encode claude unknown part: %v", err)
+	}
+	if !strings.Contains(string(data), `"type":"mystery_block"`) || !strings.Contains(string(data), `"foo":1`) {
+		t.Fatalf("unexpected encoded claude payload: %s", string(data))
+	}
+}
+
+func TestGeminiCodecPreservesUnknownInputItemOnEncode(t *testing.T) {
+	data, err := EncodeGeminiChatRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolGemini,
+		Model:    "gemini-2.0-flash",
+		Messages: []domain.UnifiedMessage{{
+			Role: "user",
+			Parts: []domain.UnifiedPart{{
+				Type:      "mystery_block",
+				InputItem: json.RawMessage(`{"mysteryBlock":{"foo":1}}`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("encode gemini unknown part: %v", err)
+	}
+	if !strings.Contains(string(data), `"mysteryBlock":{"foo":1}`) {
+		t.Fatalf("unexpected encoded gemini payload: %s", string(data))
+	}
+}
+
 func TestClaudeCodecRoundTripAndMetadata(t *testing.T) {
 	req := domain.UnifiedChatRequest{
 		Protocol: domain.ProtocolClaude,
@@ -225,6 +285,47 @@ func TestResponsesCodecRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(streamBody), "event: response.created") || !strings.Contains(string(streamBody), "event: response.completed") {
 		t.Fatalf("unexpected stream encoding: %s", string(streamBody))
+	}
+	if !strings.Contains(string(streamBody), `"sequence_number":0`) || !strings.Contains(string(streamBody), `"sequence_number":1`) {
+		t.Fatalf("expected sequence numbers in responses stream: %s", string(streamBody))
+	}
+}
+
+func TestOpenAIChatStreamDefaultsToToolCallsFinishReason(t *testing.T) {
+	body, err := EncodeOpenAIChatStream(domain.UnifiedChatResponse{
+		Protocol: domain.ProtocolOpenAI,
+		ID:       "chatcmpl_1",
+		Model:    "gpt-5.4",
+		Message: domain.UnifiedMessage{
+			Role:      "assistant",
+			ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode openai chat stream: %v", err)
+	}
+	if !strings.Contains(string(body), `"finish_reason":"tool_calls"`) {
+		t.Fatalf("expected tool_calls finish reason in stream: %s", string(body))
+	}
+}
+
+func TestClaudeChatStreamSupportsMixedTextAndToolUse(t *testing.T) {
+	body, err := EncodeClaudeChatStream(domain.UnifiedChatResponse{
+		Protocol: domain.ProtocolClaude,
+		ID:       "msg_1",
+		Model:    "claude-sonnet",
+		Message: domain.UnifiedMessage{
+			Role:      "assistant",
+			Parts:     []domain.UnifiedPart{{Type: "text", Text: "pong"}},
+			ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode claude chat stream: %v", err)
+	}
+	encoded := string(body)
+	if !strings.Contains(encoded, `"type":"text_delta"`) || !strings.Contains(encoded, `"type":"tool_use"`) {
+		t.Fatalf("expected mixed text and tool_use blocks in claude stream: %s", encoded)
 	}
 }
 
@@ -424,6 +525,53 @@ func TestResponsesCodecPreservesFunctionCallOutputItemShape(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecPreservesUnknownAssistantInputItemShape(t *testing.T) {
+	decoded, err := DecodeOpenAIResponsesRequest([]byte(`{
+		"model":"gpt-5.4",
+		"input":[
+			{"type":"mystery_call","id":"m_1","status":"completed","payload":{"x":1}}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if len(decoded.Messages) != 1 || decoded.Messages[0].Role != "assistant" {
+		t.Fatalf("unexpected decoded request: %+v", decoded)
+	}
+	if len(decoded.Messages[0].Parts) != 1 || len(decoded.Messages[0].Parts[0].InputItem) == 0 {
+		t.Fatalf("expected preserved unknown input item: %+v", decoded.Messages[0])
+	}
+	encoded, err := EncodeOpenAIResponsesRequest(decoded, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"type":"mystery_call"`) || !strings.Contains(string(encoded), `"status":"completed"`) {
+		t.Fatalf("unexpected re-encoded unknown item: %s", string(encoded))
+	}
+}
+
+func TestResponsesCodecPreservesUnknownToolInputItemShape(t *testing.T) {
+	decoded, err := DecodeOpenAIResponsesRequest([]byte(`{
+		"model":"gpt-5.4",
+		"input":[
+			{"type":"mystery_tool_output","role":"tool","id":"m_2","status":"completed","output":"ok"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if len(decoded.Messages) != 1 || decoded.Messages[0].Role != "tool" || len(decoded.Messages[0].InputItem) == 0 {
+		t.Fatalf("expected preserved unknown tool item: %+v", decoded)
+	}
+	encoded, err := EncodeOpenAIResponsesRequest(decoded, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"type":"mystery_tool_output"`) || !strings.Contains(string(encoded), `"output":"ok"`) {
+		t.Fatalf("unexpected re-encoded unknown tool item: %s", string(encoded))
+	}
+}
+
 func TestResponsesCodecEncodesClaudeToolResultStructuredOutput(t *testing.T) {
 	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
 		Protocol: domain.ProtocolOpenAI,
@@ -432,7 +580,7 @@ func TestResponsesCodecEncodesClaudeToolResultStructuredOutput(t *testing.T) {
 			{
 				Role: "tool",
 				Parts: []domain.UnifiedPart{{
-					Type:        "tool_result",
+					Type:          "tool_result",
 					NativePayload: json.RawMessage(`{"type":"tool_result","tool_use_id":"call_1","content":[]}`),
 				}},
 				Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)},
@@ -575,6 +723,106 @@ func TestClaudeCodecSplitsMultipleToolResultsIntoDistinctMessages(t *testing.T) 
 		if !strings.Contains(string(data), snippet) {
 			t.Fatalf("expected %s in encoded responses payload: %s", snippet, string(data))
 		}
+	}
+}
+
+func TestResponsesCodecFunctionCallInputDoesNotInjectPlaceholderTextMessage(t *testing.T) {
+	req, err := DecodeOpenAIResponsesRequest([]byte(`{"model":"gpt-5.4","input":[{"type":"function_call","call_id":"call_1","name":"Read","arguments":"{}"}]}`))
+	if err != nil {
+		t.Fatalf("decode responses request: %v", err)
+	}
+	if len(req.Messages) != 1 || len(req.Messages[0].ToolCalls) != 1 {
+		t.Fatalf("unexpected decoded messages: %+v", req.Messages)
+	}
+	if len(req.Messages[0].Parts) != 0 {
+		t.Fatalf("function_call input should not inject placeholder text parts: %+v", req.Messages[0])
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if strings.Contains(string(data), `"tool_call"`) {
+		t.Fatalf("unexpected placeholder tool_call text leaked into payload: %s", string(data))
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestContinueProjectsIncrementalTail(t *testing.T) {
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "system", Parts: []domain.UnifiedPart{{Type: "text", Text: "rules"}}},
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "old question"}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "old answer"}}},
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "new question"}}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, &domain.GatewaySessionState{PreviousResponseID: "resp_1"})
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"previous_response_id":"resp_1"`) {
+		t.Fatalf("expected previous_response_id in payload: %s", body)
+	}
+	if strings.Contains(body, "old question") || strings.Contains(body, "old answer") {
+		t.Fatalf("continue path should not replay full transcript: %s", body)
+	}
+	if !strings.Contains(body, "new question") {
+		t.Fatalf("continue path should keep latest question: %s", body)
+	}
+	if !strings.Contains(body, `"instructions":"rules"`) {
+		t.Fatalf("continue path should preserve system instructions: %s", body)
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestRebuildProjectsLargeNoisyTranscript(t *testing.T) {
+	noisy := "<system-reminder>\n\nUser system info (win32 10.0.26200)\nExecute calls:\nTool Usage Guidelines:\n" + strings.Repeat("noise ", 5000)
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "system", Parts: []domain.UnifiedPart{{Type: "text", Text: "rules"}}},
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: noisy}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "old answer"}}},
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "看看有没有能优化的点"}}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, "<system-reminder>") || strings.Contains(body, "User system info") || strings.Contains(body, "Tool Usage Guidelines") {
+		t.Fatalf("rebuild path should strip noisy transcript blocks: %s", body)
+	}
+	if !strings.Contains(body, "看看有没有能优化的点") {
+		t.Fatalf("rebuild path should preserve latest user ask: %s", body)
+	}
+	if !strings.Contains(body, `"instructions":"rules"`) {
+		t.Fatalf("rebuild path should preserve system instructions: %s", body)
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestRebuildPreservesPendingToolPair(t *testing.T) {
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "system", Parts: []domain.UnifiedPart{{Type: "text", Text: strings.Repeat("rules ", 5000)}}},
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "old question"}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "old answer"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "Read", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: "tool output"}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"function_call"`) || !strings.Contains(body, `"function_call_output"`) || !strings.Contains(body, `"call_id":"call_1"`) {
+		t.Fatalf("rebuild path should preserve pending tool pair: %s", body)
 	}
 }
 

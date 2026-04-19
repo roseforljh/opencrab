@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -808,6 +809,11 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 	observability.MarkRequestWriteStart(req.Context())
 	defer observability.MarkRequestWriteEnd(req.Context())
 	if result != nil && result.Stream != nil {
+		if !requestWantsStreamForProtocol(surface.Protocol, req, requestBody) {
+			if handled := tryWriteNormalizedResponsesStream(deps, w, req, requestBody, result, startedAt, surface); handled {
+				return
+			}
+		}
 		if err := deps.CopyStream(w, result.Stream); err != nil {
 			logGatewayWriteFailure(req, deps.Logger, "stream", err)
 			return
@@ -844,6 +850,125 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 	}
 	usage := usageMetricsFromUnified(unified.Usage)
 	logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata, &usage)
+}
+
+func tryWriteNormalizedResponsesStream(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, result *domain.ExecutionResult, startedAt time.Time, surface transform.Surface) bool {
+	if result == nil || result.Stream == nil {
+		return false
+	}
+	providerName := normalizedHeaderProvider(result.Stream.Headers)
+	if !isOpenAIResponsesSurfaceProvider(providerName) {
+		return false
+	}
+	body, unified, err := readUnifiedFromResponsesStream(result.Stream.Body)
+	if err != nil {
+		logGatewayWriteFailure(req, deps.Logger, "responses_stream_decode", err)
+		proxyResp := &domain.ProxyResponse{StatusCode: result.Stream.StatusCode, Headers: cloneHeaderMap(result.Stream.Headers), Body: body}
+		if copyErr := deps.CopyProxy(w, proxyResp); copyErr != nil {
+			logGatewayWriteFailure(req, deps.Logger, "responses_stream_passthrough", copyErr)
+		}
+		return true
+	}
+	if deps.ResponseSessions != nil {
+		storeResponseSession(deps.ResponseSessions, req, requestBody, unified)
+	}
+	encoded, headers, err := transform.RenderClientResponse(surface, unified, true)
+	if err != nil {
+		logGatewayWriteFailure(req, deps.Logger, "responses_stream_render", err)
+		proxyResp := &domain.ProxyResponse{StatusCode: result.Stream.StatusCode, Headers: cloneHeaderMap(result.Stream.Headers), Body: body}
+		if copyErr := deps.CopyProxy(w, proxyResp); copyErr != nil {
+			logGatewayWriteFailure(req, deps.Logger, "responses_stream_passthrough", copyErr)
+		}
+		return true
+	}
+	proxyResp := &domain.ProxyResponse{StatusCode: result.Stream.StatusCode, Headers: headers, Body: encoded}
+	if err := deps.CopyProxy(w, proxyResp); err != nil {
+		logGatewayWriteFailure(req, deps.Logger, "responses_stream_normalized", err)
+		return true
+	}
+	usage := usageMetricsFromUnified(unified.Usage)
+	logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata, &usage)
+	return true
+}
+
+func isOpenAIResponsesSurfaceProvider(providerName string) bool {
+	providerName = domain.NormalizeProvider(providerName)
+	switch providerName {
+	case "openai", "openrouter", "glm", "kimi", "minimax":
+		return true
+	default:
+		return false
+	}
+}
+
+func readUnifiedFromResponsesStream(body io.ReadCloser) ([]byte, domain.UnifiedChatResponse, error) {
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, domain.UnifiedChatResponse{}, err
+	}
+	unified, err := decodeUnifiedFromResponsesStream(data)
+	return data, unified, err
+}
+
+func decodeUnifiedFromResponsesStream(body []byte) (domain.UnifiedChatResponse, error) {
+	blocks := strings.Split(string(body), "\n\n")
+	for _, block := range blocks {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		payload := decodeResponsesStreamPayload(block)
+		if strings.TrimSpace(payload) == "" || strings.TrimSpace(payload) == "[DONE]" {
+			continue
+		}
+		unified, ok := tryDecodeResponsesCompletedPayload([]byte(payload))
+		if ok {
+			return unified, nil
+		}
+	}
+	return domain.UnifiedChatResponse{}, fmt.Errorf("responses stream missing completed payload")
+}
+
+func decodeResponsesStreamPayload(block string) string {
+	lines := strings.Split(block, "\n")
+	parts := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		parts = append(parts, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func tryDecodeResponsesCompletedPayload(payload []byte) (domain.UnifiedChatResponse, bool) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return domain.UnifiedChatResponse{}, false
+	}
+	if rawType, ok := envelope["type"]; ok {
+		var eventType string
+		if err := json.Unmarshal(rawType, &eventType); err == nil && strings.TrimSpace(eventType) == "response.completed" {
+			if responseRaw, exists := envelope["response"]; exists {
+				unified, err := provider.DecodeOpenAIResponsesResponse(responseRaw)
+				if err == nil {
+					return unified, true
+				}
+			}
+		}
+	}
+	if rawObject, ok := envelope["object"]; ok {
+		var objectType string
+		if err := json.Unmarshal(rawObject, &objectType); err == nil && strings.TrimSpace(objectType) == "response" {
+			unified, err := provider.DecodeOpenAIResponsesResponse(payload)
+			if err == nil {
+				return unified, true
+			}
+		}
+	}
+	return domain.UnifiedChatResponse{}, false
 }
 
 func logGatewayWriteFailure(req *http.Request, logger *slog.Logger, stage string, err error) {
@@ -1121,13 +1246,7 @@ func requestWantsStreamForProtocol(protocol domain.Protocol, req *http.Request, 
 		return false
 	}
 	accept := strings.ToLower(strings.TrimSpace(req.Header.Get("Accept")))
-	if !strings.Contains(accept, "text/event-stream") {
-		return false
-	}
-	if strings.Contains(accept, "application/json") {
-		return false
-	}
-	return false
+	return strings.Contains(accept, "text/event-stream")
 }
 
 func encodeResponsesProxyResponse(resp domain.UnifiedChatResponse, stream bool) ([]byte, map[string][]string, error) {
@@ -1239,11 +1358,80 @@ func mergePreviousResponse(store ResponseSessionStore, gatewayReq domain.Gateway
 	if !ok {
 		return gatewayReq
 	}
+	if gatewayReq.Operation == domain.ProtocolOperationOpenAIResponses || gatewayReq.Operation == domain.ProtocolOperationOpenAIRealtime {
+		// Native Responses continuation is upstream-authoritative. Replaying locally stored
+		// transcript here would duplicate continuation state when previous_response_id is
+		// also forwarded upstream. Some clients resend the full transcript anyway, so trim
+		// any duplicated prefix before forwarding the incremental tail upstream.
+		trimmed := trimDuplicatedContinuationPrefix(previous.Messages, gatewayReq.Messages)
+		trimmed = collapseNativeContinuationMessages(trimmed)
+		if len(trimmed) == len(gatewayReq.Messages) {
+			return gatewayReq
+		}
+		normalized := gatewayReq
+		normalized.Messages = trimmed
+		return normalized
+	}
 	merged := gatewayReq
 	history := append([]domain.GatewayMessage(nil), previous.Messages...)
 	history = append(history, gatewayReq.Messages...)
 	merged.Messages = history
 	return merged
+}
+
+func trimDuplicatedContinuationPrefix(previous []domain.GatewayMessage, current []domain.GatewayMessage) []domain.GatewayMessage {
+	if len(previous) == 0 || len(current) == 0 {
+		return current
+	}
+	prefix := 0
+	for prefix < len(previous) && prefix < len(current) {
+		if !reflect.DeepEqual(previous[prefix], current[prefix]) {
+			break
+		}
+		prefix++
+	}
+	if prefix == 0 || prefix >= len(current) {
+		return current
+	}
+	trimmed := append([]domain.GatewayMessage(nil), current[prefix:]...)
+	return trimmed
+}
+
+func collapseNativeContinuationMessages(messages []domain.GatewayMessage) []domain.GatewayMessage {
+	if len(messages) <= 1 {
+		return messages
+	}
+	leadingSystems := 0
+	for leadingSystems < len(messages) && strings.EqualFold(messages[leadingSystems].Role, "system") {
+		leadingSystems++
+	}
+	if preserveFrom := findTrailingPendingToolExchangeStart(messages); preserveFrom >= 0 {
+		if preserveFrom < leadingSystems {
+			preserveFrom = leadingSystems
+		}
+		collapsed := make([]domain.GatewayMessage, 0, leadingSystems+len(messages[preserveFrom:]))
+		collapsed = append(collapsed, messages[:leadingSystems]...)
+		collapsed = append(collapsed, messages[preserveFrom:]...)
+		if len(collapsed) > 0 {
+			return collapsed
+		}
+	}
+	lastAssistant := -1
+	for i := leadingSystems; i < len(messages); i++ {
+		if strings.EqualFold(messages[i].Role, "assistant") {
+			lastAssistant = i
+		}
+	}
+	if lastAssistant < 0 || lastAssistant >= len(messages)-1 {
+		return messages
+	}
+	collapsed := make([]domain.GatewayMessage, 0, leadingSystems+len(messages[lastAssistant+1:]))
+	collapsed = append(collapsed, messages[:leadingSystems]...)
+	collapsed = append(collapsed, messages[lastAssistant+1:]...)
+	if len(collapsed) == 0 {
+		return messages
+	}
+	return collapsed
 }
 
 func preprocessGatewayRequest(store ResponseSessionStore, gatewayReq domain.GatewayRequest) (domain.GatewayRequest, error) {
@@ -1425,7 +1613,7 @@ func fetchURLContextMessage(targetURL string) (domain.GatewayMessage, error) {
 		return domain.GatewayMessage{}, nil
 	}
 	return domain.GatewayMessage{
-		Role: "system",
+		Role:  "system",
 		Parts: []domain.UnifiedPart{{Type: "text", Text: "URL context from " + targetURL + ":\n" + text}},
 	}, nil
 }

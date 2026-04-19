@@ -257,6 +257,9 @@ func filterGeminiMessageMetadata(metadata map[string]json.RawMessage) map[string
 }
 
 func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {
+	if item, ok := decodePreservedMapItem(part.InputItem); ok {
+		return item, nil
+	}
 	if len(part.NativePayload) > 0 {
 		var item map[string]any
 		if err := json.Unmarshal(part.NativePayload, &item); err == nil {

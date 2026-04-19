@@ -39,6 +39,15 @@ func TestExecutorUsesShorterUpstreamTimeoutConstant(t *testing.T) {
 	if upstreamRequestTimeout != 15*time.Second {
 		t.Fatalf("expected upstream request timeout to be 15s, got %s", upstreamRequestTimeout)
 	}
+	if responsesUpstreamRequestTimeout != 90*time.Second {
+		t.Fatalf("expected responses upstream request timeout to be 90s, got %s", responsesUpstreamRequestTimeout)
+	}
+	if got := upstreamTimeoutForOperation(domain.ProtocolOperationOpenAIResponses); got != responsesUpstreamRequestTimeout {
+		t.Fatalf("expected responses operation timeout to be %s, got %s", responsesUpstreamRequestTimeout, got)
+	}
+	if got := upstreamTimeoutForOperation(domain.ProtocolOperationOpenAIChatCompletions); got != upstreamRequestTimeout {
+		t.Fatalf("expected chat completions timeout to be %s, got %s", upstreamRequestTimeout, got)
+	}
 }
 
 func TestOpenAIExecutorReturnsStreamResultWhenStreamEnabled(t *testing.T) {
@@ -233,7 +242,7 @@ func TestOpenAIExecutorPreservesFunctionCallWhenBridgingClaudeToolUse(t *testing
 	}
 }
 
-func TestOpenAIExecutorReturnsSyntheticResponsesStreamWhenRequested(t *testing.T) {
+func TestOpenAIExecutorBuffersResponsesBodyWhenStreamRequested(t *testing.T) {
 	var captured map[string]any
 	body := &trackingReadCloser{reader: strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`)}
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -263,13 +272,13 @@ func TestOpenAIExecutorReturnsSyntheticResponsesStreamWhenRequested(t *testing.T
 		t.Fatalf("execute: %v", err)
 	}
 	if result.Stream != nil {
-		t.Fatalf("expected buffered json response for synthetic stream path: %#v", result)
+		t.Fatalf("expected buffered responses result, got stream: %#v", result)
 	}
 	if result.Response == nil {
-		t.Fatalf("expected non-stream response result")
+		t.Fatalf("expected buffered response result")
 	}
 	if body.readCalls == 0 {
-		t.Fatalf("expected executor to fully read non-stream responses body")
+		t.Fatalf("expected executor to read responses body for buffered path")
 	}
 	if got, ok := captured["stream"].(bool); ok && got {
 		t.Fatalf("expected upstream responses request to disable native stream, got %#v", captured)
@@ -799,18 +808,19 @@ func TestOpenAIExecutorFiltersSystemReminderNoiseFromResponsesRequests(t *testin
 
 func TestAttachPayloadDebugMetadata(t *testing.T) {
 	err := attachPayloadDebugMetadata(fmt.Errorf("boom"), map[string]string{
-		"upstream_provider":       "gemini",
-		"upstream_operation":      "gemini_generate_content",
-		"upstream_request_url":    "https://example.com/v1beta/models/gemini:generateContent",
-		"upstream_request_stream": "true",
-		"upstream_payload_sha256": "abc123",
+		"upstream_provider":        "gemini",
+		"upstream_operation":       "gemini_generate_content",
+		"upstream_request_url":     "https://example.com/v1beta/models/gemini:generateContent",
+		"upstream_request_stream":  "true",
+		"upstream_payload_bytes":   "321",
+		"upstream_payload_sha256":  "abc123",
 		"upstream_payload_preview": `{"tools":[{"functionDeclarations":[]}]}`,
 	})
 	if err == nil {
 		t.Fatal("expected wrapped error")
 	}
 	text := err.Error()
-	for _, snippet := range []string{"boom", "upstream_provider=gemini", "upstream_operation=gemini_generate_content", "upstream_payload_sha256=abc123", `upstream_payload_preview={"tools":[{"functionDeclarations":[]}]}`} {
+	for _, snippet := range []string{"boom", "upstream_provider=gemini", "upstream_operation=gemini_generate_content", "upstream_payload_bytes=321", "upstream_payload_sha256=abc123", `upstream_payload_preview={"tools":[{"functionDeclarations":[]}]}`} {
 		if !strings.Contains(text, snippet) {
 			t.Fatalf("expected snippet %q in wrapped error: %s", snippet, text)
 		}
@@ -834,6 +844,16 @@ func TestBuildFocusedPayloadPreviewPrefersToolsAndToolConfig(t *testing.T) {
 	}
 	if !strings.Contains(preview, `"contents_extra_keys":{"contents[0]":["tool_call_id"]}`) {
 		t.Fatalf("expected focused preview to include message extra keys: %s", preview)
+	}
+}
+
+func TestBuildFocusedPayloadPreviewSummarizesOpenAIResponsesPayload(t *testing.T) {
+	payload := []byte(`{"model":"gpt-5.4","instructions":"system text","previous_response_id":"resp_1","tools":[{"type":"function"}],"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},{"type":"function_call","call_id":"call_1","name":"Read","arguments":"{}"},{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)
+	preview := buildFocusedPayloadPreview(payload)
+	for _, snippet := range []string{`"input_count":3`, `"input_type_counts":{"function_call":1,"function_call_output":1,"message":1}`, `"instructions_length":11`, `"has_previous_response_id":true`, `"tools_count":1`} {
+		if !strings.Contains(preview, snippet) {
+			t.Fatalf("expected snippet %q in preview: %s", snippet, preview)
+		}
 	}
 }
 
