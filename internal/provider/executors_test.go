@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"opencrab/internal/domain"
 )
@@ -32,6 +33,12 @@ func (r *trackingReadCloser) Close() error { return nil }
 
 func testGatewayMessage(role string, parts ...domain.UnifiedPart) domain.GatewayMessage {
 	return domain.GatewayMessage{Role: role, Parts: parts}
+}
+
+func TestExecutorUsesShorterUpstreamTimeoutConstant(t *testing.T) {
+	if upstreamRequestTimeout != 15*time.Second {
+		t.Fatalf("expected upstream request timeout to be 15s, got %s", upstreamRequestTimeout)
+	}
 }
 
 func TestOpenAIExecutorReturnsStreamResultWhenStreamEnabled(t *testing.T) {
@@ -736,6 +743,56 @@ func TestGeminiExecutorDropsInterruptedAndTodoReminderMessagesFromOpenAIHistory(
 		t.Fatalf("unexpected generic system reminder leakage in gemini contents: %s", body)
 	}
 	if !strings.Contains(body, "你好") || !strings.Contains(body, "继续修复") {
+		t.Fatalf("expected real user text to survive filtering: %s", body)
+	}
+}
+
+func TestOpenAIExecutorFiltersSystemReminderNoiseFromResponsesRequests(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolOpenAI,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Model:     "gpt-5.4",
+			Messages: []domain.GatewayMessage{
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "<system-reminder>\n\nUser system info (win32 10.0.26200)\nModel: gemini-3-flash-preview"}),
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "Request interrupted by user"}),
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "真正的问题是什么？"}),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	input, ok := captured["input"].([]any)
+	if !ok {
+		t.Fatalf("unexpected input payload: %#v", captured["input"])
+	}
+	serialized, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("marshal input: %v", err)
+	}
+	body := string(serialized)
+	if strings.Contains(body, "<system-reminder>") || strings.Contains(body, "User system info") {
+		t.Fatalf("unexpected system reminder leakage in responses input: %s", body)
+	}
+	if strings.Contains(body, "Request interrupted by user") || strings.Contains(body, "Request cancelled by user") {
+		t.Fatalf("unexpected interruption marker leakage in responses input: %s", body)
+	}
+	if !strings.Contains(body, "真正的问题是什么？") {
 		t.Fatalf("expected real user text to survive filtering: %s", body)
 	}
 }

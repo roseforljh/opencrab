@@ -39,6 +39,26 @@ func (e *fakeExecutor) Execute(ctx context.Context, input domain.ExecutorRequest
 	return e.result, e.err
 }
 
+type sequenceExecutor struct {
+	results []*domain.ExecutionResult
+	errs    []error
+	calls   int
+}
+
+func (e *sequenceExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
+	e.calls++
+	idx := e.calls - 1
+	var result *domain.ExecutionResult
+	var err error
+	if idx < len(e.results) {
+		result = e.results[idx]
+	}
+	if idx < len(e.errs) {
+		err = e.errs[idx]
+	}
+	return result, err
+}
+
 type memoryAttemptLogger struct {
 	items []domain.GatewayAttemptLog
 }
@@ -184,8 +204,12 @@ func newGatewayServiceForTest(routes []domain.GatewayRoute, executors map[string
 	return NewGatewayService(fakeRouteStore{routes: routes}, executors, logger, nil, strategy, cursors, fakeRuntimeConfigStore{settings: domain.GatewayRuntimeSettings{CooldownDuration: 45 * time.Second, StickyEnabled: true, StickyKeySource: "auto"}}, runtimeStates, sticky, capability.NewRegistry(nil))
 }
 
-func TestGatewayServiceRetryableFallback(t *testing.T) {
-	first := &fakeExecutor{err: domain.NewExecutionError(errors.New("upstream 503"), 503, true, false)}
+func TestGatewayServiceRetryableFallbackAfterThreeAttemptsPerRoute(t *testing.T) {
+	first := &sequenceExecutor{errs: []error{
+		domain.NewExecutionError(errors.New("upstream 503 #1"), 503, true, false),
+		domain.NewExecutionError(errors.New("upstream 503 #2"), 503, true, false),
+		domain.NewExecutionError(errors.New("upstream 503 #3"), 503, true, false),
+	}}
 	second := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok`)}}}
 	logger := &memoryAttemptLogger{}
 	runtimeStates := &memoryRuntimeStateStore{}
@@ -201,26 +225,28 @@ func TestGatewayServiceRetryableFallback(t *testing.T) {
 	if resp.Response == nil || resp.Response.Headers["X-Opencrab-Channel"][0] != "gemini-b" {
 		t.Fatalf("unexpected response: %#v", resp)
 	}
-	if first.calls != 1 || second.calls != 1 {
+	if first.calls != 3 || second.calls != 1 {
 		t.Fatalf("unexpected calls: first=%d second=%d", first.calls, second.calls)
 	}
-	if len(logger.items) != 2 || !logger.items[0].Retryable || !logger.items[1].Success {
+	if len(logger.items) != 4 || !logger.items[0].Retryable || !logger.items[1].Retryable || !logger.items[2].Retryable || !logger.items[3].Success {
 		t.Fatalf("unexpected logs: %#v", logger.items)
 	}
-	if _, ok := runtimeStates.cooldowns[1]; !ok {
-		t.Fatalf("expected cooldown to be written")
+	if len(runtimeStates.cooldowns) != 0 {
+		t.Fatalf("expected no cooldown to be written, got %#v", runtimeStates.cooldowns)
 	}
-	if resp.Metadata == nil || !resp.Metadata.DegradedSuccess || resp.Metadata.AttemptCount != 2 {
+	if resp.Metadata == nil || !resp.Metadata.DegradedSuccess || resp.Metadata.AttemptCount != 4 {
 		t.Fatalf("expected degraded success metadata, got %#v", resp.Metadata)
 	}
-	if len(resp.Metadata.AttemptedRoutes) != 2 {
+	if len(resp.Metadata.AttemptedRoutes) != 4 {
 		t.Fatalf("expected attempted route summary, got %#v", resp.Metadata)
 	}
-	if resp.Metadata.AttemptedRoutes[0].Channel != "claude-a" || !resp.Metadata.AttemptedRoutes[0].Retryable || resp.Metadata.AttemptedRoutes[0].Success {
-		t.Fatalf("unexpected first attempt trace: %#v", resp.Metadata.AttemptedRoutes)
+	for i := 0; i < 3; i++ {
+		if resp.Metadata.AttemptedRoutes[i].Channel != "claude-a" || !resp.Metadata.AttemptedRoutes[i].Retryable || resp.Metadata.AttemptedRoutes[i].Success {
+			t.Fatalf("unexpected retry trace at %d: %#v", i, resp.Metadata.AttemptedRoutes)
+		}
 	}
-	if resp.Metadata.AttemptedRoutes[1].Channel != "gemini-b" || !resp.Metadata.AttemptedRoutes[1].Success {
-		t.Fatalf("unexpected second attempt trace: %#v", resp.Metadata.AttemptedRoutes)
+	if resp.Metadata.AttemptedRoutes[3].Channel != "gemini-b" || !resp.Metadata.AttemptedRoutes[3].Success {
+		t.Fatalf("unexpected final attempt trace: %#v", resp.Metadata.AttemptedRoutes)
 	}
 }
 
@@ -241,17 +267,89 @@ func TestGatewayServiceNonRetryableDoesNotFallback(t *testing.T) {
 	}
 }
 
-func TestGatewayServiceAllAttemptsFailed(t *testing.T) {
-	first := &fakeExecutor{err: domain.NewExecutionError(errors.New("rate limit"), 429, true, false)}
-	second := &fakeExecutor{err: domain.NewExecutionError(errors.New("server down"), 503, true, false)}
+func TestGatewayServiceRetryableFallbackAfterThreeAttemptsPerRouteSameProvider(t *testing.T) {
+	callsByChannel := map[string]int{}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 3, ModelAlias: "gpt-5.4", UpstreamModel: "gpt-5.4", Channel: domain.UpstreamChannel{Name: "Codex-Fuck", Provider: "openai"}, Priority: 1},
+		{ID: 26, ModelAlias: "gpt-5.4", UpstreamModel: "gpt-5.4", Channel: domain.UpstreamChannel{Name: "Codex-12", Provider: "openai"}, Priority: 1},
+	}, map[string]domain.Executor{"openai": executorFunc(func(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
+		callsByChannel[input.Channel.Name]++
+		switch input.Channel.Name {
+		case "Codex-Fuck":
+			return nil, domain.NewExecutionError(errors.New("upstream timeout"), 503, true, false)
+		case "Codex-12":
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-second`)}}, nil
+		default:
+			return nil, errors.New("unexpected channel")
+		}
+	})}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-same-provider", domain.GatewayRequest{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIChatCompletions, Model: "gpt-5.4", Messages: []domain.GatewayMessage{testGatewayMessage("user", "x")}})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if string(result.Response.Body) != "ok-second" {
+		t.Fatalf("unexpected response: %#v", result)
+	}
+	if callsByChannel["Codex-Fuck"] != 3 || callsByChannel["Codex-12"] != 1 {
+		t.Fatalf("unexpected calls by channel: %#v", callsByChannel)
+	}
+}
+
+func TestGatewayServiceOpenAIResponsesRetryableFailureFallsBackToNextRouteWithoutSameRouteRetry(t *testing.T) {
+	callsByChannel := map[string]int{}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 3, ModelAlias: "gpt-5.4", UpstreamModel: "gpt-5.4", Channel: domain.UpstreamChannel{Name: "Codex-Fuck", Provider: "openai"}, Priority: 1},
+		{ID: 26, ModelAlias: "gpt-5.4", UpstreamModel: "gpt-5.4", Channel: domain.UpstreamChannel{Name: "Codex-12", Provider: "openai"}, Priority: 1},
+	}, map[string]domain.Executor{"openai": executorFunc(func(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
+		callsByChannel[input.Channel.Name]++
+		switch input.Channel.Name {
+		case "Codex-Fuck":
+			return nil, domain.NewExecutionError(errors.New("upstream timeout"), 503, true, false)
+		case "Codex-12":
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-second`)}}, nil
+		default:
+			return nil, errors.New("unexpected channel")
+		}
+	})}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-responses-timeout", domain.GatewayRequest{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIResponses, Model: "gpt-5.4", Messages: []domain.GatewayMessage{testGatewayMessage("user", "x")}})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if string(result.Response.Body) != "ok-second" {
+		t.Fatalf("unexpected response: %#v", result)
+	}
+	if callsByChannel["Codex-Fuck"] != 1 || callsByChannel["Codex-12"] != 1 {
+		t.Fatalf("expected one attempt per route before fallback success, got %#v", callsByChannel)
+	}
+}
+
+func TestGatewayServiceAllAttemptsFailedAfterThreeRetriesPerRoute(t *testing.T) {
+	first := &sequenceExecutor{errs: []error{
+		domain.NewExecutionError(errors.New("rate limit #1"), 429, true, false),
+		domain.NewExecutionError(errors.New("rate limit #2"), 429, true, false),
+		domain.NewExecutionError(errors.New("rate limit #3"), 429, true, false),
+	}}
+	second := &sequenceExecutor{errs: []error{
+		domain.NewExecutionError(errors.New("server down #1"), 503, true, false),
+		domain.NewExecutionError(errors.New("server down #2"), 503, true, false),
+		domain.NewExecutionError(errors.New("server down #3"), 503, true, false),
+	}}
 	service := newGatewayServiceForTest([]domain.GatewayRoute{
 		{ID: 1, ModelAlias: "m", UpstreamModel: "u1", Channel: domain.UpstreamChannel{Name: "c1", Provider: "claude"}, Priority: 1},
 		{ID: 2, ModelAlias: "m", UpstreamModel: "u2", Channel: domain.UpstreamChannel{Name: "c2", Provider: "gemini"}, Priority: 2},
 	}, map[string]domain.Executor{"claude": first, "gemini": second}, nil, nil, nil, nil, nil)
 
 	_, err := service.Execute(context.Background(), "req-3", domain.GatewayRequest{Model: "m", Messages: []domain.GatewayMessage{testGatewayMessage("user", "x")}})
-	if err == nil || err.Error() != "server down" {
+	if err == nil || err.Error() != "server down #3" {
 		t.Fatalf("unexpected err: %v", err)
+	}
+	if first.calls != 3 || second.calls != 3 {
+		t.Fatalf("unexpected calls: first=%d second=%d", first.calls, second.calls)
+	}
+	if execErr := domain.AsExecutionError(err); execErr.Metadata == nil || execErr.Metadata.DegradedSuccess {
+		t.Fatalf("expected failed request metadata without degraded success, got %#v", execErr.Metadata)
 	}
 }
 
@@ -407,24 +505,28 @@ func TestGatewayServiceRoundRobinRotatesWithinPriorityTier(t *testing.T) {
 	}
 }
 
-func TestGatewayServiceCooldownSkipsRoute(t *testing.T) {
+func TestGatewayServiceIgnoresCooldownFlagOnRoute(t *testing.T) {
 	logger := &memoryAttemptLogger{}
+	executor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`u1`)}}}
 	service := newGatewayServiceForTest([]domain.GatewayRoute{
 		{ID: 1, ModelAlias: "m", UpstreamModel: "u1", Channel: domain.UpstreamChannel{Name: "c1", Provider: "openai"}, Priority: 1, CooldownUntil: time.Now().Add(time.Minute).Format(time.RFC3339), LastError: "retry later"},
 		{ID: 2, ModelAlias: "m", UpstreamModel: "u2", Channel: domain.UpstreamChannel{Name: "c2", Provider: "openai"}, Priority: 2},
-	}, map[string]domain.Executor{"openai": executorFunc(func(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
-		return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(input.UpstreamModel)}}, nil
-	})}, logger, nil, nil, nil, nil)
+	}, map[string]domain.Executor{"openai": executor}, logger, nil, nil, nil, nil)
 
 	result, err := service.Execute(context.Background(), "req-cooldown", domain.GatewayRequest{Protocol: domain.ProtocolOpenAI, Model: "m", Messages: []domain.GatewayMessage{testGatewayMessage("user", "x")}})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if string(result.Response.Body) != "u2" {
+	if string(result.Response.Body) != "u1" {
 		t.Fatalf("unexpected response: %#v", result)
 	}
-	if len(logger.items) < 2 || logger.items[0].SkipReason != "cooldown" {
-		t.Fatalf("expected cooldown skip log, got %#v", logger.items)
+	if executor.calls != 1 {
+		t.Fatalf("expected first route to execute despite cooldown flag, calls=%d", executor.calls)
+	}
+	for _, item := range logger.items {
+		if item.SkipReason == "cooldown" {
+			t.Fatalf("did not expect cooldown skip log, got %#v", logger.items)
+		}
 	}
 }
 

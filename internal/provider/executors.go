@@ -20,6 +20,7 @@ import (
 )
 
 const anthropicVersion = "2023-06-01"
+const upstreamRequestTimeout = 15 * time.Second
 
 type OpenAIExecutor struct {
 	client *http.Client
@@ -71,7 +72,7 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 OpenAI 请求失败: %w", err), 0, false, false)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, upstreamRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, payload.url, bytes.NewReader(payload.body))
 	if err != nil {
@@ -104,7 +105,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Claude 请求失败: %w", err), 0, false, false)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, upstreamRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, payload.url, bytes.NewReader(payload.body))
 	if err != nil {
@@ -153,7 +154,7 @@ func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	if err != nil {
 		return nil, domain.NewExecutionError(fmt.Errorf("构造 Gemini 请求失败: %w", err), 0, false, false)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, upstreamRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, payload.url, bytes.NewReader(payload.body))
 	if err != nil {
@@ -321,7 +322,7 @@ func sanitizeMessagesForTarget(messages []domain.UnifiedMessage, sourceProtocol 
 	if sourceProtocol == "" {
 		sourceProtocol = targetProtocol
 	}
-	if sourceProtocol == domain.ProtocolOpenAI && targetProvider == "gemini" {
+	if sourceProtocol == domain.ProtocolOpenAI && (targetProvider == "gemini" || (targetProvider == "openai" && targetProtocol == domain.ProtocolOpenAI)) {
 		filtered := make([]domain.UnifiedMessage, 0, len(messages))
 		for _, message := range messages {
 			cleaned, keep := sanitizeOpenAIMessagesForGemini(message)

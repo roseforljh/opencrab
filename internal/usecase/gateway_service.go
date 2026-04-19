@@ -13,7 +13,10 @@ import (
 	"opencrab/internal/reject"
 )
 
-const maxFallbackDepth = 3
+const (
+	maxFallbackDepth      = 3
+	maxRouteRetryAttempts = 3
+)
 
 type GatewayService struct {
 	routes        domain.GatewayRouteStore
@@ -241,7 +244,6 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 		}
 
 		reservation, reserveErr := s.reserveQuota(ctx, requestID, route)
-		attemptStartedAt := time.Now()
 		if reserveErr != nil {
 			return nil, reserveErr
 		}
@@ -291,53 +293,91 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 			plannedReq.Operation = plannedOp
 		}
 
-		result, execErr := executor.Execute(ctx, domain.ExecutorRequest{
-			Channel:       route.Channel,
-			UpstreamModel: route.UpstreamModel,
-			Request:       plannedReq,
-		})
+		for routeAttempt := 0; routeAttempt < maxRouteRetryAttempts; routeAttempt++ {
+			attemptStartedAt := time.Now()
+			result, execErr := executor.Execute(ctx, domain.ExecutorRequest{
+				Channel:       route.Channel,
+				UpstreamModel: route.UpstreamModel,
+				Request:       plannedReq,
+			})
 
-		if execErr == nil {
+			if execErr == nil {
+				releaseQuota()
+				state.attemptCount++
+				state.winningBucket = plan.bucketName
+				state.winningPriority = route.Priority
+				state.selectedChannel = route.Channel.Name
+				if depth > 0 {
+					state.decisionReason = "fallback_success"
+					state.fallbackStage = "model_alias_reentry"
+				} else if state.stickyHit {
+					state.decisionReason = "sticky_hit"
+					state.fallbackStage = "none"
+				} else {
+					state.decisionReason = "route_success"
+					state.fallbackStage = "none"
+				}
+				if req.AffinityKey != "" && state.settings.StickyEnabled && s.sticky != nil && (!state.stickyHit || state.stickyRouteID != route.ID) {
+					_ = s.sticky.UpsertStickyBinding(ctx, req.AffinityKey, normalizedAlias, req.Protocol, route.ID)
+				}
+
+				responseBody := ""
+				statusCode := 0
+				latencyMs := time.Since(attemptStartedAt).Milliseconds()
+				if result.Stream != nil {
+					statusCode = result.Stream.StatusCode
+					if result.Stream.Headers == nil {
+						result.Stream.Headers = map[string][]string{}
+					}
+					result.Stream.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
+					result.Stream.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
+				}
+				if result.Response != nil {
+					statusCode = result.Response.StatusCode
+					responseBody = truncateGatewayBody(result.Response.Body)
+					if result.Response.Headers == nil {
+						result.Response.Headers = map[string][]string{}
+					}
+					result.Response.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
+					result.Response.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
+				}
+				s.logAttempt(ctx, domain.GatewayAttemptLog{
+					RouteID:          route.ID,
+					RequestID:        requestID,
+					Model:            req.Model,
+					UpstreamModel:    route.UpstreamModel,
+					Channel:          route.Channel.Name,
+					Provider:         route.Channel.Provider,
+					RoutingStrategy:  string(strategy),
+					InvocationBucket: plan.bucketName,
+					PriorityTier:     route.Priority,
+					CandidateCount:   plan.groupSize,
+					SelectedIndex:    plan.originalIndex,
+					Attempt:          state.attemptCount,
+					StatusCode:       statusCode,
+					Retryable:        false,
+					StreamStarted:    false,
+					Success:          true,
+					DecisionReason:   state.decisionReason,
+					FallbackStage:    state.fallbackStage,
+					StickyHit:        state.stickyHit,
+					SelectedChannel:  route.Channel.Name,
+					AffinityKey:      req.AffinityKey,
+					FallbackChain:    append([]string(nil), state.fallbackChain...),
+					VisitedAliases:   append([]string(nil), state.visitedAliases...),
+					RequestBody:      marshalGatewayRequest(req),
+					ResponseBody:     responseBody,
+					LatencyMs:        latencyMs,
+				}, state)
+				result.Metadata = state.metadata(req)
+				advanceGroup(&plan, plan.originalIndex)
+				return result, nil
+			}
+
+			detail := domain.AsExecutionError(execErr)
 			releaseQuota()
-			_ = s.clearCooldown(ctx, route.ID)
 			state.attemptCount++
-			state.winningBucket = plan.bucketName
-			state.winningPriority = route.Priority
-			state.selectedChannel = route.Channel.Name
-			if depth > 0 {
-				state.decisionReason = "fallback_success"
-				state.fallbackStage = "model_alias_reentry"
-			} else if state.stickyHit {
-				state.decisionReason = "sticky_hit"
-				state.fallbackStage = "none"
-			} else {
-				state.decisionReason = "route_success"
-				state.fallbackStage = "none"
-			}
-			if req.AffinityKey != "" && state.settings.StickyEnabled && s.sticky != nil && (!state.stickyHit || state.stickyRouteID != route.ID) {
-				_ = s.sticky.UpsertStickyBinding(ctx, req.AffinityKey, normalizedAlias, req.Protocol, route.ID)
-			}
-
-			responseBody := ""
-			statusCode := 0
 			latencyMs := time.Since(attemptStartedAt).Milliseconds()
-			if result.Stream != nil {
-				statusCode = result.Stream.StatusCode
-				if result.Stream.Headers == nil {
-					result.Stream.Headers = map[string][]string{}
-				}
-				result.Stream.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
-				result.Stream.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
-			}
-			if result.Response != nil {
-				statusCode = result.Response.StatusCode
-				responseBody = truncateGatewayBody(result.Response.Body)
-				if result.Response.Headers == nil {
-					result.Response.Headers = map[string][]string{}
-				}
-				result.Response.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
-				result.Response.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
-			}
 			s.logAttempt(ctx, domain.GatewayAttemptLog{
 				RouteID:          route.ID,
 				RequestID:        requestID,
@@ -351,11 +391,12 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 				CandidateCount:   plan.groupSize,
 				SelectedIndex:    plan.originalIndex,
 				Attempt:          state.attemptCount,
-				StatusCode:       statusCode,
-				Retryable:        false,
-				StreamStarted:    false,
-				Success:          true,
-				DecisionReason:   state.decisionReason,
+				StatusCode:       detail.StatusCode,
+				Retryable:        detail.Retryable,
+				StreamStarted:    detail.StreamStarted,
+				Success:          false,
+				ErrorMessage:     detail.Error(),
+				DecisionReason:   "attempt_failed",
 				FallbackStage:    state.fallbackStage,
 				StickyHit:        state.stickyHit,
 				SelectedChannel:  route.Channel.Name,
@@ -363,58 +404,16 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 				FallbackChain:    append([]string(nil), state.fallbackChain...),
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
-				ResponseBody:     responseBody,
 				LatencyMs:        latencyMs,
 			}, state)
-			result.Metadata = state.metadata(req)
-			advanceGroup(&plan, plan.originalIndex)
-			return result, nil
-		}
-
-		detail := domain.AsExecutionError(execErr)
-		releaseQuota()
-		cooldownUntil := ""
-		cooldownApplied := false
-		if detail.Retryable && !detail.StreamStarted && state.settings.CooldownDuration > 0 {
-			cooldownUntil, _ = s.markCooldown(ctx, route.ID, state.settings.CooldownDuration, detail.Error())
-			cooldownApplied = cooldownUntil != ""
-		}
-		state.attemptCount++
-		latencyMs := time.Since(attemptStartedAt).Milliseconds()
-		s.logAttempt(ctx, domain.GatewayAttemptLog{
-			RouteID:          route.ID,
-			RequestID:        requestID,
-			Model:            req.Model,
-			UpstreamModel:    route.UpstreamModel,
-			Channel:          route.Channel.Name,
-			Provider:         route.Channel.Provider,
-			RoutingStrategy:  string(strategy),
-			InvocationBucket: plan.bucketName,
-			PriorityTier:     route.Priority,
-			CandidateCount:   plan.groupSize,
-			SelectedIndex:    plan.originalIndex,
-			Attempt:          state.attemptCount,
-			StatusCode:       detail.StatusCode,
-			Retryable:        detail.Retryable,
-			StreamStarted:    detail.StreamStarted,
-			Success:          false,
-			ErrorMessage:     detail.Error(),
-			DecisionReason:   "attempt_failed",
-			FallbackStage:    state.fallbackStage,
-			CooldownApplied:  cooldownApplied,
-			CooldownUntil:    cooldownUntil,
-			StickyHit:        state.stickyHit,
-			SelectedChannel:  route.Channel.Name,
-			AffinityKey:      req.AffinityKey,
-			FallbackChain:    append([]string(nil), state.fallbackChain...),
-			VisitedAliases:   append([]string(nil), state.visitedAliases...),
-			RequestBody:      marshalGatewayRequest(req),
-			LatencyMs:        latencyMs,
-		}, state)
-		lastErr = detail
-		if !detail.Retryable || detail.StreamStarted {
-			advanceGroup(&plan, plan.originalIndex)
-			return nil, detail
+			lastErr = detail
+			if !detail.Retryable || detail.StreamStarted {
+				advanceGroup(&plan, plan.originalIndex)
+				return nil, detail
+			}
+			if shouldAvoidSameRouteRetryForOpenAIResponses(detail, plannedReq) {
+				break
+			}
 		}
 	}
 
@@ -480,6 +479,22 @@ func adaptRequestForProvider(req domain.GatewayRequest, providerName string) dom
 		adapted.Stream = false
 	}
 	return adapted
+}
+
+func shouldAvoidSameRouteRetryForOpenAIResponses(detail *domain.ExecutionError, req domain.GatewayRequest) bool {
+	if detail == nil {
+		return false
+	}
+	if req.Protocol != domain.ProtocolOpenAI {
+		return false
+	}
+	if req.Operation != domain.ProtocolOperationOpenAIResponses {
+		return false
+	}
+	if detail.StreamStarted || !detail.Retryable {
+		return false
+	}
+	return true
 }
 
 func protocolMatchesProviderForExecution(protocol domain.Protocol, providerName string) bool {
@@ -596,49 +611,6 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 		}
 		if routePlan.TargetOperation != "" {
 			state.plannedOps[route.ID] = routePlan.TargetOperation
-		}
-		if active, until := routeInCooldown(route); active {
-			skip := domain.GatewaySkip{
-				RouteID:        route.ID,
-				ModelAlias:     route.ModelAlias,
-				Channel:        route.Channel.Name,
-				Reason:         "cooldown",
-				CooldownUntil:  until,
-				Provider:       route.Channel.Provider,
-				InvocationMode: route.InvocationMode,
-				Priority:       route.Priority,
-			}
-			state.skips = append(state.skips, skip)
-			s.logAttempt(ctx, domain.GatewayAttemptLog{
-				RouteID:          route.ID,
-				RequestID:        requestID,
-				Model:            req.Model,
-				UpstreamModel:    route.UpstreamModel,
-				Channel:          route.Channel.Name,
-				Provider:         route.Channel.Provider,
-				RoutingStrategy:  string(state.strategy),
-				InvocationBucket: invocationBucketName(route, routingReq.Protocol),
-				PriorityTier:     route.Priority,
-				CandidateCount:   0,
-				SelectedIndex:    0,
-				Attempt:          0,
-				StatusCode:       0,
-				Retryable:        false,
-				StreamStarted:    false,
-				Success:          false,
-				ErrorMessage:     route.LastError,
-				DecisionReason:   "route_skipped",
-				FallbackStage:    state.fallbackStage,
-				SkipReason:       "cooldown",
-				CooldownUntil:    until,
-				StickyHit:        false,
-				SelectedChannel:  route.Channel.Name,
-				AffinityKey:      req.AffinityKey,
-				FallbackChain:    append([]string(nil), state.fallbackChain...),
-				VisitedAliases:   append([]string(nil), state.visitedAliases...),
-				RequestBody:      marshalGatewayRequest(req),
-			}, state)
-			continue
 		}
 		available = append(available, route)
 	}
@@ -858,20 +830,6 @@ func routeInvocationMatch(mode string, protocol domain.Protocol) int {
 	return 0
 }
 
-func routeInCooldown(route domain.GatewayRoute) (bool, string) {
-	if strings.TrimSpace(route.CooldownUntil) == "" {
-		return false, ""
-	}
-	until, err := time.Parse(time.RFC3339, route.CooldownUntil)
-	if err != nil {
-		return false, ""
-	}
-	if until.After(time.Now()) {
-		return true, route.CooldownUntil
-	}
-	return false, ""
-}
-
 func selectFallbackAlias(routes []domain.GatewayRoute) string {
 	fallback := ""
 	for _, route := range routes {
@@ -888,20 +846,6 @@ func selectFallbackAlias(routes []domain.GatewayRoute) string {
 		}
 	}
 	return fallback
-}
-
-func (s *GatewayService) markCooldown(ctx context.Context, routeID int64, duration time.Duration, lastError string) (string, error) {
-	if s.runtimeStates == nil {
-		return "", nil
-	}
-	return s.runtimeStates.MarkCooldown(ctx, routeID, duration, lastError)
-}
-
-func (s *GatewayService) clearCooldown(ctx context.Context, routeID int64) error {
-	if s.runtimeStates == nil {
-		return nil
-	}
-	return s.runtimeStates.ClearCooldown(ctx, routeID)
 }
 
 func (s *GatewayService) logAttempt(ctx context.Context, item domain.GatewayAttemptLog, state *gatewayExecutionState) {
@@ -953,7 +897,7 @@ func (s *gatewayExecutionState) metadata(req domain.GatewayRequest) *domain.Gate
 		WinningBucket:   s.winningBucket,
 		WinningPriority: s.winningPriority,
 		SelectedChannel: s.selectedChannel,
-		DegradedSuccess: s.attemptCount > 1,
+		DegradedSuccess: s.selectedChannel != "" && s.attemptCount > 1,
 		AttemptedRoutes: append([]domain.GatewayAttemptTrace(nil), s.attemptedRoutes...),
 		Skips:           append([]domain.GatewaySkip(nil), s.skips...),
 	}
