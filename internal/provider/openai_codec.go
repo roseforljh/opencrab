@@ -96,7 +96,7 @@ func DecodeOpenAIChatRequest(body []byte) (domain.UnifiedChatRequest, error) {
 			Role:      role,
 			Parts:     parts,
 			ToolCalls: toolCalls,
-			Metadata:  collectUnknownFields(item, "role", "content"),
+			Metadata:  collectUnknownFields(item, "role", "content", "tool_calls", "tool_call_id"),
 		})
 		if role == "tool" {
 			if toolCallIDRaw, ok := item["tool_call_id"]; ok {
@@ -269,11 +269,14 @@ func encodeOpenAIPart(part domain.UnifiedPart) (map[string]any, error) {
 }
 
 func decodeOpenAIMessageContent(contentRaw json.RawMessage) ([]domain.UnifiedPart, error) {
-	if len(contentRaw) == 0 {
-		return []domain.UnifiedPart{{Type: "text", Text: ""}}, nil
+	if len(contentRaw) == 0 || string(contentRaw) == "null" {
+		return nil, nil
 	}
 	var contentString string
 	if err := json.Unmarshal(contentRaw, &contentString); err == nil {
+		if strings.TrimSpace(contentString) == "" {
+			return nil, nil
+		}
 		return []domain.UnifiedPart{{Type: "text", Text: contentString}}, nil
 	}
 	var items []map[string]json.RawMessage

@@ -174,7 +174,7 @@ func encodeGeminiMessages(messages []domain.UnifiedMessage) (map[string]any, []m
 			continue
 		}
 		item := map[string]any{}
-		mergeRawFields(item, message.Metadata)
+		mergeRawFields(item, filterGeminiMessageMetadata(message.Metadata))
 		item["role"] = geminiRoleFromUnified(message.Role)
 		if strings.EqualFold(strings.TrimSpace(message.Role), "tool") {
 			item["role"] = "user"
@@ -240,6 +240,20 @@ func encodeGeminiParts(parts []domain.UnifiedPart) ([]map[string]any, error) {
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+func filterGeminiMessageMetadata(metadata map[string]json.RawMessage) map[string]json.RawMessage {
+	if len(metadata) == 0 {
+		return metadata
+	}
+	filtered := cloneRawMap(metadata)
+	delete(filtered, "tool_call_id")
+	delete(filtered, "tool_name")
+	delete(filtered, "tool_calls")
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {

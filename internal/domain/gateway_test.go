@@ -66,6 +66,16 @@ func TestUnifiedChatRequestValidateCore(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "allow assistant tool calls without content parts",
+			request: UnifiedChatRequest{
+				Model: "gpt-4o-mini",
+				Messages: []UnifiedMessage{{
+					Role:      "assistant",
+					ToolCalls: []UnifiedToolCall{{Name: "Read"}},
+				}},
+			},
+		},
+		{
 			name: "allow tools payload",
 			request: UnifiedChatRequest{
 				Model: "gpt-4o-mini",

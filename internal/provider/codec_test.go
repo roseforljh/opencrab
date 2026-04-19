@@ -174,6 +174,27 @@ func TestOpenAICodecToolCalls(t *testing.T) {
 	if len(decoded.Message.ToolCalls) != 1 || decoded.Message.ToolCalls[0].Name != "opencode" {
 		t.Fatalf("unexpected tool calls: %+v", decoded.Message.ToolCalls)
 	}
+	if len(decoded.Message.Parts) != 0 {
+		t.Fatalf("expected empty string tool-call content to decode as no parts, got %+v", decoded.Message.Parts)
+	}
+	requestDecoded, err := DecodeOpenAIChatRequest([]byte(`{"model":"gpt-4o-mini","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"opencode","arguments":"{\"prompt\":\"ping\"}"}}]}]}`))
+	if err != nil {
+		t.Fatalf("decode openai tool call request: %v", err)
+	}
+	if len(requestDecoded.Messages) != 1 || len(requestDecoded.Messages[0].ToolCalls) != 1 {
+		t.Fatalf("unexpected decoded request tool calls: %+v", requestDecoded.Messages)
+	}
+	if len(requestDecoded.Messages[0].Parts) != 0 {
+		t.Fatalf("expected null content tool-call request to decode as no parts, got %+v", requestDecoded.Messages[0].Parts)
+	}
+	if requestDecoded.Messages[0].Metadata != nil {
+		if _, ok := requestDecoded.Messages[0].Metadata["tool_calls"]; ok {
+			t.Fatalf("tool_calls should not leak into message metadata: %+v", requestDecoded.Messages[0].Metadata)
+		}
+		if _, ok := requestDecoded.Messages[0].Metadata["tool_call_id"]; ok {
+			t.Fatalf("tool_call_id should not leak into non-tool message metadata: %+v", requestDecoded.Messages[0].Metadata)
+		}
+	}
 	data, err := EncodeOpenAIChatRequest(domain.UnifiedChatRequest{Protocol: domain.ProtocolOpenAI, Model: "gpt-4o-mini", Messages: []domain.UnifiedMessage{{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "opencode", Arguments: json.RawMessage(`{"prompt":"ping"}`)}}}}})
 	if err != nil {
 		t.Fatalf("encode openai tool request: %v", err)
@@ -653,6 +674,9 @@ func TestGeminiCodecFunctionCallAndResponse(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"functionResponse"`) || !strings.Contains(string(data), `"tools"`) {
 		t.Fatalf("unexpected gemini payload: %s", string(data))
+	}
+	if strings.Contains(string(data), `"tool_call_id"`) || strings.Contains(string(data), `"tool_name"`) {
+		t.Fatalf("tool-only metadata should not leak into gemini message envelope: %s", string(data))
 	}
 
 	encodedResp, err := EncodeGeminiChatResponse(decoded)
