@@ -556,7 +556,7 @@ func TestGeminiExecutorTransformsOpenAIToolsAndToolChoice(t *testing.T) {
 			Protocol: domain.ProtocolOpenAI,
 			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
 			Tools: []json.RawMessage{
-				json.RawMessage(`{"type":"function","function":{"name":"Read","description":"Read file","parameters":{"type":["object","null"],"properties":{"file_path":{"type":"string","deprecated":true},"mode":{"anyOf":[{"type":"string","enum":["a","b"],"enumTitles":["A","B"]},{"type":"null"}]}},"required":["file_path"],"additionalProperties":false,"patternProperties":{"^x-":{"type":"string"}},"$schema":"http://json-schema.org/draft-07/schema#","$id":"root"}}}`),
+				json.RawMessage(`{"type":"function","function":{"name":"1 bad tool/name with spaces and extremely-long-suffix-for-gemini-validation-over-sixty-four-characters","description":"Read file","parameters":{"type":["object","null"],"properties":{"file_path":{"type":"string","deprecated":true},"mode":{"anyOf":[{"type":"string","enum":["a","b"],"enumTitles":["A","B"]},{"type":"null"}]},"schema_ref":{"$ref":"#/$defs/sample"}},"required":["file_path"],"additionalProperties":false,"patternProperties":{"^x-":{"type":"string"}},"propertyNames":{"pattern":"^[a-z]+$"},"$defs":{"sample":{"type":"string"}},"$schema":"http://json-schema.org/draft-07/schema#","$id":"root","const":"x"}}}`),
 			},
 			Metadata: map[string]json.RawMessage{
 				"tool_choice": json.RawMessage(`"required"`),
@@ -583,8 +583,12 @@ func TestGeminiExecutorTransformsOpenAIToolsAndToolChoice(t *testing.T) {
 	if !ok {
 		t.Fatalf("unexpected declaration payload: %#v", decls[0])
 	}
-	if decl["name"] != "Read" {
-		t.Fatalf("unexpected function declaration name: %#v", decl)
+	name, _ := decl["name"].(string)
+	if name == "" || len(name) > 64 {
+		t.Fatalf("expected sanitized gemini function name, got %#v", decl)
+	}
+	if strings.ContainsAny(name, " /") {
+		t.Fatalf("expected sanitized gemini function name without spaces or slashes, got %#v", decl)
 	}
 	params, ok := decl["parameters"].(map[string]any)
 	if !ok {
@@ -593,7 +597,7 @@ func TestGeminiExecutorTransformsOpenAIToolsAndToolChoice(t *testing.T) {
 	if params["type"] != "OBJECT" {
 		t.Fatalf("expected gemini-style uppercase schema type, got %#v", params)
 	}
-	for _, forbidden := range []string{"$schema", "$id", "additionalProperties", "patternProperties"} {
+	for _, forbidden := range []string{"$schema", "$id", "$defs", "$ref", "const", "additionalProperties", "patternProperties", "propertyNames"} {
 		if _, exists := params[forbidden]; exists {
 			t.Fatalf("unexpected %s leakage in gemini params: %#v", forbidden, params)
 		}
@@ -667,8 +671,8 @@ func TestGeminiExecutorMovesOpenAIControlsIntoGenerationConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected generationConfig in gemini payload: %#v", captured)
 	}
-	if config["maxOutputTokens"] != float64(256) {
-		t.Fatalf("expected maxOutputTokens=256, got %#v", config)
+	if _, exists := config["maxOutputTokens"]; exists {
+		t.Fatalf("expected maxOutputTokens to be removed for gemini payload: %#v", config)
 	}
 	if config["temperature"] != 0.7 {
 		t.Fatalf("expected temperature=0.7, got %#v", config)
@@ -696,6 +700,7 @@ func TestGeminiExecutorDropsInterruptedAndTodoReminderMessagesFromOpenAIHistory(
 			Messages: []domain.GatewayMessage{
 				testGatewayMessage("system", domain.UnifiedPart{Type: "text", Text: "You are Droid"}),
 				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "<system-reminder>IMPORTANT: TodoWrite was not called yet. You must call it for any non-trivial task requested by the user."}, domain.UnifiedPart{Type: "text", Text: "你好"}),
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "<system-reminder>\n\nUser system info (win32 10.0.26200)\nModel: gemini-3.1-pro-preview"}, domain.UnifiedPart{Type: "text", Text: "继续修复"}),
 				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "Request interrupted by user"}),
 				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "Request cancelled by user"}),
 				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "继续修复"}),
@@ -727,6 +732,9 @@ func TestGeminiExecutorDropsInterruptedAndTodoReminderMessagesFromOpenAIHistory(
 	if strings.Contains(body, "TodoWrite was not called yet") {
 		t.Fatalf("unexpected TodoWrite reminder in gemini contents: %s", body)
 	}
+	if strings.Contains(body, "User system info") {
+		t.Fatalf("unexpected generic system reminder leakage in gemini contents: %s", body)
+	}
 	if !strings.Contains(body, "你好") || !strings.Contains(body, "继续修复") {
 		t.Fatalf("expected real user text to survive filtering: %s", body)
 	}
@@ -753,7 +761,7 @@ func TestAttachPayloadDebugMetadata(t *testing.T) {
 }
 
 func TestBuildFocusedPayloadPreviewPrefersToolsAndToolConfig(t *testing.T) {
-	payload := []byte(`{"contents":[{"parts":[{"text":"` + strings.Repeat("x", 5000) + `"}]}],"tools":[{"functionDeclarations":[{"name":"Read","parameters":{"type":"OBJECT"}}]}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"temperature":1}}`)
+	payload := []byte(`{"contents":[{"parts":[{"text":"` + strings.Repeat("x", 5000) + `"}],"tool_call_id":"call_1"}],"tools":[{"functionDeclarations":[{"name":"Read","parameters":{"type":"OBJECT"}}]}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"temperature":1}}`)
 	preview := buildFocusedPayloadPreview(payload)
 	if !strings.Contains(preview, `"tools"`) {
 		t.Fatalf("expected focused preview to include tools: %s", preview)
@@ -766,6 +774,9 @@ func TestBuildFocusedPayloadPreviewPrefersToolsAndToolConfig(t *testing.T) {
 	}
 	if !strings.Contains(preview, `"contents_count":1`) {
 		t.Fatalf("expected focused preview to include contents_count: %s", preview)
+	}
+	if !strings.Contains(preview, `"contents_extra_keys":{"contents[0]":["tool_call_id"]}`) {
+		t.Fatalf("expected focused preview to include message extra keys: %s", preview)
 	}
 }
 

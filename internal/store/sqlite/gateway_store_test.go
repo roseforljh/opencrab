@@ -128,6 +128,43 @@ func TestGatewayAttemptLogStoreLogGatewayAttempt(t *testing.T) {
 	}
 }
 
+func TestGatewayAttemptLogStorePersistsLatency(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	store := NewGatewayAttemptLogStore(db)
+	err = store.LogGatewayAttempt(context.Background(), domain.GatewayAttemptLog{
+		RequestID:  "req-latency",
+		Model:      "gpt-4o",
+		Channel:    "claude-a",
+		Provider:   "claude",
+		Attempt:    1,
+		StatusCode: 503,
+		Success:    false,
+		LatencyMs:  3210,
+	})
+	if err != nil {
+		t.Fatalf("log latency attempt: %v", err)
+	}
+
+	items, err := NewRequestLogStore(db).List(context.Background())
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 log, got %d", len(items))
+	}
+	if !strings.Contains(items[0].Details, `"latency_ms":3210`) {
+		t.Fatalf("expected latency in details, got %s", items[0].Details)
+	}
+}
+
 func TestGatewayAttemptLogStoreOmitsBodiesOnSuccess(t *testing.T) {
 	db, err := Open(t.TempDir() + "/opencrab.db")
 	if err != nil {

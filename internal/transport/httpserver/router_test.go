@@ -82,7 +82,7 @@ func TestChannelTestReturnsPayload(t *testing.T) {
 	var logged domain.RequestLog
 	router := NewRouter(Dependencies{
 		TestChannel: func(ctx context.Context, id int64, model string) (domain.ChannelTestResult, error) {
-			return domain.ChannelTestResult{Channel: "openai-main", Provider: "OpenAI", Model: model, StatusCode: 200, Message: "连接成功"}, nil
+			return domain.ChannelTestResult{Channel: "openai-main", Provider: "OpenAI", Model: model, StatusCode: 200, Message: "连接成功", Details: map[string]any{"request_url": "https://api.openai.com/v1/chat/completions", "upstream_status": 200}}, nil
 		},
 		CreateRequestLog: func(ctx context.Context, item domain.RequestLog) error {
 			logged = item
@@ -109,8 +109,14 @@ func TestChannelTestReturnsPayload(t *testing.T) {
 	if payload.Message == "" {
 		t.Fatal("expected success message in response")
 	}
+	if payload.Details["request_url"] == nil || payload.Details["upstream_status"] != float64(200) {
+		t.Fatalf("expected detailed channel test payload, got %#v", payload.Details)
+	}
 	if logged.Channel != "openai-main" || logged.Model != "gpt-4o-mini" || logged.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected request log: %#v", logged)
+	}
+	if !strings.Contains(logged.Details, `"upstream_status":200`) || !strings.Contains(logged.Details, `"request_url":"https://api.openai.com/v1/chat/completions"`) {
+		t.Fatalf("expected detailed request log details, got %s", logged.Details)
 	}
 }
 

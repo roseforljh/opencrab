@@ -903,10 +903,12 @@ func TestProxyClaudeMessagesAcceptsNativeHeader(t *testing.T) {
 
 func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing.T) {
 	var logged domain.RequestLog
+	logger, records := newCaptureLogger()
 	router := NewRouter(Dependencies{
+		Logger: logger,
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
-			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`)}}, nil
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`)}, Metadata: &domain.GatewayExecutionMetadata{DegradedSuccess: false, AttemptCount: 1, SelectedChannel: "openai-upstream"}}, nil
 		},
 		CreateRequestLog: func(ctx context.Context, item domain.RequestLog) error {
 			logged = item
@@ -932,6 +934,12 @@ func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing
 	}
 	if logged.TotalTokens != 3 || logged.PromptTokens != 1 || logged.CompletionTokens != 2 {
 		t.Fatalf("expected persisted usage tokens, got %+v", logged)
+	}
+	if !strings.Contains(logged.Details, `"degraded_success":false`) {
+		t.Fatalf("expected degraded_success field in gateway log details, got %s", logged.Details)
+	}
+	if !captureLogsContain(records, "decode_and_preprocess_duration") || !captureLogsContain(records, "write_response_duration") {
+		t.Fatalf("expected request logger timing fields, got %#v", *records)
 	}
 }
 

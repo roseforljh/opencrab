@@ -395,12 +395,14 @@ func NewRouter(deps Dependencies) http.Handler {
 				if err != nil {
 					if deps.CreateRequestLog != nil {
 						details := marshalLogDetails(map[string]any{
-							"request_path": req.URL.Path,
-							"provider":     result.Provider,
-							"channel":      fallbackLogChannel(result.Channel, id),
-							"model":        fallbackLogModel(result.Model, input.Model),
-							"message":      result.Message,
-							"test_mode":    true,
+							"request_path":    req.URL.Path,
+							"provider":        result.Provider,
+							"channel":         fallbackLogChannel(result.Channel, id),
+							"model":           fallbackLogModel(result.Model, input.Model),
+							"message":         result.Message,
+							"upstream_status": result.StatusCode,
+							"details":         result.Details,
+							"test_mode":       true,
 						})
 						_ = deps.CreateRequestLog(req.Context(), domain.RequestLog{
 							RequestID:    middleware.GetReqID(req.Context()),
@@ -420,12 +422,14 @@ func NewRouter(deps Dependencies) http.Handler {
 
 				if deps.CreateRequestLog != nil {
 					details := marshalLogDetails(map[string]any{
-						"request_path": req.URL.Path,
-						"provider":     result.Provider,
-						"channel":      fallbackLogChannel(result.Channel, id),
-						"model":        fallbackLogModel(result.Model, input.Model),
-						"message":      result.Message,
-						"test_mode":    true,
+						"request_path":    req.URL.Path,
+						"provider":        result.Provider,
+						"channel":         fallbackLogChannel(result.Channel, id),
+						"model":           fallbackLogModel(result.Model, input.Model),
+						"message":         result.Message,
+						"upstream_status": result.StatusCode,
+						"details":         result.Details,
+						"test_mode":       true,
 					})
 					_ = deps.CreateRequestLog(req.Context(), domain.RequestLog{
 						RequestID:    middleware.GetReqID(req.Context()),

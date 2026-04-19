@@ -44,27 +44,29 @@ func (t *ChannelTester) TestChannel(ctx context.Context, channel domain.Upstream
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	result := domain.ChannelTestResult{
+		Channel:    channel.Name,
+		Provider:   channel.Provider,
+		Model:      usedModel,
+		StatusCode: resp.StatusCode,
+		Details: map[string]any{
+			"request_url": req.URL.String(),
+		},
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message := strings.TrimSpace(string(body))
 		if message == "" {
 			message = http.StatusText(resp.StatusCode)
 		}
-		return domain.ChannelTestResult{
-			Channel:    channel.Name,
-			Provider:   channel.Provider,
-			Model:      usedModel,
-			StatusCode: resp.StatusCode,
-			Message:    message,
-		}, fmt.Errorf("上游返回 %d: %s", resp.StatusCode, message)
+		result.Message = message
+		result.Details["upstream_status"] = resp.StatusCode
+		result.Details["error_summary"] = message
+		return result, fmt.Errorf("上游返回 %d: %s", resp.StatusCode, message)
 	}
 
-	return domain.ChannelTestResult{
-		Channel:    channel.Name,
-		Provider:   channel.Provider,
-		Model:      usedModel,
-		StatusCode: resp.StatusCode,
-		Message:    "连接成功",
-	}, nil
+	result.Message = "连接成功"
+	result.Details["upstream_status"] = resp.StatusCode
+	return result, nil
 }
 
 func buildTestRequest(ctx context.Context, channel domain.UpstreamChannel, providerName string, model string) (*http.Request, error) {

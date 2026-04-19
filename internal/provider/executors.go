@@ -10,8 +10,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
+
 
 	"opencrab/internal/domain"
 )
@@ -365,7 +368,7 @@ func shouldDropOpenAITextPartForGemini(part domain.UnifiedPart) bool {
 	if lowered == "request interrupted by user" || lowered == "request cancelled by user" {
 		return true
 	}
-	if strings.Contains(lowered, "<system-reminder>") && strings.Contains(lowered, "todowrite was not called yet") {
+	if strings.Contains(lowered, "<system-reminder>") {
 		return true
 	}
 	return false
@@ -460,13 +463,6 @@ func rewriteOpenAIControlsToGemini(metadata map[string]json.RawMessage) {
 		return
 	}
 	config := decodeJSONObject(metadata["generationConfig"])
-	if len(metadata["max_tokens"]) > 0 {
-		var maxTokens int
-		if err := json.Unmarshal(metadata["max_tokens"], &maxTokens); err == nil && maxTokens > 0 {
-			config["maxOutputTokens"] = maxTokens
-		}
-		delete(metadata, "max_tokens")
-	}
 	if len(metadata["temperature"]) > 0 {
 		var temperature float64
 		if err := json.Unmarshal(metadata["temperature"], &temperature); err == nil {
@@ -474,7 +470,10 @@ func rewriteOpenAIControlsToGemini(metadata map[string]json.RawMessage) {
 		}
 		delete(metadata, "temperature")
 	}
+	delete(metadata, "max_tokens")
+	delete(config, "maxOutputTokens")
 	if len(config) == 0 {
+		delete(metadata, "generationConfig")
 		return
 	}
 	if encoded, err := json.Marshal(config); err == nil {
@@ -738,6 +737,7 @@ func rewriteOpenAIToolsToGemini(tools []json.RawMessage) []json.RawMessage {
 		case "function":
 			functionPayload, _ := tool["function"].(map[string]any)
 			name, _ := functionPayload["name"].(string)
+			name = sanitizeGeminiFunctionName(name)
 			if strings.TrimSpace(name) == "" {
 				rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
 				continue
@@ -947,11 +947,32 @@ func flattenGeminiCombinatorSchema(schema map[string]any) (map[string]any, bool)
 
 func shouldDropGeminiSchemaKeyword(key string) bool {
 	switch key {
-	case "$schema", "$id", "additionalProperties", "patternProperties", "deprecated", "enumTitles", "prefill", "title", "nullable", "default", "examples", "example", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "minItems", "maxItems", "uniqueItems", "format", "propertyOrdering", "readOnly", "writeOnly", "contentMediaType", "contentEncoding", "unevaluatedProperties", "unevaluatedItems":
+	case "$schema", "$id", "$defs", "definitions", "$ref", "const", "additionalProperties", "propertyNames", "patternProperties", "deprecated", "enumTitles", "prefill", "title", "nullable", "default", "examples", "example", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "minItems", "maxItems", "uniqueItems", "format", "pattern", "propertyOrdering", "readOnly", "writeOnly", "contentMediaType", "contentEncoding", "unevaluatedProperties", "unevaluatedItems":
 		return true
 	default:
 		return false
 	}
+}
+
+var geminiFunctionNameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.:-]`)
+
+func sanitizeGeminiFunctionName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	name = geminiFunctionNameSanitizer.ReplaceAllString(name, "_")
+	if name == "" {
+		return ""
+	}
+	first := name[0]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_') {
+		name = "_" + name
+	}
+	if len(name) > 64 {
+		name = name[:64]
+	}
+	return name
 }
 
 func rewriteClaudeToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
@@ -1385,6 +1406,9 @@ func buildFocusedPayloadPreview(body []byte) string {
 	}
 	if focusedContentsCount, ok := raw["contents"].([]any); ok {
 		focused["contents_count"] = len(focusedContentsCount)
+		if extraKeys := collectGeminiContentExtraKeys(focusedContentsCount); len(extraKeys) > 0 {
+			focused["contents_extra_keys"] = extraKeys
+		}
 	}
 	if len(focused) == 0 {
 		if len(preview) > 4000 {
@@ -1404,6 +1428,32 @@ func buildFocusedPayloadPreview(body []byte) string {
 		return result[:4000]
 	}
 	return result
+}
+
+func collectGeminiContentExtraKeys(contents []any) map[string][]string {
+	extraByIndex := map[string][]string{}
+	for idx, item := range contents {
+		content, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		extra := make([]string, 0)
+		for key := range content {
+			if key == "role" || key == "parts" {
+				continue
+			}
+			extra = append(extra, key)
+		}
+		if len(extra) == 0 {
+			continue
+		}
+		sort.Strings(extra)
+		extraByIndex[fmt.Sprintf("contents[%d]", idx)] = extra
+	}
+	if len(extraByIndex) == 0 {
+		return nil
+	}
+	return extraByIndex
 }
 
 func attachPayloadDebugMetadata(err error, metadata map[string]string) error {

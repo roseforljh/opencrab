@@ -70,6 +70,7 @@ type gatewayExecutionState struct {
 	winningPriority int
 	decisionReason  string
 	selectedChannel string
+	attemptedRoutes []domain.GatewayAttemptTrace
 	plannedOps      map[int64]domain.ProtocolOperation
 }
 
@@ -235,11 +236,12 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 				FallbackChain:    append([]string(nil), state.fallbackChain...),
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
-			})
+			}, state)
 			continue
 		}
 
 		reservation, reserveErr := s.reserveQuota(ctx, requestID, route)
+		attemptStartedAt := time.Now()
 		if reserveErr != nil {
 			return nil, reserveErr
 		}
@@ -272,7 +274,7 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 				FallbackChain:    append([]string(nil), state.fallbackChain...),
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
-			})
+			}, state)
 			continue
 		}
 		releaseQuota := func() {
@@ -318,6 +320,7 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 
 			responseBody := ""
 			statusCode := 0
+			latencyMs := time.Since(attemptStartedAt).Milliseconds()
 			if result.Stream != nil {
 				statusCode = result.Stream.StatusCode
 				if result.Stream.Headers == nil {
@@ -335,7 +338,6 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 				result.Response.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
 				result.Response.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
 			}
-			result.Metadata = state.metadata(req)
 			s.logAttempt(ctx, domain.GatewayAttemptLog{
 				RouteID:          route.ID,
 				RequestID:        requestID,
@@ -362,7 +364,9 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
 				ResponseBody:     responseBody,
-			})
+				LatencyMs:        latencyMs,
+			}, state)
+			result.Metadata = state.metadata(req)
 			advanceGroup(&plan, plan.originalIndex)
 			return result, nil
 		}
@@ -376,6 +380,7 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 			cooldownApplied = cooldownUntil != ""
 		}
 		state.attemptCount++
+		latencyMs := time.Since(attemptStartedAt).Milliseconds()
 		s.logAttempt(ctx, domain.GatewayAttemptLog{
 			RouteID:          route.ID,
 			RequestID:        requestID,
@@ -404,7 +409,8 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 			FallbackChain:    append([]string(nil), state.fallbackChain...),
 			VisitedAliases:   append([]string(nil), state.visitedAliases...),
 			RequestBody:      marshalGatewayRequest(req),
-		})
+			LatencyMs:        latencyMs,
+		}, state)
 		lastErr = detail
 		if !detail.Retryable || detail.StreamStarted {
 			advanceGroup(&plan, plan.originalIndex)
@@ -544,7 +550,7 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 				FallbackChain:    append([]string(nil), state.fallbackChain...),
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
-			})
+			}, state)
 			continue
 		}
 		routePlan := planner.PlanRoute(ctx, s.capabilities, routingReq, route)
@@ -585,7 +591,7 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 				FallbackChain:    append([]string(nil), state.fallbackChain...),
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
-			})
+			}, state)
 			continue
 		}
 		if routePlan.TargetOperation != "" {
@@ -631,7 +637,7 @@ func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID st
 				FallbackChain:    append([]string(nil), state.fallbackChain...),
 				VisitedAliases:   append([]string(nil), state.visitedAliases...),
 				RequestBody:      marshalGatewayRequest(req),
-			})
+			}, state)
 			continue
 		}
 		available = append(available, route)
@@ -898,11 +904,37 @@ func (s *GatewayService) clearCooldown(ctx context.Context, routeID int64) error
 	return s.runtimeStates.ClearCooldown(ctx, routeID)
 }
 
-func (s *GatewayService) logAttempt(ctx context.Context, item domain.GatewayAttemptLog) {
+func (s *GatewayService) logAttempt(ctx context.Context, item domain.GatewayAttemptLog, state *gatewayExecutionState) {
+	if state != nil {
+		state.recordAttemptTrace(item)
+	}
 	if s.logger == nil {
 		return
 	}
 	_ = s.logger.LogGatewayAttempt(ctx, item)
+}
+
+func (s *gatewayExecutionState) recordAttemptTrace(item domain.GatewayAttemptLog) {
+	trace := domain.GatewayAttemptTrace{
+		RouteID:        item.RouteID,
+		Channel:        item.Channel,
+		Provider:       item.Provider,
+		StatusCode:     item.StatusCode,
+		Retryable:      item.Retryable,
+		Success:        item.Success,
+		DecisionReason: item.DecisionReason,
+		LatencyMs:      item.LatencyMs,
+		ErrorSummary:   truncateGatewayAttemptError(item.ErrorMessage),
+	}
+	s.attemptedRoutes = append(s.attemptedRoutes, trace)
+}
+
+func truncateGatewayAttemptError(text string) string {
+	trimmed := strings.TrimSpace(text)
+	if len(trimmed) <= 240 {
+		return trimmed
+	}
+	return trimmed[:240]
 }
 
 func (s *gatewayExecutionState) metadata(req domain.GatewayRequest) *domain.GatewayExecutionMetadata {
@@ -921,6 +953,8 @@ func (s *gatewayExecutionState) metadata(req domain.GatewayRequest) *domain.Gate
 		WinningBucket:   s.winningBucket,
 		WinningPriority: s.winningPriority,
 		SelectedChannel: s.selectedChannel,
+		DegradedSuccess: s.attemptCount > 1,
+		AttemptedRoutes: append([]domain.GatewayAttemptTrace(nil), s.attemptedRoutes...),
 		Skips:           append([]domain.GatewaySkip(nil), s.skips...),
 	}
 }

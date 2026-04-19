@@ -106,6 +106,7 @@ func (s *GatewayAttemptLogStore) LogGatewayAttempt(ctx context.Context, item dom
 		"affinity_key":      item.AffinityKey,
 		"fallback_chain":    item.FallbackChain,
 		"visited_aliases":   item.VisitedAliases,
+		"latency_ms":        item.LatencyMs,
 		"upstream_model":    item.UpstreamModel,
 	})
 	if err != nil {

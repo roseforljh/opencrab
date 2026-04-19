@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"opencrab/internal/domain"
+	"opencrab/internal/observability"
 	"opencrab/internal/provider"
 	"opencrab/internal/transform"
 
@@ -266,6 +267,8 @@ type gatewayDecoder func(body []byte, req *http.Request) (domain.GatewayRequest,
 
 func executeGatewayRequest(deps Dependencies, req *http.Request, decode gatewayDecoder) ([]byte, *domain.ExecutionResult, domain.Protocol, time.Time, error) {
 	startedAt := time.Now()
+	observability.MarkRequestExecuteStart(req.Context())
+	defer observability.MarkRequestExecuteEnd(req.Context())
 	if deps.ExecuteGateway == nil || deps.CopyProxy == nil || deps.CopyStream == nil {
 		return nil, nil, "", startedAt, fmt.Errorf("gateway handler not configured")
 	}
@@ -757,6 +760,8 @@ func unifiedToGatewayRequest(unified domain.UnifiedChatRequest, headers map[stri
 }
 
 func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, protocol domain.Protocol, result *domain.ExecutionResult, startedAt time.Time) {
+	observability.MarkRequestWriteStart(req.Context())
+	defer observability.MarkRequestWriteEnd(req.Context())
 	if result.Stream != nil {
 		if err := deps.CopyStream(w, result.Stream); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -800,6 +805,8 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 }
 
 func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, result *domain.ExecutionResult, startedAt time.Time, surface transform.Surface) {
+	observability.MarkRequestWriteStart(req.Context())
+	defer observability.MarkRequestWriteEnd(req.Context())
 	if result != nil && result.Stream != nil {
 		if err := deps.CopyStream(w, result.Stream); err != nil {
 			logGatewayWriteFailure(req, deps.Logger, "stream", err)
@@ -934,6 +941,7 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 	} else if len(responseBody) > 0 {
 		usage = extractUsageMetrics(responseBody)
 	}
+	totalDurationMs := time.Since(startedAt).Milliseconds()
 	detailPayload := map[string]any{
 		"log_type":          "gateway_request",
 		"request_path":      req.URL.Path,
@@ -945,6 +953,7 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 		"total_tokens":      usage.TotalTokens,
 		"cache_hit":         usage.CacheHit,
 		"test_mode":         false,
+		"duration_ms":       totalDurationMs,
 	}
 	mergeGatewayExecutionMetadata(detailPayload, metadata)
 	details := marshalLogDetails(detailPayload)
@@ -953,7 +962,7 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 		Model:            modelName,
 		Channel:          channelName,
 		StatusCode:       statusCode,
-		LatencyMs:        time.Since(startedAt).Milliseconds(),
+		LatencyMs:        totalDurationMs,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
@@ -981,6 +990,7 @@ func logGatewayFailureSummary(deps Dependencies, req *http.Request, requestBody 
 			modelName = metadata.FallbackChain[0]
 		}
 	}
+	totalDurationMs := time.Since(startedAt).Milliseconds()
 	detailPayload := map[string]any{
 		"log_type":        "gateway_request",
 		"request_path":    req.URL.Path,
@@ -988,6 +998,7 @@ func logGatewayFailureSummary(deps Dependencies, req *http.Request, requestBody 
 		"response_status": statusCode,
 		"error_message":   err.Error(),
 		"test_mode":       false,
+		"duration_ms":     totalDurationMs,
 	}
 	mergeGatewayExecutionMetadata(detailPayload, metadata)
 	channelName := "gateway-error"
@@ -999,7 +1010,7 @@ func logGatewayFailureSummary(deps Dependencies, req *http.Request, requestBody 
 		Model:        modelName,
 		Channel:      channelName,
 		StatusCode:   statusCode,
-		LatencyMs:    time.Since(startedAt).Milliseconds(),
+		LatencyMs:    totalDurationMs,
 		RequestBody:  truncateLogBody(string(requestBody)),
 		ResponseBody: "",
 		Details:      marshalLogDetails(detailPayload),
@@ -1026,6 +1037,8 @@ func mergeGatewayExecutionMetadata(payload map[string]any, metadata *domain.Gate
 	payload["winning_bucket"] = metadata.WinningBucket
 	payload["winning_priority"] = metadata.WinningPriority
 	payload["selected_channel"] = metadata.SelectedChannel
+	payload["degraded_success"] = metadata.DegradedSuccess
+	payload["attempted_routes"] = metadata.AttemptedRoutes
 	payload["skips"] = metadata.Skips
 }
 

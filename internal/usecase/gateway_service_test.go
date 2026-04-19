@@ -210,6 +210,18 @@ func TestGatewayServiceRetryableFallback(t *testing.T) {
 	if _, ok := runtimeStates.cooldowns[1]; !ok {
 		t.Fatalf("expected cooldown to be written")
 	}
+	if resp.Metadata == nil || !resp.Metadata.DegradedSuccess || resp.Metadata.AttemptCount != 2 {
+		t.Fatalf("expected degraded success metadata, got %#v", resp.Metadata)
+	}
+	if len(resp.Metadata.AttemptedRoutes) != 2 {
+		t.Fatalf("expected attempted route summary, got %#v", resp.Metadata)
+	}
+	if resp.Metadata.AttemptedRoutes[0].Channel != "claude-a" || !resp.Metadata.AttemptedRoutes[0].Retryable || resp.Metadata.AttemptedRoutes[0].Success {
+		t.Fatalf("unexpected first attempt trace: %#v", resp.Metadata.AttemptedRoutes)
+	}
+	if resp.Metadata.AttemptedRoutes[1].Channel != "gemini-b" || !resp.Metadata.AttemptedRoutes[1].Success {
+		t.Fatalf("unexpected second attempt trace: %#v", resp.Metadata.AttemptedRoutes)
+	}
 }
 
 func TestGatewayServiceNonRetryableDoesNotFallback(t *testing.T) {

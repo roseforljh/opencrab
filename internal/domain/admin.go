@@ -15,11 +15,12 @@ type Channel struct {
 }
 
 type ChannelTestResult struct {
-	Channel    string `json:"channel,omitempty"`
-	Provider   string `json:"provider"`
-	Model      string `json:"model"`
-	StatusCode int    `json:"status_code"`
-	Message    string `json:"message"`
+	Channel    string            `json:"channel,omitempty"`
+	Provider   string            `json:"provider"`
+	Model      string            `json:"model"`
+	StatusCode int               `json:"status_code"`
+	Message    string            `json:"message"`
+	Details    map[string]any    `json:"details,omitempty"`
 }
 
 type APIKey struct {

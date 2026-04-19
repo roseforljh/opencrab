@@ -155,21 +155,35 @@ type ExecutionResult struct {
 }
 
 type GatewayExecutionMetadata struct {
-	RoutingStrategy string        `json:"routing_strategy,omitempty"`
-	DecisionReason  string        `json:"decision_reason,omitempty"`
-	FallbackStage   string        `json:"fallback_stage,omitempty"`
-	FallbackChain   []string      `json:"fallback_chain,omitempty"`
-	VisitedAliases  []string      `json:"visited_aliases,omitempty"`
-	AttemptCount    int           `json:"attempt_count,omitempty"`
-	StickyHit       bool          `json:"sticky_hit,omitempty"`
-	StickyRouteID   int64         `json:"sticky_route_id,omitempty"`
-	StickyChannel   string        `json:"sticky_channel,omitempty"`
-	StickyReason    string        `json:"sticky_reason,omitempty"`
-	AffinityKey     string        `json:"affinity_key,omitempty"`
-	WinningBucket   string        `json:"winning_bucket,omitempty"`
-	WinningPriority int           `json:"winning_priority,omitempty"`
-	SelectedChannel string        `json:"selected_channel,omitempty"`
-	Skips           []GatewaySkip `json:"skips,omitempty"`
+	RoutingStrategy string                 `json:"routing_strategy,omitempty"`
+	DecisionReason  string                 `json:"decision_reason,omitempty"`
+	FallbackStage   string                 `json:"fallback_stage,omitempty"`
+	FallbackChain   []string               `json:"fallback_chain,omitempty"`
+	VisitedAliases  []string               `json:"visited_aliases,omitempty"`
+	AttemptCount    int                    `json:"attempt_count,omitempty"`
+	StickyHit       bool                   `json:"sticky_hit,omitempty"`
+	StickyRouteID   int64                  `json:"sticky_route_id,omitempty"`
+	StickyChannel   string                 `json:"sticky_channel,omitempty"`
+	StickyReason    string                 `json:"sticky_reason,omitempty"`
+	AffinityKey     string                 `json:"affinity_key,omitempty"`
+	WinningBucket   string                 `json:"winning_bucket,omitempty"`
+	WinningPriority int                    `json:"winning_priority,omitempty"`
+	SelectedChannel string                 `json:"selected_channel,omitempty"`
+	DegradedSuccess bool                   `json:"degraded_success,omitempty"`
+	AttemptedRoutes []GatewayAttemptTrace  `json:"attempted_routes,omitempty"`
+	Skips           []GatewaySkip          `json:"skips,omitempty"`
+}
+
+type GatewayAttemptTrace struct {
+	RouteID       int64  `json:"route_id,omitempty"`
+	Channel       string `json:"channel,omitempty"`
+	Provider      string `json:"provider,omitempty"`
+	StatusCode    int    `json:"status_code,omitempty"`
+	Retryable     bool   `json:"retryable,omitempty"`
+	Success       bool   `json:"success,omitempty"`
+	DecisionReason string `json:"decision_reason,omitempty"`
+	LatencyMs     int64  `json:"latency_ms,omitempty"`
+	ErrorSummary  string `json:"error_summary,omitempty"`
 }
 
 type GatewaySkip struct {
@@ -352,6 +366,7 @@ type GatewayAttemptLog struct {
 	AffinityKey      string
 	FallbackChain    []string
 	VisitedAliases   []string
+	LatencyMs        int64
 	RequestBody      string
 	ResponseBody     string
 }
