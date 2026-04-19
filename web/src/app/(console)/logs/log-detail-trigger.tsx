@@ -5,28 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatNumber, type AdminRequestLogDetail, type AdminRequestLogSummary } from "@/lib/admin-api";
-
-type LogDetailsSummary = {
-  logType?: string;
-  provider?: string;
-  routingStrategy?: string;
-  decisionReason?: string;
-  fallbackStage?: string;
-  invocationBucket?: string;
-  priorityTier?: number;
-  candidateCount?: number;
-  selectedIndex?: number;
-  attempt?: number;
-  upstreamModel?: string;
-  errorMessage?: string;
-  fallbackChain?: string[];
-  stickyHit?: boolean;
-  stickyReason?: string;
-  stickyChannel?: string;
-  selectedChannel?: string;
-  affinityKey?: string;
-  skips?: { reason?: string; channel?: string; cooldown_until?: string }[];
-};
+import { buildRoutingNarrative, parseLogDetails } from "@/app/(console)/logs/log-utils";
 
 function formatJsonBlock(value: string) {
   if (!value) {
@@ -37,41 +16,6 @@ function formatJsonBlock(value: string) {
     return JSON.stringify(JSON.parse(value), null, 2);
   } catch {
     return value;
-  }
-}
-
-function parseLogDetails(value: string): LogDetailsSummary {
-  if (!value) {
-    return {};
-  }
-
-  try {
-    const payload = JSON.parse(value) as Record<string, unknown>;
-    return {
-      logType: typeof payload.log_type === "string" ? payload.log_type : undefined,
-      provider: typeof payload.provider === "string" ? payload.provider : undefined,
-      routingStrategy: typeof payload.routing_strategy === "string" ? payload.routing_strategy : undefined,
-      decisionReason: typeof payload.decision_reason === "string" ? payload.decision_reason : undefined,
-      fallbackStage: typeof payload.fallback_stage === "string" ? payload.fallback_stage : undefined,
-      invocationBucket: typeof payload.invocation_bucket === "string" ? payload.invocation_bucket : undefined,
-      priorityTier: typeof payload.priority_tier === "number" ? payload.priority_tier : undefined,
-      candidateCount: typeof payload.candidate_count === "number" ? payload.candidate_count : undefined,
-      selectedIndex: typeof payload.selected_index === "number" ? payload.selected_index : undefined,
-      attempt: typeof payload.attempt === "number" ? payload.attempt : undefined,
-      upstreamModel: typeof payload.upstream_model === "string" ? payload.upstream_model : undefined,
-      errorMessage: typeof payload.error_message === "string" ? payload.error_message : undefined,
-      fallbackChain: Array.isArray(payload.fallback_chain) ? payload.fallback_chain.filter((item): item is string => typeof item === "string") : undefined,
-      stickyHit: typeof payload.sticky_hit === "boolean" ? payload.sticky_hit : undefined,
-      stickyReason: typeof payload.sticky_reason === "string" ? payload.sticky_reason : undefined,
-      stickyChannel: typeof payload.sticky_channel === "string" ? payload.sticky_channel : undefined,
-      selectedChannel: typeof payload.selected_channel === "string" ? payload.selected_channel : undefined,
-      affinityKey: typeof payload.affinity_key === "string" ? payload.affinity_key : undefined,
-      skips: Array.isArray(payload.skips)
-        ? payload.skips.map((item) => (typeof item === "object" && item !== null ? item as { reason?: string; channel?: string; cooldown_until?: string } : {}))
-        : undefined,
-    };
-  } catch {
-    return {};
   }
 }
 
@@ -163,9 +107,19 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
     };
   }, [detail, open, row.id]);
 
-  const details = parseLogDetails(detail?.details ?? row.details);
-  const selectedChannel = details.selectedChannel ?? detail?.channel ?? row.channel;
-  const statusText = detail ? (detail.status_code >= 200 && detail.status_code < 400 ? "成功" : "异常") : (row.status_code >= 200 && row.status_code < 400 ? "成功" : "异常");
+  const detailRow = detail ?? {
+    ...row,
+    request_body: "",
+    response_body: "",
+  };
+  const details = parseLogDetails(detailRow.details);
+  const selectedChannel = details.selectedChannel ?? detailRow.channel;
+  const statusText = detailRow.status_code >= 200 && detailRow.status_code < 400 ? "成功" : "异常";
+  const routingNarrative = buildRoutingNarrative(details, {
+    model: detailRow.model,
+    channel: detailRow.channel,
+    statusCode: detailRow.status_code
+  });
 
   return (
     <DetailDrawer
@@ -186,32 +140,41 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
     >
       {loading && !detail ? <div className="text-sm text-muted-foreground">日志详情加载中...</div> : null}
       {error ? <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger">{error}</div> : null}
-      {detail ? (
+      {detailRow ? (
         <div className="space-y-6 text-sm text-foreground">
           <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 md:grid-cols-2">
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">请求 ID</p>
-              <p className="mt-1 break-all font-mono text-xs">{detail.request_id}</p>
+              <p className="mt-1 break-all font-mono text-xs">{detailRow.request_id}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">状态码</p>
-              <p className="mt-1">{detail.status_code}</p>
+              <p className="mt-1">{detailRow.status_code}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Prompt Tokens</p>
-              <p className="mt-1">{formatNumber(detail.prompt_tokens)}</p>
+              <p className="mt-1">{formatNumber(detailRow.prompt_tokens)}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Completion Tokens</p>
-              <p className="mt-1">{formatNumber(detail.completion_tokens)}</p>
+              <p className="mt-1">{formatNumber(detailRow.completion_tokens)}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">总 Tokens</p>
-              <p className="mt-1">{formatNumber(detail.total_tokens)}</p>
+              <p className="mt-1">{formatNumber(detailRow.total_tokens)}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">缓存命中</p>
-              <p className="mt-1">{detail.cache_hit ? "是" : "否"}</p>
+              <p className="mt-1">{detailRow.cache_hit ? "是" : "否"}</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">路由与转发过程</h3>
+            <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-foreground">
+              {routingNarrative.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
             </div>
           </div>
 
@@ -221,7 +184,7 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
               <p className="mt-1">{details.logType ?? "未知"}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">选中渠道</p>
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">最终渠道</p>
               <p className="mt-1">{selectedChannel}</p>
             </div>
             <div>
@@ -229,12 +192,12 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
               <p className="mt-1">{details.routingStrategy ?? "无"}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">调用分段</p>
-              <p className="mt-1">{details.invocationBucket ?? "无"}</p>
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">决策原因</p>
+              <p className="mt-1">{details.decisionReason ?? "无"}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">优先级层</p>
-              <p className="mt-1">{details.priorityTier ? `P${details.priorityTier}` : "无"}</p>
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">执行桶 / 优先级</p>
+              <p className="mt-1">{details.invocationBucket ?? "无"}{details.priorityTier ? ` · P${details.priorityTier}` : ""}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">候选数 / 命中序号</p>
@@ -295,7 +258,7 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
 
           {details.errorMessage ? (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">路由错误</h3>
+              <h3 className="text-sm font-semibold">错误信息</h3>
               <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger">
                 {details.errorMessage}
               </div>
@@ -304,17 +267,17 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">附加详情</h3>
-            <HorizontalScrollJson>{formatJsonBlock(detail.details)}</HorizontalScrollJson>
+            <HorizontalScrollJson>{formatJsonBlock(detailRow.details)}</HorizontalScrollJson>
           </div>
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">请求体</h3>
-            <HorizontalScrollJson>{formatJsonBlock(detail.request_body)}</HorizontalScrollJson>
+            <HorizontalScrollJson>{formatJsonBlock(detailRow.request_body)}</HorizontalScrollJson>
           </div>
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">响应体</h3>
-            <HorizontalScrollJson>{formatJsonBlock(detail.response_body)}</HorizontalScrollJson>
+            <HorizontalScrollJson>{formatJsonBlock(detailRow.response_body)}</HorizontalScrollJson>
           </div>
         </div>
       ) : null}

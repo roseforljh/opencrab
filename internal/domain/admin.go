@@ -79,6 +79,18 @@ type RequestLogSummary struct {
 	CreatedAt        string `json:"created_at"`
 }
 
+type RequestLogListFilter struct {
+	Query    string `json:"query,omitempty"`
+	Category string `json:"category,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+type RequestLogSummaryListResult struct {
+	Items    []RequestLogSummary `json:"items"`
+	Total    int                 `json:"total"`
+	Filtered int                 `json:"filtered"`
+}
+
 type DashboardSummary struct {
 	ChannelsCount                  int                     `json:"channels_count"`
 	ModelsCount                    int                     `json:"models_count"`

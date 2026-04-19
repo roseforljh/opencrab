@@ -9,7 +9,7 @@ import type {
   AdminModel,
   AdminModelRoute,
   AdminRequestLogDetail,
-  AdminRequestLogSummary,
+  AdminRequestLogListResult,
   AdminSecondarySecurityState,
   AdminSettingGroup
 } from "@/lib/admin-api";
@@ -69,9 +69,16 @@ export async function getAdminModelRoutes() {
   return response.items;
 }
 
-export async function getAdminLogs() {
-  const response = await adminFetch<ListResponse<AdminRequestLogSummary>>("/api/admin/logs");
-  return response.items;
+export async function getAdminLogs(params?: { q?: string; category?: string }) {
+  const searchParams = new URLSearchParams();
+  if (params?.q?.trim()) {
+    searchParams.set("q", params.q.trim());
+  }
+  if (params?.category?.trim() && params.category !== "all") {
+    searchParams.set("category", params.category.trim());
+  }
+  const query = searchParams.toString();
+  return adminFetch<AdminRequestLogListResult>(`/api/admin/logs${query ? `?${query}` : ""}`);
 }
 
 export async function getAdminLogDetail(id: number) {

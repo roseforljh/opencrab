@@ -98,6 +98,60 @@ func TestCreateChannelPersistsDispatchControlFields(t *testing.T) {
 	}
 }
 
+func TestCreateChannelReusesExistingModelAlias(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	_, err = db.ExecContext(context.Background(), `
+INSERT INTO models(alias, upstream_model, created_at, updated_at) VALUES
+('gpt-5.4', 'gpt-5.4', 'now', 'now');`)
+	if err != nil {
+		t.Fatalf("seed existing model: %v", err)
+	}
+
+	created, err := CreateChannel(context.Background(), db, domain.CreateChannelInput{
+		Name:            "openai-backup",
+		Provider:        "openai",
+		Endpoint:        "https://api.openai.com/v1",
+		APIKey:          "sk-test-2",
+		Enabled:         true,
+		ModelIDs:        []string{"gpt-5.4"},
+		RPMLimit:        800,
+		MaxInflight:     24,
+		SafetyFactor:    0.9,
+		EnabledForAsync: true,
+		DispatchWeight:  100,
+	})
+	if err != nil {
+		t.Fatalf("create channel with existing model alias: %v", err)
+	}
+	if created.Name != "openai-backup" {
+		t.Fatalf("unexpected created channel: %#v", created)
+	}
+
+	var modelCount int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM models WHERE alias = 'gpt-5.4'`).Scan(&modelCount); err != nil {
+		t.Fatalf("count reused model: %v", err)
+	}
+	if modelCount != 1 {
+		t.Fatalf("expected existing model alias to be reused once, got %d rows", modelCount)
+	}
+
+	var routeCount int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM model_routes WHERE model_alias = 'gpt-5.4' AND channel_name = 'openai-backup'`).Scan(&routeCount); err != nil {
+		t.Fatalf("count new model route: %v", err)
+	}
+	if routeCount != 1 {
+		t.Fatalf("expected 1 model route for reused alias, got %d", routeCount)
+	}
+}
+
 func TestGatewayJobStoreCreateAndGetByIdempotencyKey(t *testing.T) {
 	db, err := Open(t.TempDir() + "/opencrab.db")
 	if err != nil {
@@ -407,6 +461,64 @@ INSERT INTO model_routes(model_alias, channel_name, invocation_mode, priority, f
 	}
 	if routeAlias != "gpt-4.1" || routeChannel != "claude-b" || routePriority != 2 {
 		t.Fatalf("unexpected route state: alias=%s channel=%s priority=%d", routeAlias, routeChannel, routePriority)
+	}
+}
+
+func TestListRequestLogSummariesSupportsServerSideFiltering(t *testing.T) {
+	db, err := Open(t.TempDir() + "/opencrab.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := ApplyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = db.ExecContext(context.Background(), `
+INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at) VALUES
+('req-1', 'gpt-4o', 'attempt-channel', 200, 0, 0, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_attempt","selected_channel":"attempt-channel","provider":"OpenAI"}', ?),
+('req-1', 'gpt-4o', 'final-channel', 200, 12, 10, 2, 12, 0, '{}', '{}', '{"log_type":"gateway_request","selected_channel":"final-channel","provider":"OpenAI","request_path":"/v1/chat/completions","response_status":200}', ?),
+('req-2', 'claude-3-7', 'bridge-channel', 502, 4, 0, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_request","selected_channel":"bridge-channel","provider":"ClaudeProxy","request_path":"/v1/chat/completions","response_status":502,"error_message":"upstream failed"}', ?),
+('req-3', 'gpt-5.4', 'codex-test', 200, 2523, 0, 0, 0, 0, '{}', '{}', '{"provider":"OpenAI","request_path":"/api/admin/channels/3/test","test_mode":true,"message":"ok"}', ?);
+`, now, now, now, now)
+	if err != nil {
+		t.Fatalf("seed logs: %v", err)
+	}
+
+	allResult, err := ListRequestLogSummaries(context.Background(), db, domain.RequestLogListFilter{Limit: 50})
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if allResult.Total != 3 || allResult.Filtered != 3 || len(allResult.Items) != 3 {
+		t.Fatalf("unexpected all-result counts: %#v", allResult)
+	}
+	if allResult.Items[0].RequestID != "req-3" || allResult.Items[1].RequestID != "req-2" || allResult.Items[2].RequestID != "req-1" {
+		t.Fatalf("unexpected deduped ordering: %#v", allResult.Items)
+	}
+
+	failedResult, err := ListRequestLogSummaries(context.Background(), db, domain.RequestLogListFilter{Category: "failed", Limit: 50})
+	if err != nil {
+		t.Fatalf("list failed logs: %v", err)
+	}
+	if failedResult.Total != 3 || failedResult.Filtered != 1 || len(failedResult.Items) != 1 || failedResult.Items[0].RequestID != "req-2" {
+		t.Fatalf("unexpected failed-result counts: %#v", failedResult)
+	}
+
+	searchResult, err := ListRequestLogSummaries(context.Background(), db, domain.RequestLogListFilter{Query: "bridge-channel", Limit: 50})
+	if err != nil {
+		t.Fatalf("search logs: %v", err)
+	}
+	if searchResult.Filtered != 1 || len(searchResult.Items) != 1 || searchResult.Items[0].RequestID != "req-2" {
+		t.Fatalf("unexpected search result: %#v", searchResult)
+	}
+
+	testResult, err := ListRequestLogSummaries(context.Background(), db, domain.RequestLogListFilter{Query: "codex-test", Limit: 50})
+	if err != nil {
+		t.Fatalf("search test logs: %v", err)
+	}
+	if testResult.Filtered != 1 || len(testResult.Items) != 1 || testResult.Items[0].RequestID != "req-3" {
+		t.Fatalf("unexpected test log result: %#v", testResult)
 	}
 }
 

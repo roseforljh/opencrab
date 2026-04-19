@@ -237,6 +237,54 @@ func TestResponsesCodecRequestEncodeAndResponseDecode(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecEncodesAssistantHistoryAsOutputText(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "pong"}}},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	if !strings.Contains(string(data), `"role":"assistant"`) {
+		t.Fatalf("expected assistant message in encoded request: %s", string(data))
+	}
+	if !strings.Contains(string(data), `"text":"pong","type":"output_text"`) && !strings.Contains(string(data), `"type":"output_text","text":"pong"`) {
+		t.Fatalf("expected assistant history to encode as output_text: %s", string(data))
+	}
+	if strings.Contains(string(data), `"role":"assistant","content":[{"type":"input_text"`) || strings.Contains(string(data), `"role":"assistant","type":"message","content":[{"type":"input_text"`) || strings.Contains(string(data), `"role":"assistant","content":[{"text":"pong","type":"input_text"`) {
+		t.Fatalf("assistant history must not encode as input_text: %s", string(data))
+	}
+}
+
+func TestResponsesCodecFiltersUnsupportedMetadataFields(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}}},
+		Metadata: map[string]json.RawMessage{
+			"context_window":     json.RawMessage(`4096`),
+			"max_context_tokens": json.RawMessage(`8192`),
+			"service_tier":       json.RawMessage(`"auto"`),
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request with filtered metadata: %v", err)
+	}
+	if strings.Contains(string(data), `"context_window"`) {
+		t.Fatalf("unsupported metadata field should be dropped: %s", string(data))
+	}
+	if strings.Contains(string(data), `"max_context_tokens"`) {
+		t.Fatalf("unsupported metadata field should be dropped: %s", string(data))
+	}
+	if !strings.Contains(string(data), `"service_tier":"auto"`) {
+		t.Fatalf("supported metadata field should be preserved: %s", string(data))
+	}
+}
+
 func TestResponsesCodecPreservesReasoningAndBuiltInToolOutputItems(t *testing.T) {
 	decodedResp, err := DecodeOpenAIResponsesResponse([]byte(`{
 		"id":"resp_2",

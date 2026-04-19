@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +75,7 @@ func TestProxyResponsesConvertsChatCompletionResponse(t *testing.T) {
 		CopyStream: copyStreamForTest,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","input":"ping"}`))
-	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	req.Header.Set("Authorization", "Bearer ***")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -81,6 +83,72 @@ func TestProxyResponsesConvertsChatCompletionResponse(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"object":"response"`) || !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
 		t.Fatalf("unexpected response body: %s", rec.Body.String())
+	}
+}
+
+func TestProxyResponsesJSONRequestWithStreamHeaderReturnsJSONBody(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer ***")
+	req.Header.Set("Accept", "text/event-stream")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
+		t.Fatalf("expected json content-type, got %q", got)
+	}
+	if strings.Contains(rec.Body.String(), "event: response.created") {
+		t.Fatalf("expected json body, got synthetic stream: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
+		t.Fatalf("expected assistant output_text in json body: %s", rec.Body.String())
+	}
+}
+
+func TestProxyResponsesLogsRenderedProxyWriteFailureWithoutOverwritingStatus(t *testing.T) {
+	logger, records := newCaptureLogger()
+	router := NewRouter(Dependencies{
+		Logger: logger,
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)}}, nil
+		},
+		CopyProxy: func(w http.ResponseWriter, resp *domain.ProxyResponse) error {
+			for key, values := range resp.Headers {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write([]byte(`partial`))
+			return fmt.Errorf("boom write failure")
+		},
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer ***")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected original 200 status to remain, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "partial") {
+		t.Fatalf("expected partial body to be preserved, got %q", rec.Body.String())
+	}
+	if !captureLogsContain(records, "gateway_response_write_failed") {
+		t.Fatalf("expected gateway_response_write_failed log, got %#v", *records)
+	}
+	if !captureLogsContain(records, "rendered_proxy") {
+		t.Fatalf("expected rendered_proxy stage in logs, got %#v", *records)
 	}
 }
 
@@ -986,4 +1054,43 @@ func copyStreamForTest(w http.ResponseWriter, stream *domain.StreamResult) error
 	w.WriteHeader(stream.StatusCode)
 	_, err := io.Copy(w, stream.Body)
 	return err
+}
+
+type captureHandler struct {
+	mu      sync.Mutex
+	records []string
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
+func (h *captureHandler) Handle(_ context.Context, record slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	parts := []string{record.Message}
+	record.Attrs(func(attr slog.Attr) bool {
+		parts = append(parts, attr.Key+"="+attr.Value.String())
+		return true
+	})
+	h.records = append(h.records, strings.Join(parts, " "))
+	return nil
+}
+
+func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *captureHandler) WithGroup(string) slog.Handler { return h }
+
+func newCaptureLogger() (*slog.Logger, *[]string) {
+	handler := &captureHandler{}
+	return slog.New(handler), &handler.records
+}
+
+func captureLogsContain(records *[]string, needle string) bool {
+	for _, record := range *records {
+		if strings.Contains(record, needle) {
+			return true
+		}
+	}
+	return false
 }

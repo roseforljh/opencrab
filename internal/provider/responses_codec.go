@@ -96,7 +96,7 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 	}
 
 	payload := map[string]any{}
-	metadata := cloneRawMap(req.Metadata)
+	metadata := filterResponsesRequestMetadata(cloneRawMap(req.Metadata))
 	mergeRawFields(payload, metadata)
 	payload["model"] = req.Model
 	if req.Stream {
@@ -140,6 +140,22 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 		}
 	}
 	return json.Marshal(payload)
+}
+
+func filterResponsesRequestMetadata(metadata map[string]json.RawMessage) map[string]json.RawMessage {
+	if len(metadata) == 0 {
+		return nil
+	}
+	for _, key := range []string{
+		"context_window",
+		"max_context_tokens",
+	} {
+		delete(metadata, key)
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }
 
 func DecodeOpenAIResponsesResponse(body []byte) (domain.UnifiedChatResponse, error) {
@@ -516,7 +532,7 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 		}
 	}
 	if len(message.Parts) > 0 {
-		content, err := encodeResponsesContent(filterStandardResponsesParts(message.Parts))
+		content, err := encodeResponsesContent(filterStandardResponsesParts(message.Parts), message.Role)
 		if err != nil {
 			return nil, err
 		}
@@ -604,8 +620,9 @@ func encodeResponsesToolOutput(message domain.UnifiedMessage) (any, error) {
 	return values, nil
 }
 
-func encodeResponsesContent(parts []domain.UnifiedPart) ([]map[string]any, error) {
+func encodeResponsesContent(parts []domain.UnifiedPart, role string) ([]map[string]any, error) {
 	items := make([]map[string]any, 0, len(parts))
+	messageRole := strings.ToLower(strings.TrimSpace(role))
 	for _, part := range parts {
 		item, err := encodeOpenAIPart(part)
 		if err != nil {
@@ -613,7 +630,11 @@ func encodeResponsesContent(parts []domain.UnifiedPart) ([]map[string]any, error
 		}
 		switch item["type"] {
 		case "text":
-			item["type"] = "input_text"
+			if messageRole == "assistant" {
+				item["type"] = "output_text"
+			} else {
+				item["type"] = "input_text"
+			}
 		case "image_url":
 			item["type"] = "input_image"
 		}

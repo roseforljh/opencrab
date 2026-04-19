@@ -42,9 +42,9 @@ type Dependencies struct {
 	ListAPIKeys                    func(ctx context.Context) ([]domain.APIKey, error)
 	ListModels                     func(ctx context.Context) ([]domain.ModelMapping, error)
 	ListModelRoutes                func(ctx context.Context) ([]domain.ModelRoute, error)
-	ListRequestLogs                func(ctx context.Context) ([]domain.RequestLogSummary, error)
-	GetRequestLogDetail            func(ctx context.Context, id int64) (domain.RequestLog, error)
-	ClearRequestLogs               func(ctx context.Context) error
+	ListRequestLogs               func(ctx context.Context, filter domain.RequestLogListFilter) (domain.RequestLogSummaryListResult, error)
+	GetRequestLogDetail           func(ctx context.Context, id int64) (domain.RequestLog, error)
+	ClearRequestLogs              func(ctx context.Context) error
 	GetRoutingOverview             func(ctx context.Context) (domain.RoutingOverview, error)
 	GetDashboardSummary            func(ctx context.Context) (domain.DashboardSummary, error)
 	ListSettings                   func(ctx context.Context) ([]domain.SystemSettingGroup, error)
@@ -730,13 +730,18 @@ func NewRouter(deps Dependencies) http.Handler {
 					return
 				}
 
-				items, err := deps.ListRequestLogs(req.Context())
+				filter := domain.RequestLogListFilter{
+					Query:    strings.TrimSpace(req.URL.Query().Get("q")),
+					Category: strings.TrimSpace(req.URL.Query().Get("category")),
+					Limit:    200,
+				}
+				items, err := deps.ListRequestLogs(req.Context(), filter)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
 
-				writeJSON(w, http.StatusOK, map[string]any{"items": items})
+				writeJSON(w, http.StatusOK, items)
 			})
 
 			protected.Get("/logs/{id}", func(w http.ResponseWriter, req *http.Request) {

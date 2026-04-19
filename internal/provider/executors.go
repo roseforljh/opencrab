@@ -3,7 +3,10 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,7 +78,7 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+input.Channel.APIKey)
 	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"authorization": {}, "content-type": {}, "accept": {}})
-	return doExecutorRequest(e.client, req, payload.stream)
+	return doExecutorRequest(e.client, req, payload.stream, nil)
 }
 
 func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
@@ -116,7 +119,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 		req.Header.Set("anthropic-beta", beta)
 	}
 	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"x-api-key": {}, "content-type": {}, "accept": {}, "anthropic-version": {}, "anthropic-beta": {}})
-	return doExecutorRequest(e.client, req, payload.stream)
+	return doExecutorRequest(e.client, req, payload.stream, nil)
 }
 
 func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorRequest) (*domain.ExecutionResult, error) {
@@ -157,7 +160,7 @@ func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("x-goog-api-key", input.Channel.APIKey)
 	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"x-goog-api-key": {}, "content-type": {}, "accept": {}})
-	return doExecutorRequest(e.client, req, payload.stream)
+	return doExecutorRequest(e.client, req, payload.stream, payloadDebugMetadata(normalizedProvider, targetOperation, payload))
 }
 
 func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol, targetProvider string) domain.UnifiedChatRequest {
@@ -170,6 +173,7 @@ func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol, ta
 	if input.Request.Protocol == "" {
 		input.Request.Protocol = protocol
 	}
+	messages = sanitizeMessagesForTarget(messages, input.Request.Protocol, protocol, targetProvider)
 	metadata, tools = sanitizeRequestForTarget(metadata, tools, input.Request.Protocol, protocol, targetProvider)
 	return domain.UnifiedChatRequest{
 		Protocol: protocol,
@@ -250,6 +254,8 @@ func sanitizeRequestMetadataForTarget(metadata map[string]json.RawMessage, sourc
 	case sourceProtocol == domain.ProtocolOpenAI && targetProvider == "gemini":
 		rewriteOpenAIReasoningToGemini(cleaned)
 		rewriteOpenAIStructuredOutputsToGemini(cleaned)
+		rewriteOpenAIToolChoiceToGemini(cleaned)
+		rewriteOpenAIControlsToGemini(cleaned)
 		deleteKeys("response_format", "text")
 	case sourceProtocol == domain.ProtocolOpenAI && targetProvider == "claude":
 		rewriteOpenAIReasoningToClaude(cleaned)
@@ -303,6 +309,81 @@ func sanitizeRequestForTarget(metadata map[string]json.RawMessage, tools []json.
 		metadata, tools = rewriteClaudeMCPToOpenAITools(metadata, tools)
 	}
 	return metadata, tools
+}
+
+func sanitizeMessagesForTarget(messages []domain.UnifiedMessage, sourceProtocol domain.Protocol, targetProtocol domain.Protocol, targetProvider string) []domain.UnifiedMessage {
+	if len(messages) == 0 {
+		return messages
+	}
+	if sourceProtocol == "" {
+		sourceProtocol = targetProtocol
+	}
+	if sourceProtocol == domain.ProtocolOpenAI && targetProvider == "gemini" {
+		filtered := make([]domain.UnifiedMessage, 0, len(messages))
+		for _, message := range messages {
+			cleaned, keep := sanitizeOpenAIMessagesForGemini(message)
+			if keep {
+				filtered = append(filtered, cleaned)
+			}
+		}
+		if len(filtered) > 0 {
+			return filtered
+		}
+	}
+	return messages
+}
+
+func sanitizeOpenAIMessagesForGemini(message domain.UnifiedMessage) (domain.UnifiedMessage, bool) {
+	cleaned := domain.UnifiedMessage{
+		Role:      message.Role,
+		ToolCalls: message.ToolCalls,
+		InputItem: message.InputItem,
+		Metadata:  cloneRawMap(message.Metadata),
+	}
+	cleaned.Parts = make([]domain.UnifiedPart, 0, len(message.Parts))
+	for _, part := range message.Parts {
+		if shouldDropOpenAITextPartForGemini(part) {
+			continue
+		}
+		cleaned.Parts = append(cleaned.Parts, cloneUnifiedPart(part))
+	}
+	if len(cleaned.Parts) == 0 && len(cleaned.ToolCalls) == 0 && len(cleaned.InputItem) == 0 {
+		return domain.UnifiedMessage{}, false
+	}
+	return cleaned, true
+}
+
+func shouldDropOpenAITextPartForGemini(part domain.UnifiedPart) bool {
+	if !strings.EqualFold(strings.TrimSpace(part.Type), "text") {
+		return false
+	}
+	text := strings.TrimSpace(part.Text)
+	if text == "" {
+		return true
+	}
+	lowered := strings.ToLower(text)
+	if lowered == "request interrupted by user" || lowered == "request cancelled by user" {
+		return true
+	}
+	if strings.Contains(lowered, "<system-reminder>") && strings.Contains(lowered, "todowrite was not called yet") {
+		return true
+	}
+	return false
+}
+
+func cloneUnifiedPart(part domain.UnifiedPart) domain.UnifiedPart {
+	cloned := part
+	cloned.Metadata = cloneRawMap(part.Metadata)
+	if len(part.InputItem) > 0 {
+		cloned.InputItem = append(json.RawMessage(nil), part.InputItem...)
+	}
+	if len(part.OutputItem) > 0 {
+		cloned.OutputItem = append(json.RawMessage(nil), part.OutputItem...)
+	}
+	if len(part.NativePayload) > 0 {
+		cloned.NativePayload = append(json.RawMessage(nil), part.NativePayload...)
+	}
+	return cloned
 }
 
 func rewriteOpenAIStructuredOutputsToGemini(metadata map[string]json.RawMessage) {
@@ -372,6 +453,33 @@ func rewriteOpenAIReasoningToGemini(metadata map[string]json.RawMessage) {
 		metadata["generationConfig"] = encoded
 	}
 	delete(metadata, "reasoning")
+}
+
+func rewriteOpenAIControlsToGemini(metadata map[string]json.RawMessage) {
+	if len(metadata) == 0 {
+		return
+	}
+	config := decodeJSONObject(metadata["generationConfig"])
+	if len(metadata["max_tokens"]) > 0 {
+		var maxTokens int
+		if err := json.Unmarshal(metadata["max_tokens"], &maxTokens); err == nil && maxTokens > 0 {
+			config["maxOutputTokens"] = maxTokens
+		}
+		delete(metadata, "max_tokens")
+	}
+	if len(metadata["temperature"]) > 0 {
+		var temperature float64
+		if err := json.Unmarshal(metadata["temperature"], &temperature); err == nil {
+			config["temperature"] = temperature
+		}
+		delete(metadata, "temperature")
+	}
+	if len(config) == 0 {
+		return
+	}
+	if encoded, err := json.Marshal(config); err == nil {
+		metadata["generationConfig"] = encoded
+	}
 }
 
 func rewriteGeminiThinkingToOpenAI(metadata map[string]json.RawMessage) {
@@ -639,7 +747,7 @@ func rewriteOpenAIToolsToGemini(tools []json.RawMessage) []json.RawMessage {
 				"description": coalesceString(functionPayload["description"]),
 			}
 			if parameters := functionPayload["parameters"]; parameters != nil {
-				declaration["parameters"] = parameters
+				declaration["parameters"] = normalizeSchemaTypesForGemini(parameters)
 			}
 			functionDeclarations = append(functionDeclarations, declaration)
 		default:
@@ -693,6 +801,157 @@ func rewriteGeminiToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
 		}
 	}
 	return rewritten
+}
+
+func rewriteOpenAIToolChoiceToGemini(metadata map[string]json.RawMessage) {
+	if len(metadata) == 0 {
+		return
+	}
+	if raw := strings.TrimSpace(decodeStringRaw(metadata["tool_choice"])); raw != "" {
+		mode := "AUTO"
+		switch strings.ToLower(raw) {
+		case "required":
+			mode = "ANY"
+		case "none":
+			mode = "NONE"
+		}
+		setGeminiFunctionCallingConfig(metadata, mode, nil)
+		delete(metadata, "tool_choice")
+		return
+	}
+	toolChoice := decodeJSONObject(metadata["tool_choice"])
+	if len(toolChoice) == 0 {
+		return
+	}
+	typeValue, _ := toolChoice["type"].(string)
+	typeValue = strings.TrimSpace(strings.ToLower(typeValue))
+	mode := "AUTO"
+	var allowed []string
+	switch typeValue {
+	case "required", "any":
+		mode = "ANY"
+	case "none":
+		mode = "NONE"
+	case "function", "tool":
+		mode = "ANY"
+		if functionPayload, ok := toolChoice["function"].(map[string]any); ok {
+			if name, _ := functionPayload["name"].(string); strings.TrimSpace(name) != "" {
+				allowed = []string{name}
+			}
+		}
+	}
+	setGeminiFunctionCallingConfig(metadata, mode, allowed)
+	delete(metadata, "tool_choice")
+}
+
+func setGeminiFunctionCallingConfig(metadata map[string]json.RawMessage, mode string, allowed []string) {
+	config := decodeJSONObject(metadata["toolConfig"])
+	functionCallingConfig := decodeJSONObject(mustJSONRaw(config["functionCallingConfig"]))
+	functionCallingConfig["mode"] = mode
+	if len(allowed) > 0 {
+		functionCallingConfig["allowedFunctionNames"] = allowed
+	} else {
+		delete(functionCallingConfig, "allowedFunctionNames")
+	}
+	config["functionCallingConfig"] = functionCallingConfig
+	if encoded, err := json.Marshal(config); err == nil {
+		metadata["toolConfig"] = encoded
+	}
+}
+
+func normalizeSchemaTypesForGemini(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		if flattened, ok := flattenGeminiCombinatorSchema(typed); ok {
+			return normalizeSchemaTypesForGemini(flattened)
+		}
+		normalized := make(map[string]any, len(typed))
+		for key, nested := range typed {
+			if shouldDropGeminiSchemaKeyword(key) {
+				continue
+			}
+			if key == "properties" {
+				properties, ok := nested.(map[string]any)
+				if !ok {
+					continue
+				}
+				normalizedProperties := make(map[string]any, len(properties))
+				for propertyName, propertyValue := range properties {
+					normalizedProperties[propertyName] = normalizeSchemaTypesForGemini(propertyValue)
+				}
+				normalized[key] = normalizedProperties
+				continue
+			}
+			if key == "type" {
+				switch asType := nested.(type) {
+				case string:
+					normalized[key] = strings.ToUpper(strings.TrimSpace(asType))
+					continue
+				case []any:
+					for _, candidate := range asType {
+						if asString, ok := candidate.(string); ok && strings.TrimSpace(asString) != "" && !strings.EqualFold(strings.TrimSpace(asString), "null") {
+							normalized[key] = strings.ToUpper(strings.TrimSpace(asString))
+							break
+						}
+					}
+					if _, ok := normalized[key]; ok {
+						continue
+					}
+				}
+			}
+			normalized[key] = normalizeSchemaTypesForGemini(nested)
+		}
+		return normalized
+	case []any:
+		normalized := make([]any, 0, len(typed))
+		for _, nested := range typed {
+			normalized = append(normalized, normalizeSchemaTypesForGemini(nested))
+		}
+		return normalized
+	default:
+		return value
+	}
+}
+
+func flattenGeminiCombinatorSchema(schema map[string]any) (map[string]any, bool) {
+	for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+		rawAlternatives, ok := schema[key].([]any)
+		if !ok || len(rawAlternatives) == 0 {
+			continue
+		}
+		flattened := make(map[string]any, len(schema))
+		for existingKey, existingValue := range schema {
+			if existingKey == key {
+				continue
+			}
+			flattened[existingKey] = existingValue
+		}
+		for _, alternative := range rawAlternatives {
+			alternativeMap, ok := alternative.(map[string]any)
+			if !ok {
+				continue
+			}
+			for nestedKey, nestedValue := range alternativeMap {
+				if _, exists := flattened[nestedKey]; !exists {
+					flattened[nestedKey] = nestedValue
+				}
+			}
+			if _, exists := alternativeMap["type"]; exists {
+				break
+			}
+		}
+		return flattened, true
+	}
+	return nil, false
+}
+
+func shouldDropGeminiSchemaKeyword(key string) bool {
+	switch key {
+	case "$schema", "$id", "additionalProperties", "patternProperties", "deprecated", "enumTitles", "prefill", "title", "nullable", "default", "examples", "example", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "minItems", "maxItems", "uniqueItems", "format", "propertyOrdering", "readOnly", "writeOnly", "contentMediaType", "contentEncoding", "unevaluatedProperties", "unevaluatedItems":
+		return true
+	default:
+		return false
+	}
 }
 
 func rewriteClaudeToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
@@ -1061,10 +1320,10 @@ func mergeAnthropicBetaHeader(current string, metadata map[string]json.RawMessag
 	return strings.Join(parts, ",")
 }
 
-func doExecutorRequest(client *http.Client, req *http.Request, stream bool) (*domain.ExecutionResult, error) {
+func doExecutorRequest(client *http.Client, req *http.Request, stream bool, debugMetadata map[string]string) (*domain.ExecutionResult, error) {
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, domain.NewExecutionError(fmt.Errorf("请求上游失败: %w", err), 0, true, false)
+		return nil, domain.NewExecutionError(attachPayloadDebugMetadata(fmt.Errorf("请求上游失败: %w", err), debugMetadata), 0, true, false)
 	}
 	headers := cloneHeaders(resp.Header)
 	if stream && resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -1073,14 +1332,14 @@ func doExecutorRequest(client *http.Client, req *http.Request, stream bool) (*do
 	defer resp.Body.Close()
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return nil, domain.NewExecutionError(fmt.Errorf("读取上游响应失败: %w", readErr), resp.StatusCode, domain.IsRetryableStatusCode(resp.StatusCode), false)
+		return nil, domain.NewExecutionError(attachPayloadDebugMetadata(fmt.Errorf("读取上游响应失败: %w", readErr), debugMetadata), resp.StatusCode, domain.IsRetryableStatusCode(resp.StatusCode), false)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message := string(body)
 		if message == "" {
 			message = http.StatusText(resp.StatusCode)
 		}
-		return nil, domain.NewExecutionError(fmt.Errorf("上游返回 %d: %s", resp.StatusCode, message), resp.StatusCode, domain.IsRetryableStatusCode(resp.StatusCode), false)
+		return nil, domain.NewExecutionError(attachPayloadDebugMetadata(fmt.Errorf("上游返回 %d: %s", resp.StatusCode, message), debugMetadata), resp.StatusCode, domain.IsRetryableStatusCode(resp.StatusCode), false)
 	}
 	return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: resp.StatusCode, Headers: headers, Body: body}}, nil
 }
@@ -1091,6 +1350,73 @@ func cloneHeaders(header http.Header) map[string][]string {
 		cloned[key] = append([]string(nil), values...)
 	}
 	return cloned
+}
+
+func payloadDebugMetadata(provider string, operation domain.ProtocolOperation, payload executorPayload) map[string]string {
+	if len(payload.body) == 0 {
+		return nil
+	}
+	digest := sha256.Sum256(payload.body)
+	preview := buildFocusedPayloadPreview(payload.body)
+	return map[string]string{
+		"upstream_provider":        provider,
+		"upstream_operation":       string(operation),
+		"upstream_request_url":     payload.url,
+		"upstream_request_stream":  fmt.Sprintf("%t", payload.stream),
+		"upstream_payload_sha256":  hex.EncodeToString(digest[:]),
+		"upstream_payload_preview": preview,
+	}
+}
+
+func buildFocusedPayloadPreview(body []byte) string {
+	preview := string(body)
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		if len(preview) > 4000 {
+			return preview[:4000]
+		}
+		return preview
+	}
+	focused := map[string]any{}
+	for _, key := range []string{"toolConfig", "tools", "generationConfig", "system_instruction"} {
+		if value, ok := raw[key]; ok {
+			focused[key] = value
+		}
+	}
+	if focusedContentsCount, ok := raw["contents"].([]any); ok {
+		focused["contents_count"] = len(focusedContentsCount)
+	}
+	if len(focused) == 0 {
+		if len(preview) > 4000 {
+			return preview[:4000]
+		}
+		return preview
+	}
+	encoded, err := json.Marshal(focused)
+	if err != nil {
+		if len(preview) > 4000 {
+			return preview[:4000]
+		}
+		return preview
+	}
+	result := string(encoded)
+	if len(result) > 4000 {
+		return result[:4000]
+	}
+	return result
+}
+
+func attachPayloadDebugMetadata(err error, metadata map[string]string) error {
+	if err == nil || len(metadata) == 0 {
+		return err
+	}
+	parts := []string{err.Error()}
+	for _, key := range []string{"upstream_provider", "upstream_operation", "upstream_request_url", "upstream_request_stream", "upstream_payload_sha256", "upstream_payload_preview"} {
+		if value := strings.TrimSpace(metadata[key]); value != "" {
+			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+		}
+	}
+	return errors.New(strings.Join(parts, " | "))
 }
 
 func applyRequestHeaders(req *http.Request, headers map[string]string, skip map[string]struct{}) {
@@ -1104,6 +1430,9 @@ func applyRequestHeaders(req *http.Request, headers map[string]string, skip map[
 
 func shouldUseNativeUpstreamStream(req domain.GatewayRequest, targetProvider string, targetOperation domain.ProtocolOperation) bool {
 	if !req.Stream {
+		return false
+	}
+	if targetOperation == domain.ProtocolOperationOpenAIResponses {
 		return false
 	}
 	if req.Protocol == "" {

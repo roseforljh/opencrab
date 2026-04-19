@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"sort"
@@ -801,7 +802,7 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Request, requestBody []byte, result *domain.ExecutionResult, startedAt time.Time, surface transform.Surface) {
 	if result != nil && result.Stream != nil {
 		if err := deps.CopyStream(w, result.Stream); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			logGatewayWriteFailure(req, deps.Logger, "stream", err)
 			return
 		}
 		logGatewayRequestSummary(deps, req, requestBody, result.Stream.StatusCode, result.Stream.Headers, nil, startedAt, result.Metadata, nil)
@@ -816,7 +817,7 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 	unified, err := decodeUnifiedByProvider(providerName, resp.Body)
 	if err != nil {
 		if err := deps.CopyProxy(w, resp); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			logGatewayWriteFailure(req, deps.Logger, "proxy_passthrough", err)
 		}
 		return
 	}
@@ -831,11 +832,34 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 	}
 	proxyResp := &domain.ProxyResponse{StatusCode: resp.StatusCode, Headers: headers, Body: encoded}
 	if err := deps.CopyProxy(w, proxyResp); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logGatewayWriteFailure(req, deps.Logger, "rendered_proxy", err)
 		return
 	}
 	usage := usageMetricsFromUnified(unified.Usage)
 	logGatewayRequestSummary(deps, req, requestBody, proxyResp.StatusCode, proxyResp.Headers, proxyResp.Body, startedAt, result.Metadata, &usage)
+}
+
+func logGatewayWriteFailure(req *http.Request, logger *slog.Logger, stage string, err error) {
+	if logger == nil || err == nil {
+		return
+	}
+	requestID := ""
+	path := ""
+	method := ""
+	if req != nil {
+		requestID = middleware.GetReqID(req.Context())
+		if req.URL != nil {
+			path = req.URL.Path
+		}
+		method = req.Method
+	}
+	logger.Error("gateway_response_write_failed",
+		slog.String("stage", stage),
+		slog.String("method", method),
+		slog.String("path", path),
+		slog.String("request_id", requestID),
+		slog.String("error", err.Error()),
+	)
 }
 
 func encodeGatewayResponseForSurface(resp *domain.ProxyResponse, surface transform.Surface) *domain.ProxyResponse {
@@ -1074,7 +1098,23 @@ func requestWantsStreamForProtocol(protocol domain.Protocol, req *http.Request, 
 	if protocol == domain.ProtocolGemini && req != nil && strings.Contains(req.URL.Path, ":streamGenerateContent") {
 		return true
 	}
-	return requestWantsStream(body)
+	if requestWantsStream(body) {
+		return true
+	}
+	if protocol != domain.ProtocolOpenAI && protocol != domain.ProtocolCodex {
+		return false
+	}
+	if req == nil {
+		return false
+	}
+	accept := strings.ToLower(strings.TrimSpace(req.Header.Get("Accept")))
+	if !strings.Contains(accept, "text/event-stream") {
+		return false
+	}
+	if strings.Contains(accept, "application/json") {
+		return false
+	}
+	return false
 }
 
 func encodeResponsesProxyResponse(resp domain.UnifiedChatResponse, stream bool) ([]byte, map[string][]string, error) {

@@ -252,8 +252,8 @@ func New() (*App, error) {
 		DeleteCapabilityProfile: func(ctx context.Context, input domain.DeleteCapabilityProfileInput) error {
 			return capabilityProfileStore.DeleteCapabilityProfile(ctx, input)
 		},
-		ListRequestLogs: func(ctx context.Context) ([]domain.RequestLogSummary, error) {
-			return store.ListRequestLogSummaries(ctx, db)
+		ListRequestLogs: func(ctx context.Context, filter domain.RequestLogListFilter) (domain.RequestLogSummaryListResult, error) {
+			return store.ListRequestLogSummaries(ctx, db, filter)
 		},
 		GetRequestLogDetail: func(ctx context.Context, id int64) (domain.RequestLog, error) {
 			return store.GetRequestLogDetail(ctx, db, id)

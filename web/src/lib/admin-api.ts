@@ -61,6 +61,12 @@ export type AdminRequestLogSummary = {
   created_at: string;
 };
 
+export type AdminRequestLogListResult = {
+  items: AdminRequestLogSummary[];
+  total: number;
+  filtered: number;
+};
+
 export type AdminRequestLogDetail = {
   id: number;
   request_id: string;
@@ -247,6 +253,28 @@ export function formatDateTime(value: string) {
 
 export function formatNumber(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+export function formatCompactNumber(value: number, digits = 1) {
+  const absolute = Math.abs(value);
+  const units = [
+    { threshold: 1_000_000_000, suffix: "b" },
+    { threshold: 1_000_000, suffix: "m" },
+    { threshold: 1_000, suffix: "k" }
+  ] as const;
+
+  for (const unit of units) {
+    if (absolute >= unit.threshold) {
+      const scaled = value / unit.threshold;
+      const rounded = scaled.toFixed(digits);
+      const formatted = rounded.endsWith(`.${"0".repeat(digits)}`)
+        ? rounded.slice(0, -(digits + 1))
+        : rounded.replace(/0+$/, "").replace(/\.$/, "");
+      return `${formatted}${unit.suffix}`;
+    }
+  }
+
+  return formatNumber(value);
 }
 
 export function formatPercent(value: number) {

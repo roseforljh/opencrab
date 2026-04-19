@@ -8,7 +8,7 @@ import { RuntimePressureGauge } from "@/components/shared/runtime-pressure-gauge
 import { SectionCard } from "@/components/shared/section-card";
 import { StatCard } from "@/components/shared/stat-card";
 import { StaticTable, type StaticTableColumn } from "@/components/shared/static-table";
-import { formatDateTime, formatLatency, formatNumber, formatPercent } from "@/lib/admin-api";
+import { formatCompactNumber, formatDateTime, formatLatency, formatNumber, formatPercent } from "@/lib/admin-api";
 import { getAdminDashboardSummary } from "@/lib/admin-api-server";
 import { getDictionary } from "@/lib/i18n-shared";
 import { getServerLanguage } from "@/lib/i18n-server";
@@ -89,8 +89,9 @@ export default async function DashboardPage() {
       },
       {
         label: "累计 Tokens",
-        value: formatNumber(summary.total_tokens),
-        hint: `输入 ${formatNumber(summary.prompt_tokens)} / 输出 ${formatNumber(summary.completion_tokens)} / 已记录 ${formatNumber(summary.total_metered_requests)} 条`,
+        value: formatCompactNumber(summary.total_tokens),
+        hint: "",
+        valueClassName: "text-4xl",
         trend: summary.daily_counts.map((item) => item.total_tokens),
       },
       {
@@ -130,6 +131,7 @@ export default async function DashboardPage() {
               value={metric.value}
               trend={metric.trend}
               accent={`var(--chart-${(index % 5) + 1})`}
+              valueClassName={"valueClassName" in metric ? metric.valueClassName : undefined}
             />
           ))}
         </section>

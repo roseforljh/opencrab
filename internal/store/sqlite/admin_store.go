@@ -193,8 +193,16 @@ func buildRoutingOverview(ctx context.Context, db *sql.DB, logs []domain.Request
 	return overview, nil
 }
 
-func ListRequestLogSummaries(ctx context.Context, db *sql.DB) ([]domain.RequestLogSummary, error) {
-	return listRequestLogSummaries(ctx, db, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, details, created_at FROM request_logs ORDER BY created_at DESC LIMIT 200`)
+func ListRequestLogSummaries(ctx context.Context, db *sql.DB, filter domain.RequestLogListFilter) (domain.RequestLogSummaryListResult, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	logs, err := listRequestLogSummaries(ctx, db, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, details, created_at FROM request_logs ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return domain.RequestLogSummaryListResult{}, err
+	}
+	return FilterRequestLogSummaryList(logs, filter), nil
 }
 
 func ListRequestLogSummariesSince(ctx context.Context, db *sql.DB, since time.Time, limit int) ([]domain.RequestLogSummary, error) {
@@ -375,6 +383,146 @@ func parseJSONMap(value string) map[string]any {
 		return map[string]any{}
 	}
 	return payload
+}
+
+func FilterRequestLogSummaryList(logs []domain.RequestLogSummary, filter domain.RequestLogListFilter) domain.RequestLogSummaryListResult {
+	deduped := selectDisplayRequestLogs(logs)
+	result := domain.RequestLogSummaryListResult{
+		Total: len(deduped),
+		Items: make([]domain.RequestLogSummary, 0, len(deduped)),
+	}
+	query := strings.ToLower(strings.TrimSpace(filter.Query))
+	category := strings.TrimSpace(filter.Category)
+	for _, logItem := range deduped {
+		details := parseJSONMap(logItem.Details)
+		if !matchesLogSummaryQuery(logItem, details, query) {
+			continue
+		}
+		if !matchesLogSummaryCategory(logItem, details, category) {
+			continue
+		}
+		result.Items = append(result.Items, logItem)
+	}
+	result.Filtered = len(result.Items)
+	return result
+}
+
+func selectDisplayRequestLogs(logs []domain.RequestLogSummary) []domain.RequestLogSummary {
+	bestByRequestID := make(map[string]domain.RequestLogSummary, len(logs))
+	for _, logItem := range logs {
+		key := strings.TrimSpace(logItem.RequestID)
+		if key == "" {
+			key = fmt.Sprintf("log-%d", logItem.ID)
+		}
+		existing, ok := bestByRequestID[key]
+		if !ok || scoreRequestLogSummary(logItem) > scoreRequestLogSummary(existing) {
+			bestByRequestID[key] = logItem
+		}
+	}
+	items := make([]domain.RequestLogSummary, 0, len(bestByRequestID))
+	for _, logItem := range bestByRequestID {
+		if !keepRequestLogSummary(logItem) {
+			continue
+		}
+		items = append(items, logItem)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID > items[j].ID
+	})
+	return items
+}
+
+func scoreRequestLogSummary(logItem domain.RequestLogSummary) int {
+	details := parseJSONMap(logItem.Details)
+	score := 0
+	if logType, _ := details["log_type"].(string); logType == "gateway_request" {
+		score += 100
+	}
+	if logItem.TotalTokens > 0 {
+		score += 50
+	}
+	responseStatus := logItem.StatusCode
+	if rawStatus, ok := details["response_status"].(float64); ok {
+		responseStatus = int(rawStatus)
+	}
+	if responseStatus >= 200 && responseStatus < 400 {
+		score += 10
+	}
+	if logItem.LatencyMs > 9 {
+		score += 9
+	} else {
+		score += int(logItem.LatencyMs)
+	}
+	return score
+}
+
+func keepRequestLogSummary(logItem domain.RequestLogSummary) bool {
+	hasUsage := logItem.TotalTokens > 0 || logItem.PromptTokens > 0 || logItem.CompletionTokens > 0
+	isFailure := logItem.StatusCode >= 400
+	details := parseJSONMap(logItem.Details)
+	isTestMode, _ := details["test_mode"].(bool)
+	return hasUsage || isFailure || isTestMode
+}
+
+func matchesLogSummaryQuery(logItem domain.RequestLogSummary, details map[string]any, query string) bool {
+	if query == "" {
+		return true
+	}
+	haystacks := []string{
+		logItem.RequestID,
+		logItem.Model,
+		logItem.Channel,
+		stringValue(details["selected_channel"]),
+		stringValue(details["provider"]),
+		stringValue(details["upstream_model"]),
+		stringValue(details["error_message"]),
+		stringValue(details["routing_strategy"]),
+		stringValue(details["decision_reason"]),
+		stringValue(details["log_type"]),
+		fmt.Sprintf("%d", logItem.StatusCode),
+	}
+	for _, value := range haystacks {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(value)), query) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesLogSummaryCategory(logItem domain.RequestLogSummary, details map[string]any, category string) bool {
+	switch category {
+	case "", "all":
+		return true
+	case "failed":
+		return logItem.StatusCode >= 400
+	case "success":
+		return logItem.StatusCode >= 200 && logItem.StatusCode < 400
+	case "cached":
+		return logItem.CacheHit
+	case "bridged":
+		return !isNativeDirectSummary(details)
+	default:
+		return true
+	}
+}
+
+func isNativeDirectSummary(details map[string]any) bool {
+	provider := strings.ToLower(strings.TrimSpace(stringValue(details["provider"])))
+	requestPath := strings.TrimSpace(stringValue(details["request_path"]))
+	if provider == "" || requestPath == "" {
+		return false
+	}
+	return (strings.Contains(requestPath, "/v1/messages") && provider == "claude") ||
+		(strings.Contains(requestPath, "/v1/chat/completions") && provider == "openai") ||
+		(strings.Contains(requestPath, "/v1/responses") && provider == "openai") ||
+		(strings.Contains(requestPath, "/v1beta/models") && provider == "gemini")
+}
+
+func stringValue(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
 }
 
 func filterGatewayRequestLogs(logs []domain.RequestLogSummary) []domain.RequestLogSummary {
@@ -797,14 +945,7 @@ func CreateChannel(ctx context.Context, db *sql.DB, input domain.CreateChannelIn
 			continue
 		}
 
-		if _, err := tx.ExecContext(
-			ctx,
-			`INSERT INTO models(alias, upstream_model, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-			normalized,
-			normalized,
-			now,
-			now,
-		); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO models(alias, upstream_model, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(alias) DO UPDATE SET upstream_model = excluded.upstream_model, updated_at = excluded.updated_at`, normalized, normalized, now, now); err != nil {
 			return domain.Channel{}, fmt.Errorf("创建 model 失败: %w", err)
 		}
 
