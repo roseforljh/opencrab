@@ -20,36 +20,36 @@ import (
 func HandleOpenAIRealtimeClientSecrets(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if deps.SelectDirectRoute == nil || deps.ForwardOpenAIRealtimeClientSecret == nil || deps.CopyProxy == nil {
-			http.Error(w, "realtime client secret handler not configured", http.StatusNotImplemented)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("realtime client secret handler not configured"), http.StatusNotImplemented, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, gatewayErrorStatusCode(err), false, false), domain.ProtocolOpenAI)
 			return
 		}
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
-			http.Error(w, "读取请求体失败", http.StatusBadRequest)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("读取请求体失败"), http.StatusBadRequest, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		model := strings.TrimSpace(extractRealtimeModelFromJSON(body))
 		if model == "" {
-			http.Error(w, "realtime 请求缺少 model", http.StatusBadRequest)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("realtime 请求缺少 model"), http.StatusBadRequest, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		route, err := deps.SelectDirectRoute(req.Context(), model, "openai", &scope)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
 			return
 		}
 		resp, err := deps.ForwardOpenAIRealtimeClientSecret(req.Context(), route, body)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
 			return
 		}
 		if err := deps.CopyProxy(w, resp); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, http.StatusInternalServerError, false, false), domain.ProtocolOpenAI)
 		}
 	}
 }
@@ -57,36 +57,36 @@ func HandleOpenAIRealtimeClientSecrets(deps Dependencies) http.HandlerFunc {
 func HandleOpenAIRealtimeCalls(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if deps.SelectDirectRoute == nil || deps.ForwardOpenAIRealtimeCall == nil || deps.CopyProxy == nil {
-			http.Error(w, "realtime calls handler not configured", http.StatusNotImplemented)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("realtime calls handler not configured"), http.StatusNotImplemented, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, gatewayErrorStatusCode(err), false, false), domain.ProtocolOpenAI)
 			return
 		}
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
-			http.Error(w, "读取请求体失败", http.StatusBadRequest)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("读取请求体失败"), http.StatusBadRequest, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		model, err := extractRealtimeModelFromBody(req.Header.Get("Content-Type"), body, req.URL.Query().Get("model"))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, http.StatusBadRequest, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		route, err := deps.SelectDirectRoute(req.Context(), model, "openai", &scope)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
 			return
 		}
 		resp, err := deps.ForwardOpenAIRealtimeCall(req.Context(), route, req.Header.Get("Content-Type"), body, req.URL.RawQuery)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
 			return
 		}
 		if err := deps.CopyProxy(w, resp); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, http.StatusInternalServerError, false, false), domain.ProtocolOpenAI)
 		}
 	}
 }
@@ -101,14 +101,15 @@ func maybeProxyOpenAIRealtimeWebSocket(deps Dependencies, w http.ResponseWriter,
 	}
 	route, err := deps.SelectDirectRoute(req.Context(), model, "openai", &scope)
 	if err != nil {
+		renderGatewayErrorForProtocol(deps, w, err, domain.ProtocolOpenAI)
 		return false
 	}
 	upstreamConn, resp, err := deps.DialOpenAIRealtime(req.Context(), route, req)
 	if err != nil {
 		if resp != nil {
-			http.Error(w, err.Error(), resp.StatusCode)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, resp.StatusCode, false, false), domain.ProtocolOpenAI)
 		} else {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, http.StatusBadGateway, false, false), domain.ProtocolOpenAI)
 		}
 		return true
 	}

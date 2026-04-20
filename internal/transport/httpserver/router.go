@@ -924,8 +924,12 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 
 	r.Get("/v1/models", HandleOpenAIModels(deps))
+	r.Get("/v1/models/{model}", HandleOpenAIModel(deps))
 	r.Post("/v1/chat/completions", HandleGatewayChatCompletions(deps))
 	r.Post("/v1/responses", HandleOpenAIResponses(deps))
+	r.Get("/v1/responses/{responseID}", HandleOpenAIResponseRetrieve(deps))
+	r.Delete("/v1/responses/{responseID}", HandleOpenAIResponseDelete(deps))
+	r.Get("/v1/responses/{responseID}/input_items", HandleOpenAIResponseInputItems(deps))
 	r.Get("/v1/responses", HandleOpenAIResponsesWebSocket(deps))
 	r.Post("/v1/realtime/client_secrets", HandleOpenAIRealtimeClientSecrets(deps))
 	r.Post("/v1/realtime/calls", HandleOpenAIRealtimeCalls(deps))

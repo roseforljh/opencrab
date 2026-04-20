@@ -707,6 +707,34 @@ func TestGatewayServiceResponsesSessionRequiresOpenAICompatibleRoute(t *testing.
 	}
 }
 
+func TestGatewayServicePreferredProviderFiltersRoutes(t *testing.T) {
+	openaiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-openai`)}}}
+	geminiExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-gemini`)}}}
+	service := newGatewayServiceForTest([]domain.GatewayRoute{
+		{ID: 1, ModelAlias: "m", UpstreamModel: "u-openai", Channel: domain.UpstreamChannel{Name: "openai-a", Provider: "openai"}, Priority: 1},
+		{ID: 2, ModelAlias: "m", UpstreamModel: "u-gemini", Channel: domain.UpstreamChannel{Name: "gemini-b", Provider: "gemini"}, Priority: 2},
+	}, map[string]domain.Executor{"openai": openaiExecutor, "gemini": geminiExecutor}, nil, nil, nil, nil, nil)
+
+	result, err := service.Execute(context.Background(), "req-preferred-provider", domain.GatewayRequest{
+		Protocol:          domain.ProtocolOpenAI,
+		Model:             "m",
+		Messages:          []domain.GatewayMessage{testGatewayMessage("user", "x")},
+		PreferredProvider: "gemini",
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if string(result.Response.Body) != "ok-gemini" {
+		t.Fatalf("unexpected response body: %s metadata=%#v", string(result.Response.Body), result.Metadata)
+	}
+	if openaiExecutor.calls != 0 || geminiExecutor.calls != 1 {
+		t.Fatalf("unexpected executor calls: openai=%d gemini=%d", openaiExecutor.calls, geminiExecutor.calls)
+	}
+	if result.Metadata == nil || result.Metadata.SelectedChannel != "gemini-b" {
+		t.Fatalf("unexpected metadata: %#v", result.Metadata)
+	}
+}
+
 func TestGatewayServiceBasicResponsesRequestCanBridgeToClaude(t *testing.T) {
 	claudeExecutor := &fakeExecutor{result: &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: 200, Headers: map[string][]string{}, Body: []byte(`ok-claude`)}}}
 	service := newGatewayServiceForTest([]domain.GatewayRoute{

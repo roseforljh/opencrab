@@ -528,6 +528,46 @@ func (s *GatewayService) reserveQuota(ctx context.Context, requestID string, rou
 func (s *GatewayService) filterAvailableRoutes(ctx context.Context, requestID string, req domain.GatewayRequest, routingReq domain.GatewayRequest, routes []domain.GatewayRoute, state *gatewayExecutionState) []domain.GatewayRoute {
 	available := make([]domain.GatewayRoute, 0, len(routes))
 	for _, route := range routes {
+		if preferredProvider := strings.TrimSpace(req.PreferredProvider); preferredProvider != "" && domain.NormalizeProvider(route.Channel.Provider) != domain.NormalizeProvider(preferredProvider) {
+			skip := domain.GatewaySkip{
+				RouteID:        route.ID,
+				ModelAlias:     route.ModelAlias,
+				Channel:        route.Channel.Name,
+				Reason:         "preferred_provider_mismatch",
+				Provider:       route.Channel.Provider,
+				InvocationMode: route.InvocationMode,
+				Priority:       route.Priority,
+			}
+			state.skips = append(state.skips, skip)
+			s.logAttempt(ctx, domain.GatewayAttemptLog{
+				RouteID:          route.ID,
+				RequestID:        requestID,
+				Model:            req.Model,
+				UpstreamModel:    route.UpstreamModel,
+				Channel:          route.Channel.Name,
+				Provider:         route.Channel.Provider,
+				RoutingStrategy:  string(state.strategy),
+				InvocationBucket: invocationBucketName(route, routingReq.Protocol),
+				PriorityTier:     route.Priority,
+				CandidateCount:   0,
+				SelectedIndex:    0,
+				Attempt:          0,
+				StatusCode:       0,
+				Retryable:        false,
+				StreamStarted:    false,
+				Success:          false,
+				DecisionReason:   "route_skipped",
+				FallbackStage:    state.fallbackStage,
+				SkipReason:       "preferred_provider_mismatch",
+				StickyHit:        false,
+				SelectedChannel:  route.Channel.Name,
+				AffinityKey:      req.AffinityKey,
+				FallbackChain:    append([]string(nil), state.fallbackChain...),
+				VisitedAliases:   append([]string(nil), state.visitedAliases...),
+				RequestBody:      marshalGatewayRequest(req),
+			}, state)
+			continue
+		}
 		if req.APIKeyScope != nil && len(req.APIKeyScope.ChannelNames) > 0 && !scopeListContains(req.APIKeyScope.ChannelNames, route.Channel.Name) {
 			skip := domain.GatewaySkip{
 				RouteID:        route.ID,

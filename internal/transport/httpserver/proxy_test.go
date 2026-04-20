@@ -65,6 +65,113 @@ func TestOpenAIModelsReturnsConfiguredAliases(t *testing.T) {
 	}
 }
 
+func TestOpenAIModelsReturnsOnlyRoutableAliasesWhenRoutesAvailable(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ListModels: func(ctx context.Context) ([]domain.ModelMapping, error) {
+			return []domain.ModelMapping{
+				{ID: 1, Alias: "gpt-4.1", UpstreamModel: "gpt-4.1"},
+				{ID: 2, Alias: "ghost-model", UpstreamModel: "ghost-model"},
+			}, nil
+		},
+		ListModelRoutes: func(ctx context.Context) ([]domain.ModelRoute, error) {
+			return []domain.ModelRoute{{ID: 1, ModelAlias: "gpt-4.1", ChannelName: "openai-main", Priority: 1}}, nil
+		},
+		ListChannels: func(ctx context.Context) ([]domain.Channel, error) {
+			return []domain.Channel{{ID: 1, Name: "openai-main", Provider: "OpenAI", Enabled: true}}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"id":"gpt-4.1"`) {
+		t.Fatalf("expected routable model in response: %s", body)
+	}
+	if strings.Contains(body, `"id":"ghost-model"`) {
+		t.Fatalf("did not expect unroutable model in response: %s", body)
+	}
+	if !strings.Contains(body, `"owned_by":"openai"`) || !strings.Contains(body, `"route_count":1`) {
+		t.Fatalf("expected enriched response metadata: %s", body)
+	}
+}
+
+func TestOpenAIModelDetailReturnsSingleVisibleModel(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ListModels: func(ctx context.Context) ([]domain.ModelMapping, error) {
+			return []domain.ModelMapping{{ID: 1, Alias: "gpt-4.1", UpstreamModel: "gpt-4.1"}}, nil
+		},
+		ListModelRoutes: func(ctx context.Context) ([]domain.ModelRoute, error) {
+			return []domain.ModelRoute{{ID: 1, ModelAlias: "gpt-4.1", ChannelName: "openai-main", Priority: 1}}, nil
+		},
+		ListChannels: func(ctx context.Context) ([]domain.Channel, error) {
+			return []domain.Channel{{ID: 1, Name: "openai-main", Provider: "OpenAI", Enabled: true}}, nil
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/models/gpt-4.1", nil)
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"id":"gpt-4.1"`) || !strings.Contains(body, `"owned_by":"openai"`) {
+		t.Fatalf("unexpected model detail response: %s", body)
+	}
+}
+
+func TestOpenAIResponseRetrieveInputItemsAndDelete(t *testing.T) {
+	store := NewMemoryResponseSessionStore(16)
+	store.Put(ResponseSession{
+		ResponseID: "resp_1",
+		SessionID:  "session_1",
+		Model:      "gpt-4.1",
+		InputItems: json.RawMessage(`[{"type":"message","role":"user","content":[{"type":"input_text","text":"ping"}]}]`),
+		ResponseBody: json.RawMessage(`{"id":"resp_1","object":"response","model":"gpt-4.1","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong","annotations":[]}]}],"output_text":"pong"}`),
+		Messages: []domain.GatewayMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "pong"}}},
+		},
+	})
+	router := NewRouter(Dependencies{
+		VerifyAPIKey:     func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ResponseSessions: store,
+	})
+
+	retrieveReq := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_1", nil)
+	retrieveReq.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	retrieveRec := httptest.NewRecorder()
+	router.ServeHTTP(retrieveRec, retrieveReq)
+	if retrieveRec.Code != http.StatusOK || !strings.Contains(retrieveRec.Body.String(), `"id":"resp_1"`) || !strings.Contains(retrieveRec.Body.String(), `"output_text":"pong"`) || !strings.Contains(retrieveRec.Body.String(), `"annotations":[]`) {
+		t.Fatalf("unexpected retrieve response: %d %s", retrieveRec.Code, retrieveRec.Body.String())
+	}
+
+	itemsReq := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_1/input_items", nil)
+	itemsReq.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	itemsRec := httptest.NewRecorder()
+	router.ServeHTTP(itemsRec, itemsReq)
+	if itemsRec.Code != http.StatusOK || !strings.Contains(itemsRec.Body.String(), `"object":"list"`) || !strings.Contains(itemsRec.Body.String(), `"role":"user"`) || !strings.Contains(itemsRec.Body.String(), `"input_text"`) {
+		t.Fatalf("unexpected input_items response: %d %s", itemsRec.Code, itemsRec.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/responses/resp_1", nil)
+	deleteReq.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	deleteRec := httptest.NewRecorder()
+	router.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK || !strings.Contains(deleteRec.Body.String(), `"deleted":true`) {
+		t.Fatalf("unexpected delete response: %d %s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if _, ok := store.Get("resp_1"); ok {
+		t.Fatalf("expected response session to be deleted")
+	}
+}
+
 func TestProxyResponsesConvertsChatCompletionResponse(t *testing.T) {
 	router := NewRouter(Dependencies{
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
@@ -461,6 +568,42 @@ func TestResponsesWebSocketGenerateFalseWarmup(t *testing.T) {
 	}
 }
 
+func TestResponsesWebSocketReturnsStructuredErrorForInvalidAppend(t *testing.T) {
+	store := NewMemoryResponseSessionStore(16)
+	server := httptest.NewServer(NewRouter(Dependencies{
+		VerifyAPIKey:     func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ResponseSessions: store,
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			t.Fatal("invalid append should fail before upstream execution")
+			return nil, nil
+		},
+	}))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/responses"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer sk-opencrab-test"}})
+	if err != nil {
+		t.Fatalf("dial ws: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.WriteJSON(map[string]any{"type": "response.append", "input": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "input_text", "text": "next"}}}}}); err != nil {
+		t.Fatalf("write invalid append: %v", err)
+	}
+	var event map[string]any
+	if err := conn.ReadJSON(&event); err != nil {
+		t.Fatalf("read error event: %v", err)
+	}
+	if event["type"] != "error" {
+		t.Fatalf("expected error event, got %#v", event)
+	}
+	errorBody, ok := event["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested error body, got %#v", event)
+	}
+	if errorBody["type"] != "invalid_request_error" || errorBody["code"] != float64(http.StatusBadRequest) || !strings.Contains(fmt.Sprint(errorBody["message"]), "response.append 缺少 model") {
+		t.Fatalf("unexpected error payload: %#v", event)
+	}
+}
+
 func TestRealtimeWebSocketConversationAndResponse(t *testing.T) {
 	store := NewMemoryResponseSessionStore(16)
 	var captured domain.GatewayRequest
@@ -541,6 +684,47 @@ func TestRealtimeWebSocketConversationAndResponse(t *testing.T) {
 	}
 	if captured.Operation != domain.ProtocolOperationOpenAIRealtime || captured.Model != "gpt-realtime" || len(captured.Messages) == 0 {
 		t.Fatalf("unexpected captured gateway request: %#v", captured)
+	}
+}
+
+func TestRealtimeWebSocketReturnsStructuredErrorForUnsupportedEvent(t *testing.T) {
+	store := NewMemoryResponseSessionStore(16)
+	server := httptest.NewServer(NewRouter(Dependencies{
+		VerifyAPIKey:     func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ResponseSessions: store,
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			t.Fatal("unsupported realtime event should not hit upstream execution")
+			return nil, nil
+		},
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/realtime?model=gpt-realtime"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Authorization": {"Bearer sk-opencrab-test"}})
+	if err != nil {
+		t.Fatalf("dial realtime ws: %v", err)
+	}
+	defer conn.Close()
+
+	var event map[string]any
+	if err := conn.ReadJSON(&event); err != nil {
+		t.Fatalf("read session.created: %v", err)
+	}
+	if err := conn.WriteJSON(map[string]any{"type": "response.cancel"}); err != nil {
+		t.Fatalf("write unsupported event: %v", err)
+	}
+	if err := conn.ReadJSON(&event); err != nil {
+		t.Fatalf("read error event: %v", err)
+	}
+	if event["type"] != "error" {
+		t.Fatalf("expected error event, got %#v", event)
+	}
+	errorBody, ok := event["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested error body, got %#v", event)
+	}
+	if errorBody["type"] != "invalid_request_error" || errorBody["code"] != float64(http.StatusBadRequest) || !strings.Contains(fmt.Sprint(errorBody["message"]), "暂不支持的 realtime 消息类型") {
+		t.Fatalf("unexpected realtime error payload: %#v", event)
 	}
 }
 
@@ -685,6 +869,13 @@ func TestGeminiCachedContentCreateUsesNativeForwarderWhenAvailable(t *testing.T)
 	}
 	if _, ok := store.Get("cachedContents/native-1"); !ok {
 		t.Fatalf("expected local mirror for native cache")
+	}
+	getReq := httptest.NewRequest(http.MethodGet, "/v1beta/cachedContents/native-1", nil)
+	getReq.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK || !strings.Contains(getRec.Body.String(), `"cachedContents/native-1"`) || !strings.Contains(getRec.Body.String(), `"gemini-2.5-pro"`) {
+		t.Fatalf("unexpected cached content get response: %d %s", getRec.Code, getRec.Body.String())
 	}
 }
 
@@ -924,6 +1115,27 @@ func TestGatewayRequestStatusReturnsStoredJob(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"request_id":"req_status"`) || !strings.Contains(rec.Body.String(), `"result":{"id":"resp_1"}`) {
 		t.Fatalf("unexpected status response: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGatewayRequestStatusReturnsOpenAIStyleError(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		GetGatewayJobByRequestID: func(ctx context.Context, requestID string) (domain.GatewayJob, error) {
+			return domain.GatewayJob{}, fmt.Errorf("请求不存在")
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/requests/missing", nil)
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unexpected status code: %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"error":`) || !strings.Contains(rec.Body.String(), `"type":"invalid_request_error"`) || !strings.Contains(rec.Body.String(), `"code":404`) {
+		t.Fatalf("unexpected OpenAI error response: %s", rec.Body.String())
 	}
 }
 

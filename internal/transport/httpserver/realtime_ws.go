@@ -32,14 +32,14 @@ func HandleOpenAIRealtime(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, gatewayErrorStatusCode(err), false, false), domain.ProtocolOpenAI)
 			return
 		}
 		if maybeProxyOpenAIRealtimeWebSocket(deps, w, req, scope) {
 			return
 		}
 		if deps.ExecuteGateway == nil || deps.ResponseSessions == nil {
-			http.Error(w, "realtime websocket handler not configured", http.StatusNotImplemented)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("realtime websocket handler not configured"), http.StatusNotImplemented, false, false), domain.ProtocolOpenAI)
 			return
 		}
 
@@ -62,14 +62,14 @@ func HandleOpenAIRealtime(deps Dependencies) http.HandlerFunc {
 
 			var envelope realtimeWebSocketEnvelope
 			if err := json.Unmarshal(frame, &envelope); err != nil {
-				_ = conn.WriteJSON(realtimeErrorEvent(fmt.Errorf("解析 realtime 消息失败: %w", err)))
+				_ = conn.WriteJSON(realtimeErrorEvent(fmt.Errorf("解析 realtime 消息失败: %w", err), http.StatusBadRequest))
 				continue
 			}
 
 			switch strings.TrimSpace(envelope.Type) {
 			case "session.update":
 				if err := state.applySessionUpdate(envelope.Session); err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, http.StatusBadRequest))
 					continue
 				}
 				if err := conn.WriteJSON(map[string]any{"type": "session.updated", "session": state.sessionObject()}); err != nil {
@@ -78,7 +78,7 @@ func HandleOpenAIRealtime(deps Dependencies) http.HandlerFunc {
 			case "conversation.item.create":
 				item, previousItemID, err := state.addConversationItem(envelope.Item)
 				if err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, http.StatusBadRequest))
 					continue
 				}
 				if err := conn.WriteJSON(buildRealtimeConversationEvent("conversation.item.added", previousItemID, item)); err != nil {
@@ -90,28 +90,28 @@ func HandleOpenAIRealtime(deps Dependencies) http.HandlerFunc {
 			case "response.create", "":
 				payload, err := state.buildResponsePayload(envelope.Response)
 				if err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, http.StatusBadRequest))
 					continue
 				}
 
 				gatewayReq, protocol, err := decodeOpenAIResponsesGatewayRequest(payload, req)
 				if err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, http.StatusBadRequest))
 					continue
 				}
 				gatewayReq.Operation = domain.ProtocolOperationOpenAIRealtime
 				if err := applyAPIKeyScopeToGatewayRequest(&gatewayReq, scope); err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, gatewayErrorStatusCode(err)))
 					continue
 				}
 
 				result, err := executeGatewayRequestDirect(req.Context(), deps, req, gatewayReq, protocol)
 				if err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, gatewayErrorStatusCode(err)))
 					continue
 				}
 				if result == nil || result.Response == nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(fmt.Errorf("empty gateway result")))
+					_ = conn.WriteJSON(realtimeErrorEvent(fmt.Errorf("empty gateway result"), http.StatusBadGateway))
 					continue
 				}
 
@@ -119,14 +119,14 @@ func HandleOpenAIRealtime(deps Dependencies) http.HandlerFunc {
 				providerName := normalizedHeaderProvider(resp.Headers)
 				unified, err := decodeUnifiedByProvider(providerName, resp.Body)
 				if err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, http.StatusBadGateway))
 					continue
 				}
 
 				storeResponseSession(deps.ResponseSessions, req, payload, unified)
 				events, lastItemID, err := provider.BuildOpenAIRealtimeEvents(unified, state.LastConversationItemID)
 				if err != nil {
-					_ = conn.WriteJSON(realtimeErrorEvent(err))
+					_ = conn.WriteJSON(realtimeErrorEvent(err, http.StatusInternalServerError))
 					continue
 				}
 				for _, event := range events {
@@ -139,7 +139,7 @@ func HandleOpenAIRealtime(deps Dependencies) http.HandlerFunc {
 				state.LastConversationItemID = lastItemID
 				state.LastResponseID = strings.TrimSpace(unified.ID)
 			default:
-				_ = conn.WriteJSON(realtimeErrorEvent(fmt.Errorf("暂不支持的 realtime 消息类型: %s", envelope.Type)))
+				_ = conn.WriteJSON(realtimeErrorEvent(fmt.Errorf("暂不支持的 realtime 消息类型: %s", envelope.Type), http.StatusBadRequest))
 			}
 		}
 	}
@@ -295,12 +295,17 @@ func buildRealtimeConversationEvent(eventType string, previousItemID string, ite
 	return event
 }
 
-func realtimeErrorEvent(err error) map[string]any {
+func realtimeErrorEvent(err error, statusCode int) map[string]any {
+	message := "realtime websocket error"
+	if err != nil && strings.TrimSpace(err.Error()) != "" {
+		message = err.Error()
+	}
 	return map[string]any{
 		"type": "error",
 		"error": map[string]any{
 			"type":    "invalid_request_error",
-			"message": err.Error(),
+			"message": message,
+			"code":    statusCode,
 		},
 	}
 }

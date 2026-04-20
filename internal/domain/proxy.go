@@ -89,6 +89,7 @@ type GatewayRequest struct {
 	Operation       ProtocolOperation          `json:"operation,omitempty"`
 	Model           string                     `json:"model"`
 	Stream          bool                       `json:"stream,omitempty"`
+	PreferredProvider string                   `json:"-"`
 	Messages        []GatewayMessage           `json:"messages"`
 	Tools           []json.RawMessage          `json:"tools,omitempty"`
 	Metadata        map[string]json.RawMessage `json:"metadata,omitempty"`

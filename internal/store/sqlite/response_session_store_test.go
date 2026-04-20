@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func TestResponseSessionStoreRoundTrip(t *testing.T) {
 		t.Fatalf("apply migrations: %v", err)
 	}
 	store := NewResponseSessionStore(db)
-	expected := httpserver.ResponseSession{ResponseID: "resp_1", SessionID: "sess_1", Model: "gpt-5.4", Messages: []domain.GatewayMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}}, {Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "pong"}}}}, UpdatedAt: time.Now()}
+	expected := httpserver.ResponseSession{ResponseID: "resp_1", SessionID: "sess_1", Model: "gpt-5.4", Messages: []domain.GatewayMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}}, {Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "pong"}}}}, InputItems: json.RawMessage(`[ {"type":"message","role":"user"} ]`), ResponseBody: json.RawMessage(`{"id":"resp_1","object":"response"}`), UpdatedAt: time.Now()}
 	if err := store.PutContext(context.Background(), expected); err != nil {
 		t.Fatalf("put context: %v", err)
 	}
@@ -27,7 +28,7 @@ func TestResponseSessionStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get context: %v", err)
 	}
-	if !found || got.Model != expected.Model || len(got.Messages) != 2 || got.Messages[1].Parts[0].Text != "pong" {
+	if !found || got.Model != expected.Model || len(got.Messages) != 2 || got.Messages[1].Parts[0].Text != "pong" || string(got.InputItems) == "" || string(got.ResponseBody) == "" {
 		t.Fatalf("unexpected session: %#v", got)
 	}
 }

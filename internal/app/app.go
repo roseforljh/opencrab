@@ -295,32 +295,29 @@ func New() (*App, error) {
 			return gatewayService.Execute(ctx, requestID, req)
 		},
 		SelectDirectRoute: func(ctx context.Context, model string, providerName string, scope *domain.APIKeyScope) (domain.GatewayRoute, error) {
-			routes, err := gatewayStore.ListEnabledRoutesByModel(ctx, model)
-			if err != nil {
-				return domain.GatewayRoute{}, err
-			}
 			targetProvider := domain.NormalizeProvider(providerName)
-			now := time.Now()
-			for _, route := range routes {
-				if domain.NormalizeProvider(route.Channel.Provider) != targetProvider {
-					continue
-				}
-				if scope != nil {
-					if len(scope.ModelAliases) > 0 && !containsString(scope.ModelAliases, route.ModelAlias) {
-						continue
-					}
-					if len(scope.ChannelNames) > 0 && !containsString(scope.ChannelNames, route.Channel.Name) {
-						continue
-					}
-				}
-				if strings.TrimSpace(route.CooldownUntil) != "" {
-					if until, parseErr := time.Parse(time.RFC3339, route.CooldownUntil); parseErr == nil && until.After(now) {
-						continue
-					}
-				}
-				return route, nil
+			if scope != nil && len(scope.ModelAliases) > 0 && !containsString(scope.ModelAliases, model) {
+				return domain.GatewayRoute{}, fmt.Errorf("API Key 不允许访问模型 %s", model)
 			}
-			return domain.GatewayRoute{}, domain.ErrNoAvailableRoute(model)
+			protocol := domain.ProtocolOpenAI
+			switch targetProvider {
+			case "claude":
+				protocol = domain.ProtocolClaude
+			case "gemini":
+				protocol = domain.ProtocolGemini
+			}
+			gatewayReq := domain.GatewayRequest{
+				Protocol:          protocol,
+				Model:             strings.TrimSpace(model),
+				Messages:          []domain.GatewayMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "route probe"}}}},
+				ToolCallPolicy:    domain.GatewayToolCallAllow,
+				PreferredProvider: targetProvider,
+			}
+			if scope != nil && (len(scope.ChannelNames) > 0 || len(scope.ModelAliases) > 0) {
+				copied := *scope
+				gatewayReq.APIKeyScope = &copied
+			}
+			return gatewayService.SelectRoute(ctx, gatewayReq)
 		},
 		CountClaudeTokens: func(ctx context.Context, req *http.Request, body []byte) (*domain.ProxyResponse, error) {
 			unified, err := provider.DecodeClaudeChatRequest(body)

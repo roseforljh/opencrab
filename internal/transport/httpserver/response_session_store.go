@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -12,12 +13,15 @@ type ResponseSession struct {
 	SessionID  string
 	Model      string
 	Messages   []domain.GatewayMessage
+	InputItems json.RawMessage
+	ResponseBody json.RawMessage
 	UpdatedAt  time.Time
 }
 
 type ResponseSessionStore interface {
 	Get(responseID string) (ResponseSession, bool)
 	Put(session ResponseSession)
+	Delete(responseID string)
 }
 
 type MemoryResponseSessionStore struct {
@@ -57,4 +61,10 @@ func (s *MemoryResponseSessionStore) Put(session ResponseSession) {
 		}
 	}
 	s.items[session.ResponseID] = session
+}
+
+func (s *MemoryResponseSessionStore) Delete(responseID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.items, responseID)
 }

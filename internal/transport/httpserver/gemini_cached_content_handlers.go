@@ -17,22 +17,22 @@ import (
 func HandleGeminiCachedContentCreate(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if deps.ResponseSessions == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
-			http.Error(w, "cached content handler not configured", http.StatusNotImplemented)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("cached content handler not configured"), http.StatusNotImplemented, false, false), domain.ProtocolGemini)
 			return
 		}
 		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, gatewayErrorStatusCode(err), false, false), domain.ProtocolGemini)
 			return
 		}
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
-			http.Error(w, "读取请求体失败", http.StatusBadRequest)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("读取请求体失败"), http.StatusBadRequest, false, false), domain.ProtocolGemini)
 			return
 		}
 		unified, err := provider.DecodeGeminiChatRequest(body, "")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, http.StatusBadRequest, false, false), domain.ProtocolGemini)
 			return
 		}
 		if deps.SelectDirectRoute != nil && deps.ForwardGeminiCachedContentCreate != nil {
@@ -46,6 +46,7 @@ func HandleGeminiCachedContentCreate(deps Dependencies) http.HandlerFunc {
 							SessionID:  "gemini-cache",
 							Model:      unified.Model,
 							Messages:   transcriptFromUnifiedMessages(unified.Messages),
+							ResponseBody: json.RawMessage(append([]byte(nil), resp.Body...)),
 							UpdatedAt:  time.Now(),
 						})
 					}
@@ -63,6 +64,7 @@ func HandleGeminiCachedContentCreate(deps Dependencies) http.HandlerFunc {
 			SessionID:  "gemini-cache",
 			Model:      unified.Model,
 			Messages:   transcriptFromUnifiedMessages(unified.Messages),
+			ResponseBody: mustMarshalJSON(buildGeminiCachedContentResponse(cacheName, unified.Model, now)),
 			UpdatedAt:  now,
 		})
 		writeJSON(w, http.StatusOK, buildGeminiCachedContentResponse(cacheName, unified.Model, now))
@@ -72,12 +74,12 @@ func HandleGeminiCachedContentCreate(deps Dependencies) http.HandlerFunc {
 func HandleGeminiCachedContentGet(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if deps.ResponseSessions == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) {
-			http.Error(w, "cached content handler not configured", http.StatusNotImplemented)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("cached content handler not configured"), http.StatusNotImplemented, false, false), domain.ProtocolGemini)
 			return
 		}
 		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, gatewayErrorStatusCode(err), false, false), domain.ProtocolGemini)
 			return
 		}
 		cacheName := "cachedContents/" + strings.TrimSpace(chi.URLParam(req, "cacheID"))
@@ -98,7 +100,13 @@ func HandleGeminiCachedContentGet(deps Dependencies) http.HandlerFunc {
 		}
 		item, ok := deps.ResponseSessions.Get(cacheName)
 		if !ok {
-			http.Error(w, "cached content not found", http.StatusNotFound)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("cached content not found"), http.StatusNotFound, false, false), domain.ProtocolGemini)
+			return
+		}
+		if len(item.ResponseBody) > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(item.ResponseBody)
 			return
 		}
 		writeJSON(w, http.StatusOK, buildGeminiCachedContentResponse(cacheName, item.Model, item.UpdatedAt))
@@ -140,6 +148,14 @@ func decodeGeminiCachedContentName(body []byte) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(name), true
+}
+
+func mustMarshalJSON(value any) json.RawMessage {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return encoded
 }
 
 func transcriptFromUnifiedMessages(messages []domain.UnifiedMessage) []domain.GatewayMessage {

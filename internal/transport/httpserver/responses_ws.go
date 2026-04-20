@@ -32,12 +32,12 @@ type responsesWebSocketEnvelope struct {
 func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if deps.ExecuteGateway == nil || (deps.ResolveAPIKey == nil && deps.VerifyAPIKey == nil) || deps.ResponseSessions == nil {
-			http.Error(w, "responses websocket handler not configured", http.StatusNotImplemented)
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(fmt.Errorf("responses websocket handler not configured"), http.StatusNotImplemented, false, false), domain.ProtocolOpenAI)
 			return
 		}
 		_, scope, err := resolveGatewayAPIKey(deps, req)
 		if err != nil {
-			http.Error(w, err.Error(), gatewayErrorStatusCode(err))
+			renderGatewayErrorForProtocol(deps, w, domain.NewExecutionError(err, gatewayErrorStatusCode(err), false, false), domain.ProtocolOpenAI)
 			return
 		}
 		conn, err := responsesUpgrader.Upgrade(w, req, nil)
@@ -54,16 +54,16 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 			}
 			payload, nextModel, nextPrev, buildErr := buildResponsesWebSocketPayload(message, lastModel, lastResponseID)
 			if buildErr != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": buildErr.Error()}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(buildErr, http.StatusBadRequest))
 				continue
 			}
 			gatewayReq, protocol, decodeErr := decodeOpenAIResponsesGatewayRequest(payload, req)
 			if decodeErr != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": decodeErr.Error()}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(decodeErr, http.StatusBadRequest))
 				continue
 			}
 			if scopeErr := applyAPIKeyScopeToGatewayRequest(&gatewayReq, scope); scopeErr != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": scopeErr.Error()}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(scopeErr, gatewayErrorStatusCode(scopeErr)))
 				continue
 			}
 			if responsesGenerateDisabled(payload) {
@@ -71,7 +71,7 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 				storeResponseSession(deps.ResponseSessions, req, payload, emptyResponse)
 				events, eventsErr := provider.BuildOpenAIResponsesEvents(emptyResponse)
 				if eventsErr != nil {
-					_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": eventsErr.Error()}})
+					_ = conn.WriteJSON(openAIResponsesErrorEvent(eventsErr, http.StatusInternalServerError))
 					continue
 				}
 				for _, event := range events {
@@ -85,24 +85,24 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 			}
 			result, execErr := executeGatewayRequestDirect(req.Context(), deps, req, gatewayReq, protocol)
 			if execErr != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": execErr.Error()}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(execErr, gatewayErrorStatusCode(execErr)))
 				continue
 			}
 			if result == nil || result.Response == nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": "empty gateway result"}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(fmt.Errorf("empty gateway result"), http.StatusBadGateway))
 				continue
 			}
 			resp := encodeGatewayResponseForSurface(result.Response, transform.Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIResponses})
 			providerName := normalizedHeaderProvider(resp.Headers)
 			unified, decodeRespErr := decodeUnifiedByProvider(providerName, resp.Body)
 			if decodeRespErr != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": decodeRespErr.Error()}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(decodeRespErr, http.StatusBadGateway))
 				continue
 			}
 			storeResponseSession(deps.ResponseSessions, req, payload, unified)
 			events, eventsErr := provider.BuildOpenAIResponsesEvents(unified)
 			if eventsErr != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": map[string]any{"message": eventsErr.Error()}})
+				_ = conn.WriteJSON(openAIResponsesErrorEvent(eventsErr, http.StatusInternalServerError))
 				continue
 			}
 			for _, event := range events {
@@ -122,10 +122,25 @@ func HandleOpenAIResponsesWebSocket(deps Dependencies) http.HandlerFunc {
 	}
 }
 
+func openAIResponsesErrorEvent(err error, statusCode int) map[string]any {
+	message := "responses websocket error"
+	if err != nil && strings.TrimSpace(err.Error()) != "" {
+		message = err.Error()
+	}
+	return map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"message": message,
+			"type":    "invalid_request_error",
+			"code":    statusCode,
+		},
+	}
+}
+
 func buildResponsesWebSocketPayload(frame []byte, lastModel string, lastResponseID string) ([]byte, string, string, error) {
 	var envelope responsesWebSocketEnvelope
 	if err := json.Unmarshal(frame, &envelope); err != nil {
-		return nil, "", "", fmt.Errorf("瑙ｆ瀽 WebSocket 娑堟伅澶辫触: %w", err)
+		return nil, "", "", fmt.Errorf("解析 WebSocket 消息失败: %w", err)
 	}
 	switch strings.TrimSpace(envelope.Type) {
 	case "response.create", "":
@@ -157,7 +172,7 @@ func buildResponsesWebSocketPayload(frame []byte, lastModel string, lastResponse
 			model = strings.TrimSpace(lastModel)
 		}
 		if model == "" {
-			return nil, "", "", fmt.Errorf("response.append 缂哄皯 model")
+			return nil, "", "", fmt.Errorf("response.append 缺少 model")
 		}
 		payload := map[string]any{"model": model, "previous_response_id": previous, "input": json.RawMessage(`[]`)}
 		if len(envelope.Input) > 0 {
@@ -165,11 +180,11 @@ func buildResponsesWebSocketPayload(frame []byte, lastModel string, lastResponse
 		}
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return nil, "", "", fmt.Errorf("缂栫爜 response.append 澶辫触: %w", err)
+			return nil, "", "", fmt.Errorf("编码 response.append 失败: %w", err)
 		}
 		return encoded, model, previous, nil
 	default:
-		return nil, "", "", fmt.Errorf("鏆備笉鏀寔鐨?WebSocket 娑堟伅绫诲瀷: %s", envelope.Type)
+		return nil, "", "", fmt.Errorf("暂不支持的 WebSocket 消息类型: %s", envelope.Type)
 	}
 }
 

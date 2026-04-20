@@ -26,9 +26,9 @@ OpenCrab 是一个面向个人部署的大模型聚合 API 网关与管理台。
 
 ### 3.1 首版要做的内容
 
-1. OpenAI 兼容接口。
-2. OpenAI 兼容 provider 接入。
-3. 普通响应与 SSE 流式响应。
+1. OpenAI、Claude、Gemini、Codex 等协议入口。
+2. 多 provider 执行与统一内部请求响应模型。
+3. 普通响应、SSE、Responses、Realtime、Gemini cached content 等基础能力。
 4. 渠道配置管理。
 5. 模型映射与路由。
 6. API Key 管理。
@@ -144,15 +144,15 @@ SQLite 用于保存：
 
 一次典型代理请求的流转顺序如下：
 
-1. 客户端调用 OpenAI 兼容接口。
+1. 客户端调用 OpenAI、Claude、Gemini、Codex 或 realtime 相关接口。
 2. HTTP 层解析请求并做基础校验。
 3. API Key 中间件校验访问身份。
-4. usecase 层根据模型名查找映射关系。
-5. usecase 层根据路由规则选择 provider。
-6. provider 层把统一请求转换成上游请求。
+4. transport 层把协议请求转换成统一 gateway request。
+5. usecase 层根据模型映射、路由规则、priority、cooldown、sticky、fallback 选择 provider route。
+6. provider 层把统一请求转换成上游请求，或在必要时做协议桥接与事件投影。
 7. 后端通过共享 HTTP 客户端访问上游。
-8. 上游返回普通响应或流式响应。
-9. 系统将返回结果转换为统一输出格式。
+8. 上游返回普通响应、流式响应、资源对象或 WebSocket 事件。
+9. 系统按目标 surface 写回普通响应、SSE、Responses 事件、Realtime 事件或资源对象。
 10. 系统记录日志摘要并返回给客户端。
 
 ## 7. 前端架构
@@ -189,4 +189,4 @@ SQLite 用于保存：
 
 ## 9. 当前结论
 
-OpenCrab 首版不追求功能面铺开，而是优先把“前端管理台整体体验”先做完整，等前端确认满意后，再继续把后端代理主链路、配置管理和日志能力打稳。
+OpenCrab 当前已经不再是“只有 OpenAI chat 外壳”的阶段。当前重点是把多协议公开面、运行时选路、`responses/realtime` 语义和文档真相继续收敛，而不是再沿用早期首版阶段文档中的旧判断。

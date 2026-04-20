@@ -77,12 +77,28 @@ SQLite 数据文件会挂载到宿主机 `./data/opencrab.db`。
 
 ### 代理接口
 
+- `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/responses`
+- `GET /v1/responses`
+- `POST /v1/realtime/client_secrets`
+- `POST /v1/realtime/calls`
+- `GET /v1/realtime`
+- `POST /v1/codex/responses`
+- `GET /v1/requests/{requestID}`
+- `GET /v1/requests/{requestID}/events`
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
+- `POST /v1beta/cachedContents`
+- `GET /v1beta/cachedContents/{cacheID}`
+- `POST /v1beta/models/{model}:generateContent`
+- `POST /v1beta/models/{model}:streamGenerateContent`
 
 ## 5. 当前限制
 
-当前后端已具备基础可运行能力，但仍处于首版中期：
+当前后端已具备多协议网关基础能力，但仍处于修复与收敛阶段：
 
-1. 代理链路的错误转换、超时控制、取消传播、重试策略还会继续增强。
-2. 日志查询目前还是基础列表，没有复杂筛选。
-3. Docker 运行在当前环境里还未完成真实 daemon 级实测。
+1. `responses` 与 `realtime` 仍有协议保真修复项，不能默认等同上游原生语义。
+2. `/v1/models` 当前仍以本地可见模型为主，不是完整上游模型发现面。
+3. 日志查询目前还是基础列表，没有复杂筛选。
+4. Docker 运行在当前环境里还未完成真实 daemon 级实测。
