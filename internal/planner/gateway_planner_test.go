@@ -22,8 +22,47 @@ func TestEvaluateGatewayRouteAllowsToolBridgeToOpenAI(t *testing.T) {
 			Channel:    domain.UpstreamChannel{Name: "openai-a", Provider: "openai"},
 		},
 	)
-	if !result.Executable {
+	if !result.Executable || result.TargetOperation != domain.ProtocolOperationOpenAIResponses {
 		t.Fatalf("expected bridgeable route, got %#v", result)
+	}
+}
+
+func TestEvaluateGatewayRouteTreatsClaudeToolShapeAsFunctionToolAndUsesResponses(t *testing.T) {
+	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
+		domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Model:    "m",
+			Tools:    []json.RawMessage{json.RawMessage(`{"name":"subagent","description":"launch subagent","input_schema":{"type":"object"}}`)},
+		},
+		domain.GatewayRoute{
+			ModelAlias: "m",
+			Channel:    domain.UpstreamChannel{Name: "openai-a", Provider: "openai"},
+		},
+	)
+	if !result.Executable || result.TargetOperation != domain.ProtocolOperationOpenAIResponses {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestEvaluateGatewayRouteKeepsPlainClaudeMessagesOnChatCompletionsWhenNoTools(t *testing.T) {
+	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
+		domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationClaudeMessages,
+			Model:     "m",
+			Messages:  []domain.GatewayMessage{{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}}},
+		},
+		domain.GatewayRoute{
+			ModelAlias: "m",
+			Channel:    domain.UpstreamChannel{Name: "openai-a", Provider: "openai"},
+		},
+	)
+	if !result.Executable || result.TargetOperation != domain.ProtocolOperationOpenAIChatCompletions {
+		t.Fatalf("unexpected result: %#v", result)
 	}
 }
 

@@ -51,6 +51,9 @@ func AnalyzeGatewayRequest(req domain.GatewayRequest) RequestProfile {
 	if req.Protocol == domain.ProtocolOpenAI {
 		preferred = req.Operation
 	}
+	if req.Protocol == domain.ProtocolClaude && (req.Operation == "" || req.Operation == domain.ProtocolOperationClaudeMessages) && has(required, CapabilityFunctionTools) {
+		preferred = domain.ProtocolOperationOpenAIResponses
+	}
 	if req.Operation == domain.ProtocolOperationOpenAIChatCompletions && requiresAny(required, CapabilityBuiltinWebSearch, CapabilityBuiltinFileSearch, CapabilityBuiltinRemoteMCP, CapabilityBuiltinComputerUse, CapabilityBuiltinShell, CapabilityBuiltinApplyPatch, CapabilityBuiltinCodeInterpreter, CapabilityBuiltinImageGeneration, CapabilityOpenAIResponsesSession, CapabilityOpenAIResponsesInclude, CapabilityOpenAIResponsesStore) {
 		preferred = domain.ProtocolOperationOpenAIResponses
 	}
@@ -204,6 +207,9 @@ func analyzeRawTool(required map[Capability]struct{}, protocol domain.Protocol, 
 			case "image_generation":
 				addCapability(required, CapabilityBuiltinImageGeneration)
 			}
+		}
+		if payload["name"] != nil && (payload["input_schema"] != nil || payload["description"] != nil) {
+			addCapability(required, CapabilityFunctionTools)
 		}
 
 		switch {
