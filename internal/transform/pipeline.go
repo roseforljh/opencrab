@@ -108,6 +108,20 @@ func BuildExecutorPayload(surface Surface, req domain.UnifiedChatRequest, sessio
 }
 
 func DecodeUpstreamResponse(providerName string, body []byte) (domain.UnifiedChatResponse, error) {
+	return DecodeUpstreamResponseForOperation(providerName, "", body)
+}
+
+func DecodeUpstreamResponseForOperation(providerName string, operation domain.ProtocolOperation, body []byte) (domain.UnifiedChatResponse, error) {
+	switch operation {
+	case domain.ProtocolOperationOpenAIChatCompletions:
+		return provider.DecodeOpenAIChatResponse(body)
+	case domain.ProtocolOperationOpenAIResponses, domain.ProtocolOperationCodexResponses:
+		return provider.DecodeOpenAIResponsesResponse(body)
+	case domain.ProtocolOperationClaudeMessages:
+		return provider.DecodeClaudeChatResponse(body)
+	case domain.ProtocolOperationGeminiGenerateContent, domain.ProtocolOperationGeminiStreamGenerate:
+		return provider.DecodeGeminiChatResponse(body)
+	}
 	switch domain.NormalizeProvider(providerName) {
 	case "claude":
 		return provider.DecodeClaudeChatResponse(body)

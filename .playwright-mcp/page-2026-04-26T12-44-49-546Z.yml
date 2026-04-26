@@ -1,0 +1,23 @@
+- main [ref=e2]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: 个人控制台
+      - generic [ref=e8]:
+        - img "OpenCrab Logo" [ref=e10]
+        - generic [ref=e11]:
+          - paragraph [ref=e12]: OpenCrab
+          - heading "输入管理员密码" [level=1] [ref=e13]
+      - paragraph [ref=e14]: 这是你的个人 OpenCrab 控制台。输入初始化时设置的密码后继续。
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - paragraph [ref=e17]: Security
+          - paragraph [ref=e18]: 单管理员、单密码、单控制台入口，适合个人部署环境。
+        - generic [ref=e19]:
+          - paragraph [ref=e20]: Style
+          - paragraph [ref=e21]: 沿用现有高对比黑白壳层和紧凑控制台排版，不引入多余流程。
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]: 管理员密码
+        - textbox "建议至少 8 位，只面向你自己使用。" [active] [ref=e26]
+      - generic [ref=e27]: 建议至少 8 位，只面向你自己使用。
+      - button "进入控制台" [ref=e28] [cursor=pointer]

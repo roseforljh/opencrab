@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import type {
   AdminApiKey,
   AdminAuthStatus,
-  AdminCapabilityProfileResponse,
   AdminChannel,
   AdminDashboardSummary,
   AdminModel,
@@ -88,10 +87,6 @@ export async function getAdminLogDetail(id: number) {
 export async function getAdminSettings() {
   const response = await adminFetch<ListResponse<AdminSettingGroup>>("/api/admin/settings");
   return response.items;
-}
-
-export async function getAdminCapabilityProfiles() {
-  return adminFetch<AdminCapabilityProfileResponse>("/api/admin/capability-profiles");
 }
 
 export async function getAdminRoutingOverview() {

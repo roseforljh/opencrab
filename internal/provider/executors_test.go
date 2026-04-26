@@ -242,6 +242,100 @@ func TestOpenAIExecutorPreservesFunctionCallWhenBridgingClaudeToolUse(t *testing
 	}
 }
 
+func TestOpenAIExecutorRewritesClaudeMaxTokensForResponsesPayload(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://api.openai.com/v1/responses" {
+			t.Fatalf("unexpected url: %s", req.URL.String())
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "ping"})},
+			Tools:     []json.RawMessage{json.RawMessage(`{"name":"subagent","input_schema":{"type":"object"}}`)},
+			Metadata:  map[string]json.RawMessage{"max_tokens": json.RawMessage(`256`), "metadata": json.RawMessage(`{"session_id":"abc"}`), "output_config": json.RawMessage(`{"foo":"bar"}`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if _, exists := captured["max_tokens"]; exists {
+		t.Fatalf("unexpected max_tokens leak into responses payload: %#v", captured)
+	}
+	if got, ok := captured["max_output_tokens"].(float64); !ok || got != 256 {
+		t.Fatalf("expected max_output_tokens=256 in responses payload, got %#v", captured)
+	}
+	if _, exists := captured["metadata"]; exists {
+		t.Fatalf("unexpected metadata leak into responses payload: %#v", captured)
+	}
+	if _, exists := captured["output_config"]; exists {
+		t.Fatalf("unexpected output_config leak into responses payload: %#v", captured)
+	}
+}
+
+func TestOpenAIExecutorUsesAllowlistForClaudeResponsesTopLevelFields(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "ping"})},
+			Tools:     []json.RawMessage{json.RawMessage(`{"name":"subagent","input_schema":{"type":"object"}}`)},
+			Metadata: map[string]json.RawMessage{
+				"max_tokens":          json.RawMessage(`256`),
+				"temperature":         json.RawMessage(`0.7`),
+				"top_p":               json.RawMessage(`0.9`),
+				"parallel_tool_calls": json.RawMessage(`false`),
+				"service_tier":        json.RawMessage(`"auto"`),
+				"metadata":            json.RawMessage(`{"session_id":"abc"}`),
+				"output_config":       json.RawMessage(`{"foo":"bar"}`),
+				"cache_control":       json.RawMessage(`{"type":"ephemeral"}`),
+				"context_management":  json.RawMessage(`{"clear_function_results":false}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, key := range []string{"max_tokens", "metadata", "output_config", "cache_control", "context_management"} {
+		if _, exists := captured[key]; exists {
+			t.Fatalf("unexpected leaked field %s in responses payload: %#v", key, captured)
+		}
+	}
+	if got, ok := captured["max_output_tokens"].(float64); !ok || got != 256 {
+		t.Fatalf("expected remapped max_output_tokens=256, got %#v", captured)
+	}
+	for key := range map[string]any{"temperature": 0.7, "top_p": 0.9, "parallel_tool_calls": false, "service_tier": "auto"} {
+		if _, exists := captured[key]; !exists {
+			t.Fatalf("expected allowed field %s in responses payload: %#v", key, captured)
+		}
+	}
+}
+
 func TestOpenAIExecutorBuffersResponsesBodyWhenStreamRequested(t *testing.T) {
 	var captured map[string]any
 	body := &trackingReadCloser{reader: strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`)}
@@ -695,6 +789,155 @@ func TestGeminiExecutorMovesOpenAIControlsIntoGenerationConfig(t *testing.T) {
 	}
 }
 
+func TestGeminiExecutorTransformsClaudeToolsAndToolResultToNativePayload(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Messages: []domain.GatewayMessage{
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"}),
+				{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "toolu_lookup", Name: "lookup", Arguments: json.RawMessage(`{"q":"crab"}`)}}},
+				{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: `{"ok":true}`}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"toolu_lookup"`)}},
+			},
+			Tools: []json.RawMessage{json.RawMessage(`{"name":"lookup","description":"Search","input_schema":{"type":"object","properties":{"q":{"type":"string"}}}}`)},
+			Metadata: map[string]json.RawMessage{
+				"tool_choice": json.RawMessage(`{"type":"tool","name":"lookup"}`),
+				"thinking":    json.RawMessage(`{"type":"enabled","budget_tokens":2048}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("expected gemini tools payload: %#v", captured)
+	}
+	tool, ok := tools[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool payload: %#v", tools[0])
+	}
+	declarations, ok := tool["functionDeclarations"].([]any)
+	if !ok || len(declarations) != 1 {
+		t.Fatalf("expected functionDeclarations payload: %#v", tool)
+	}
+	declaration, ok := declarations[0].(map[string]any)
+	if !ok || declaration["name"] != "lookup" {
+		t.Fatalf("unexpected function declaration: %#v", declarations[0])
+	}
+	parameters, ok := declaration["parameters"].(map[string]any)
+	if !ok || parameters["type"] != "OBJECT" {
+		t.Fatalf("expected normalized gemini schema: %#v", declaration)
+	}
+
+	toolConfig, ok := captured["toolConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected toolConfig in gemini payload: %#v", captured)
+	}
+	callingConfig, ok := toolConfig["functionCallingConfig"].(map[string]any)
+	if !ok || callingConfig["mode"] != "ANY" {
+		t.Fatalf("unexpected functionCallingConfig: %#v", toolConfig)
+	}
+	allowed, ok := callingConfig["allowedFunctionNames"].([]any)
+	if !ok || len(allowed) != 1 || allowed[0] != "lookup" {
+		t.Fatalf("unexpected allowedFunctionNames: %#v", callingConfig)
+	}
+
+	config, ok := captured["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected generationConfig in gemini payload: %#v", captured)
+	}
+	thinkingConfig, ok := config["thinkingConfig"].(map[string]any)
+	if !ok || thinkingConfig["thinkingBudget"] != float64(2048) || thinkingConfig["includeThoughts"] != true {
+		t.Fatalf("unexpected thinkingConfig: %#v", config)
+	}
+
+	contents, ok := captured["contents"].([]any)
+	if !ok || len(contents) != 3 {
+		t.Fatalf("unexpected contents payload: %#v", captured)
+	}
+	toolContent, ok := contents[2].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool content: %#v", contents[2])
+	}
+	parts, ok := toolContent["parts"].([]any)
+	if !ok || len(parts) != 1 {
+		t.Fatalf("unexpected tool parts: %#v", toolContent)
+	}
+	part, ok := parts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool part: %#v", parts[0])
+	}
+	functionResponse, ok := part["functionResponse"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected functionResponse part, got %#v", part)
+	}
+	if functionResponse["id"] != "toolu_lookup" || functionResponse["name"] != "lookup" {
+		t.Fatalf("unexpected functionResponse identity: %#v", functionResponse)
+	}
+}
+
+func TestGeminiExecutorMovesClaudeControlsIntoGenerationConfigAndDropsUnknownTopLevelFields(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolClaude,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Metadata: map[string]json.RawMessage{
+				"max_tokens":         json.RawMessage(`256`),
+				"temperature":        json.RawMessage(`0.7`),
+				"top_p":              json.RawMessage(`0.9`),
+				"output_config":      json.RawMessage(`{"effort":"high"}`),
+				"metadata":           json.RawMessage(`{"session_id":"abc"}`),
+				"context_management": json.RawMessage(`{"clear_function_results":false}`),
+				"cache_control":      json.RawMessage(`{"type":"ephemeral"}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	for _, key := range []string{"max_tokens", "temperature", "top_p", "output_config", "metadata", "context_management", "cache_control"} {
+		if _, exists := captured[key]; exists {
+			t.Fatalf("unexpected leaked top-level field %s in gemini payload: %#v", key, captured)
+		}
+	}
+	config, ok := captured["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected generationConfig in gemini payload: %#v", captured)
+	}
+	if config["temperature"] != 0.7 || config["topP"] != 0.9 || config["maxOutputTokens"] != float64(256) {
+		t.Fatalf("unexpected generationConfig mapping: %#v", config)
+	}
+}
+
 func TestGeminiExecutorDropsInterruptedAndTodoReminderMessagesFromOpenAIHistory(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -1070,6 +1313,155 @@ func TestGeminiExecutorTransformsOpenAIFunctionTools(t *testing.T) {
 	}
 }
 
+func TestGeminiExecutorReturnsFunctionCallForOpenAIClient(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{"q":"crab"}}}]},"finishReason":"STOP"}]}`))}, nil
+	})}
+
+	result, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools: []json.RawMessage{
+				json.RawMessage(`{"type":"function","function":{"name":"lookup","description":"Find item","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("expected gemini functionDeclarations request, got %#v", captured)
+	}
+	toolCalls, err := gjsonToolCalls(result.Response.Body)
+	if err != nil {
+		t.Fatalf("decode tool_calls: %v body=%s", err, result.Response.Body)
+	}
+	if len(toolCalls) != 1 || toolCalls[0].Name != "lookup" || string(toolCalls[0].Arguments) != `{"q":"crab"}` {
+		t.Fatalf("unexpected OpenAI tool_calls: %#v body=%s", toolCalls, result.Response.Body)
+	}
+}
+
+func TestGeminiExecutorRestoresSanitizedFunctionNameForOpenAIClient(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call_1","name":"my_tool","args":{"q":"crab"}}}]},"finishReason":"STOP"}]}`))}, nil
+	})}
+
+	result, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools: []json.RawMessage{
+				json.RawMessage(`{"type":"function","function":{"name":"my tool","description":"Find item","parameters":{"type":"object"}}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tools := captured["tools"].([]any)
+	declarations := tools[0].(map[string]any)["functionDeclarations"].([]any)
+	declaration := declarations[0].(map[string]any)
+	if declaration["name"] != "my_tool" {
+		t.Fatalf("expected sanitized Gemini tool name, got %#v", declaration)
+	}
+	toolCalls, err := gjsonToolCalls(result.Response.Body)
+	if err != nil {
+		t.Fatalf("decode tool_calls: %v body=%s", err, result.Response.Body)
+	}
+	if len(toolCalls) != 1 || toolCalls[0].Name != "my tool" {
+		t.Fatalf("expected original OpenAI tool name restored, got %#v body=%s", toolCalls, result.Response.Body)
+	}
+}
+
+func gjsonToolCalls(body []byte) ([]domain.UnifiedToolCall, error) {
+	unified, err := DecodeOpenAIChatResponse(body)
+	if err != nil {
+		return nil, err
+	}
+	return unified.Message.ToolCalls, nil
+}
+
+func TestGeminiExecutorTransformsOpenAIToolResultToFunctionResponse(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"candidates":[]}`))}, nil
+	})}
+
+	_, err := NewGeminiExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "gemini", Endpoint: "https://generativelanguage.googleapis.com", APIKey: "gemini-key"},
+		UpstreamModel: "gemini-2.0-flash",
+		Request: domain.GatewayRequest{
+			Protocol: domain.ProtocolOpenAI,
+			Messages: []domain.GatewayMessage{
+				testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"}),
+				{Role: "tool", Parts: []domain.UnifiedPart{{Type: "text", Text: `{"ok":true}`}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_lookup"`), "tool_name": json.RawMessage(`"lookup"`)}},
+			},
+			Tools: []json.RawMessage{
+				json.RawMessage(`{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	contents, ok := captured["contents"].([]any)
+	if !ok || len(contents) != 2 {
+		t.Fatalf("unexpected contents payload: %#v", captured)
+	}
+	toolContent, ok := contents[1].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool content: %#v", contents[1])
+	}
+	parts, ok := toolContent["parts"].([]any)
+	if !ok || len(parts) != 1 {
+		t.Fatalf("unexpected tool parts: %#v", toolContent)
+	}
+	part, ok := parts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tool part: %#v", parts[0])
+	}
+	functionResponse, ok := part["functionResponse"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected functionResponse part, got %#v", part)
+	}
+	if functionResponse["id"] != "call_lookup" || functionResponse["name"] != "lookup" {
+		t.Fatalf("unexpected functionResponse identity: %#v", functionResponse)
+	}
+	response, ok := functionResponse["response"].(map[string]any)
+	if !ok || response["ok"] != true {
+		t.Fatalf("unexpected functionResponse response: %#v", functionResponse)
+	}
+}
+
 func TestOpenAIExecutorTransformsClaudeMCPServersToResponsesTool(t *testing.T) {
 	var captured map[string]any
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -1277,6 +1669,87 @@ func TestOpenAIExecutorTransformsClaudeToolChoiceToOpenAI(t *testing.T) {
 	functionPayload, ok := toolChoice["function"].(map[string]any)
 	if !ok || functionPayload["name"] != "opencode" {
 		t.Fatalf("unexpected tool_choice function payload: %#v", toolChoice)
+	}
+}
+
+func TestOpenAIExecutorFlattensClaudeToolsForResponsesOperation(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:     []json.RawMessage{json.RawMessage(`{"name":"opencode","description":"Run operation","input_schema":{"type":"object"}}`)},
+			Metadata: map[string]json.RawMessage{
+				"tool_choice": json.RawMessage(`{"type":"tool","name":"opencode"}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected tools payload: %#v", captured)
+	}
+	tool, ok := tools[0].(map[string]any)
+	if !ok || tool["type"] != "function" || tool["name"] != "opencode" {
+		t.Fatalf("unexpected flattened responses tool payload: %#v", captured)
+	}
+	if _, exists := tool["function"]; exists {
+		t.Fatalf("responses tool should not keep nested function wrapper: %#v", tool)
+	}
+	toolChoice, ok := captured["tool_choice"].(map[string]any)
+	if !ok || toolChoice["type"] != "function" || toolChoice["name"] != "opencode" {
+		t.Fatalf("unexpected flattened responses tool_choice payload: %#v", captured)
+	}
+	if _, exists := toolChoice["function"]; exists {
+		t.Fatalf("responses tool_choice should not keep nested function wrapper: %#v", toolChoice)
+	}
+}
+
+func TestOpenAIExecutorPreservesClaudeDisableParallelToolUseAsParallelToolCallsFalse(t *testing.T) {
+	var captured map[string]any
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","object":"response","status":"completed","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}]}`))}, nil
+	})}
+	_, err := NewOpenAIExecutor(client).Execute(context.Background(), domain.ExecutorRequest{
+		Channel:       domain.UpstreamChannel{Provider: "openai", Endpoint: "https://api.openai.com/v1", APIKey: "sk-test"},
+		UpstreamModel: "gpt-5.4",
+		Request: domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationOpenAIResponses,
+			Messages:  []domain.GatewayMessage{testGatewayMessage("user", domain.UnifiedPart{Type: "text", Text: "hello"})},
+			Tools:     []json.RawMessage{json.RawMessage(`{"name":"opencode","input_schema":{"type":"object"}}`)},
+			Metadata: map[string]json.RawMessage{
+				"tool_choice": json.RawMessage(`{"type":"tool","name":"opencode","disable_parallel_tool_use":true}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got, ok := captured["parallel_tool_calls"].(bool); !ok || got != false {
+		t.Fatalf("expected parallel_tool_calls=false, got %#v", captured)
 	}
 }
 

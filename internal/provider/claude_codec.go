@@ -197,6 +197,8 @@ func encodeClaudeMessageBlocks(message domain.UnifiedMessage) ([]map[string]any,
 		block["id"] = call.ID
 		block["name"] = call.Name
 		block["input"] = input
+		delete(block, "functionCall")
+		delete(block, "arguments")
 		blocks = append(blocks, block)
 	}
 	return blocks, nil
@@ -253,16 +255,34 @@ func encodeClaudeContentBlock(part domain.UnifiedPart) (map[string]any, error) {
 	if item, ok := decodePreservedMapItem(part.InputItem); ok {
 		return item, nil
 	}
-	if item, ok := decodePreservedMapItem(part.NativePayload); ok {
-		return item, nil
+	if part.Type != "text" || len(part.Metadata["thoughtSignature"]) == 0 {
+		if item, ok := decodePreservedMapItem(part.NativePayload); ok {
+			return item, nil
+		}
 	}
 	item := map[string]any{}
 	mergeRawFields(item, part.Metadata)
 	desc := extractMediaDescriptor(part)
 	switch part.Type {
 	case "text":
+		if signature := decodeStringRaw(part.Metadata["thoughtSignature"]); strings.TrimSpace(signature) != "" {
+			item["type"] = "thinking"
+			item["thinking"] = part.Text
+			item["signature"] = signature
+			delete(item, "thoughtSignature")
+			return item, nil
+		}
 		item["type"] = "text"
 		item["text"] = part.Text
+	case "reasoning":
+		item["type"] = "thinking"
+		item["thinking"] = part.Text
+		if signature := decodeStringRaw(part.Metadata["encrypted_content"]); strings.TrimSpace(signature) != "" {
+			item["signature"] = signature
+		}
+		delete(item, "encrypted_content")
+		delete(item, "summary")
+		delete(item, "id")
 	case "image", "document", "file":
 		blockType := part.Type
 		if blockType == "file" {
@@ -472,6 +492,20 @@ func decodeClaudeContentBlock(raw map[string]json.RawMessage) (domain.UnifiedPar
 		if err := decodeRawString(raw, "text", &text, true); err != nil {
 			return domain.UnifiedPart{}, domain.UnifiedToolCall{}, false, err
 		}
+		return domain.UnifiedPart{Type: "text", Text: text, Metadata: metadata}, domain.UnifiedToolCall{}, false, nil
+	case "thinking":
+		var text string
+		if err := decodeRawString(raw, "thinking", &text, true); err != nil {
+			return domain.UnifiedPart{}, domain.UnifiedToolCall{}, false, err
+		}
+		metadata = cloneRawMap(collectUnknownFields(raw, "type", "thinking"))
+		if metadata == nil {
+			metadata = map[string]json.RawMessage{}
+		}
+		if signature := append(json.RawMessage(nil), raw["signature"]...); len(signature) > 0 {
+			metadata["thoughtSignature"] = signature
+		}
+		metadata["thought"] = json.RawMessage(`true`)
 		return domain.UnifiedPart{Type: "text", Text: text, Metadata: metadata}, domain.UnifiedToolCall{}, false, nil
 	case "image", "document":
 		metadata = cloneRawMap(metadata)

@@ -134,6 +134,19 @@ func TestMergePreviousResponseNormalizesNativeResponsesContinuation(t *testing.T
 	}
 }
 
+func TestCollapseNativeContinuationMessagesKeepsMultipleIncrementalMessages(t *testing.T) {
+	messages := []domain.GatewayMessage{
+		{Role: "system", Parts: []domain.UnifiedPart{{Type: "text", Text: "rules"}}},
+		{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "first new detail"}}},
+		{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "second new question"}}},
+	}
+
+	collapsed := collapseNativeContinuationMessages(messages)
+	if !reflect.DeepEqual(collapsed, messages) {
+		t.Fatalf("continuation without assistant boundary should remain intact: %#v", collapsed)
+	}
+}
+
 func TestPreprocessGatewayRequestDoesNotCompactOpenAIResponsesByDefault(t *testing.T) {
 	req := domain.GatewayRequest{
 		Protocol:  domain.ProtocolOpenAI,

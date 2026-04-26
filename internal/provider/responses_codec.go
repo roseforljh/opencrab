@@ -102,18 +102,19 @@ func EncodeOpenAIResponsesRequest(req domain.UnifiedChatRequest, session *domain
 	payload := map[string]any{}
 	metadata := filterResponsesRequestMetadata(cloneRawMap(req.Metadata))
 	mergeRawFields(payload, metadata)
+	normalizeResponsesToolChoice(payload)
 	payload["model"] = req.Model
 	if req.Stream {
 		payload["stream"] = true
 	}
 	if len(req.Tools) > 0 {
-		payload["tools"] = rawMessagesToAny(req.Tools)
+		payload["tools"] = normalizeResponsesTools(rawMessagesToAny(req.Tools))
 	}
 	instructions, input, err := encodeResponsesInputFromMessages(req.Messages)
 	if err != nil {
 		return nil, err
 	}
-	input = repairResponsesInputToolPairs(input, session != nil && strings.TrimSpace(session.PreviousResponseID) != "", false)
+	input = repairResponsesInputToolPairs(input, session != nil && strings.TrimSpace(session.PreviousResponseID) != "", responsesRepairToolPairsEnabled(req.Metadata))
 	if strings.TrimSpace(instructions) != "" {
 		payload["instructions"] = instructions
 	}
@@ -150,16 +151,93 @@ func filterResponsesRequestMetadata(metadata map[string]json.RawMessage) map[str
 	if len(metadata) == 0 {
 		return nil
 	}
-	for _, key := range []string{
-		"context_window",
-		"max_context_tokens",
-	} {
+	if len(metadata["max_tokens"]) > 0 {
+		if len(metadata["max_output_tokens"]) == 0 {
+			metadata["max_output_tokens"] = append(json.RawMessage(nil), metadata["max_tokens"]...)
+		}
+		delete(metadata, "max_tokens")
+	}
+	allowed := map[string]struct{}{
+		"max_output_tokens":   {},
+		"temperature":         {},
+		"top_p":               {},
+		"tool_choice":         {},
+		"parallel_tool_calls": {},
+		"reasoning":           {},
+		"include":             {},
+		"store":               {},
+		"text":                {},
+		"service_tier":        {},
+	}
+	for key := range metadata {
+		if _, ok := allowed[key]; ok {
+			continue
+		}
 		delete(metadata, key)
 	}
 	if len(metadata) == 0 {
 		return nil
 	}
 	return metadata
+}
+
+func normalizeResponsesTools(tools []any) []any {
+	if len(tools) == 0 {
+		return tools
+	}
+	normalized := make([]any, 0, len(tools))
+	for _, item := range tools {
+		tool, ok := item.(map[string]any)
+		if !ok {
+			normalized = append(normalized, item)
+			continue
+		}
+		typeValue, _ := tool["type"].(string)
+		if strings.TrimSpace(strings.ToLower(typeValue)) != "function" {
+			normalized = append(normalized, item)
+			continue
+		}
+		functionPayload, ok := tool["function"].(map[string]any)
+		if !ok {
+			normalized = append(normalized, item)
+			continue
+		}
+		flattened := map[string]any{"type": "function"}
+		for _, key := range []string{"name", "description", "parameters", "strict"} {
+			if value, exists := functionPayload[key]; exists {
+				flattened[key] = value
+			}
+		}
+		if _, exists := flattened["name"]; !exists {
+			normalized = append(normalized, item)
+			continue
+		}
+		normalized = append(normalized, flattened)
+	}
+	return normalized
+}
+
+func normalizeResponsesToolChoice(payload map[string]any) {
+	if payload == nil {
+		return
+	}
+	toolChoice, ok := payload["tool_choice"].(map[string]any)
+	if !ok {
+		return
+	}
+	typeValue, _ := toolChoice["type"].(string)
+	if strings.TrimSpace(strings.ToLower(typeValue)) != "function" {
+		return
+	}
+	functionPayload, ok := toolChoice["function"].(map[string]any)
+	if !ok {
+		return
+	}
+	name, _ := functionPayload["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	payload["tool_choice"] = map[string]any{"type": "function", "name": name}
 }
 
 func DecodeOpenAIResponsesResponse(body []byte) (domain.UnifiedChatResponse, error) {
@@ -169,7 +247,7 @@ func DecodeOpenAIResponsesResponse(body []byte) (domain.UnifiedChatResponse, err
 	}
 
 	resp := domain.UnifiedChatResponse{Protocol: domain.ProtocolOpenAI}
-	resp.Metadata = collectUnknownFields(raw, "id", "model", "status", "output", "usage", "output_text")
+	resp.Metadata = collectUnknownFields(raw, "id", "object", "model", "status", "output", "usage", "output_text")
 	_ = decodeRawString(raw, "id", &resp.ID, false)
 	_ = decodeRawString(raw, "model", &resp.Model, false)
 	_ = decodeRawString(raw, "status", &resp.FinishReason, false)
@@ -443,9 +521,38 @@ func encodeResponsesInputFromMessages(messages []domain.UnifiedMessage) (string,
 		items = append(items, encoded...)
 	}
 	if len(items) == 0 {
-		return "", nil, fmt.Errorf("Responses 请求至少需要一条非 system 消息")
+		joinedInstructions := strings.TrimSpace(strings.Join(instructions, "\n\n"))
+		if joinedInstructions == "" {
+			return "", nil, fmt.Errorf("Responses 请求至少需要一条非 system 消息")
+		}
+		items = append(items, map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []map[string]any{{
+				"type": "input_text",
+				"text": joinedInstructions,
+			}},
+		})
+		return joinedInstructions, items, nil
 	}
 	return strings.Join(instructions, "\n\n"), items, nil
+}
+
+func responsesRepairToolPairsEnabled(metadata map[string]json.RawMessage) bool {
+	if len(metadata) == 0 {
+		return false
+	}
+	for _, key := range []string{"repair_tool_pairs", "__opencrab_repair_tool_pairs"} {
+		raw, ok := metadata[key]
+		if !ok || len(raw) == 0 {
+			continue
+		}
+		var enabled bool
+		if err := json.Unmarshal(raw, &enabled); err == nil {
+			return enabled
+		}
+	}
+	return false
 }
 
 func repairResponsesInputToolPairs(items []any, allowOrphanOutputs bool, dropOrphanCalls bool) []any {
@@ -564,12 +671,16 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 		if strings.TrimSpace(callID) == "" {
 			callID = fmt.Sprintf("fc_%d", idx+1)
 		}
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"type":      "function_call",
 			"call_id":   callID,
 			"name":      call.Name,
 			"arguments": string(call.Arguments),
-		})
+		}
+		if len(call.Metadata) > 0 {
+			mergeRawFields(item, call.Metadata)
+		}
+		items = append(items, item)
 	}
 	if len(items) == 0 {
 		return nil, fmt.Errorf("Responses 消息不能为空")
@@ -608,6 +719,10 @@ func encodeResponsesToolOutput(message domain.UnifiedMessage) (any, error) {
 	if len(values) == 0 {
 		return []any{}, nil
 	}
+	values = sanitizeResponsesToolOutputValues(values)
+	if len(values) == 0 {
+		return []any{}, nil
+	}
 	if len(values) == 1 {
 		return values[0], nil
 	}
@@ -625,6 +740,45 @@ func encodeResponsesToolOutput(message domain.UnifiedMessage) (any, error) {
 		return strings.Join(texts, "\n\n"), nil
 	}
 	return values, nil
+}
+
+func sanitizeResponsesToolOutputValues(values []any) []any {
+	cleaned := make([]any, 0, len(values))
+	for _, value := range values {
+		sanitized, ok := sanitizeResponsesToolOutputValue(value)
+		if ok {
+			cleaned = append(cleaned, sanitized)
+		}
+	}
+	return cleaned
+}
+
+func sanitizeResponsesToolOutputValue(value any) (any, bool) {
+	switch typed := value.(type) {
+	case []any:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			sanitized, ok := sanitizeResponsesToolOutputValue(item)
+			if ok {
+				items = append(items, sanitized)
+			}
+		}
+		return items, true
+	case map[string]any:
+		if rawType, _ := typed["type"].(string); strings.TrimSpace(strings.ToLower(rawType)) == "tool_reference" {
+			return nil, false
+		}
+		cleaned := map[string]any{}
+		for key, item := range typed {
+			sanitized, ok := sanitizeResponsesToolOutputValue(item)
+			if ok {
+				cleaned[key] = sanitized
+			}
+		}
+		return cleaned, true
+	default:
+		return value, true
+	}
 }
 
 func encodeResponsesContent(parts []domain.UnifiedPart, role string) ([]map[string]any, error) {
@@ -645,9 +799,47 @@ func encodeResponsesContent(parts []domain.UnifiedPart, role string) ([]map[stri
 		case "image_url":
 			item["type"] = "input_image"
 		}
+		item = normalizeResponsesContentItem(item)
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+func normalizeResponsesContentItem(item map[string]any) map[string]any {
+	if len(item) == 0 {
+		return item
+	}
+	typeValue, _ := item["type"].(string)
+	allowed := map[string]struct{}{"type": {}}
+	switch strings.TrimSpace(strings.ToLower(typeValue)) {
+	case "input_text", "output_text", "text":
+		allowed["text"] = struct{}{}
+	case "input_image", "image_url":
+		if payload, ok := item["image_url"].(map[string]any); ok {
+			if url, ok := payload["url"].(string); ok && strings.TrimSpace(url) != "" {
+				item["image_url"] = url
+			}
+		}
+		allowed["image_url"] = struct{}{}
+		allowed["file_id"] = struct{}{}
+		allowed["detail"] = struct{}{}
+	case "input_audio":
+		allowed["input_audio"] = struct{}{}
+	case "input_file", "file":
+		allowed["file_id"] = struct{}{}
+		allowed["file_data"] = struct{}{}
+		allowed["file_url"] = struct{}{}
+		allowed["filename"] = struct{}{}
+	default:
+		return item
+	}
+	cleaned := map[string]any{}
+	for key, value := range item {
+		if _, ok := allowed[key]; ok {
+			cleaned[key] = value
+		}
+	}
+	return cleaned
 }
 
 func decodeResponsesOutput(raw json.RawMessage) (domain.UnifiedMessage, error) {
@@ -716,6 +908,7 @@ func decodeResponsesOutput(raw json.RawMessage) (domain.UnifiedMessage, error) {
 				if summary := decodeResponsesReasoningSummary(item); summary != "" {
 					part.Text = summary
 				}
+				part.Metadata = collectUnknownFields(item, "id", "type", "summary")
 			}
 			message.Parts = append(message.Parts, part)
 		default:

@@ -331,6 +331,7 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 					}
 					result.Stream.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
 					result.Stream.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
+					result.Stream.Headers["X-Opencrab-Operation"] = []string{string(plannedReq.Operation)}
 				}
 				if result.Response != nil {
 					statusCode = result.Response.StatusCode
@@ -340,6 +341,7 @@ func (s *GatewayService) executeAlias(ctx context.Context, requestID string, req
 					}
 					result.Response.Headers["X-Opencrab-Channel"] = []string{route.Channel.Name}
 					result.Response.Headers["X-Opencrab-Provider"] = []string{domain.NormalizeProvider(route.Channel.Provider)}
+					result.Response.Headers["X-Opencrab-Operation"] = []string{string(plannedReq.Operation)}
 				}
 				s.logAttempt(ctx, domain.GatewayAttemptLog{
 					RouteID:          route.ID,
@@ -997,6 +999,7 @@ func nativePreferredProvider(req domain.GatewayRequest) string {
 	switch req.Protocol {
 	case domain.ProtocolClaude:
 		if requestHasAnyCapability(profile.RequiredCapabilities,
+			capability.CapabilityFunctionTools,
 			capability.CapabilityClaudeBetaHeader,
 			capability.CapabilityClaudeThinking,
 			capability.CapabilityClaudeToolChoiceForced,
@@ -1010,6 +1013,7 @@ func nativePreferredProvider(req domain.GatewayRequest) string {
 		}
 	case domain.ProtocolGemini:
 		if requestHasAnyCapability(profile.RequiredCapabilities,
+			capability.CapabilityFunctionTools,
 			capability.CapabilityGeminiGenerationConfig,
 			capability.CapabilityGeminiSafetySettings,
 			capability.CapabilityGeminiToolConfig,

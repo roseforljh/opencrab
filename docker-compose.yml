@@ -8,9 +8,9 @@ services:
       OPENCRAB_APP_NAME: OpenCrab
       OPENCRAB_ENV: production
       OPENCRAB_HTTP_ADDR: :8080
-      OPENCRAB_DB_PATH: /app/data/opencrab.db
+      OPENCRAB_DB_PATH: /app/runtime/opencrab.db
     volumes:
-      - ./data:/app/data
+      - opencrab-runtime:/app/runtime
     ports:
       - "18080:8080"
 
@@ -26,3 +26,6 @@ services:
       OPENCRAB_ADMIN_API_BASE: http://api:8080
     ports:
       - "13000:3000"
+
+volumes:
+  opencrab-runtime:

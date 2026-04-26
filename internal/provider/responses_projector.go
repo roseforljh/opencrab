@@ -108,9 +108,6 @@ func projectResponsesContinueMessages(messages []domain.UnifiedMessage) []domain
 	if lastAssistant >= 0 && lastAssistant < len(messages)-1 {
 		return appendMessagesWindow(messages[:leadingSystems], messages[lastAssistant+1:])
 	}
-	if leadingSystems < len(messages) {
-		return appendMessagesWindow(messages[:leadingSystems], messages[len(messages)-1:])
-	}
 	return messages
 }
 

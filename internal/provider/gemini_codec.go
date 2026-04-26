@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -134,6 +135,84 @@ func DecodeGeminiChatResponse(body []byte) (domain.UnifiedChatResponse, error) {
 	return resp, nil
 }
 
+func DecodeGeminiChatStream(body []byte) (domain.UnifiedChatResponse, error) {
+	aggregated := domain.UnifiedChatResponse{Protocol: domain.ProtocolGemini, Message: domain.UnifiedMessage{Role: "assistant"}}
+	callIndex := map[string]int{}
+	for _, chunk := range splitSSEDataPayloads(body) {
+		resp, err := DecodeGeminiChatResponse(chunk)
+		if err != nil {
+			continue
+		}
+		if resp.Model != "" {
+			aggregated.Model = resp.Model
+		}
+		if resp.FinishReason != "" {
+			aggregated.FinishReason = resp.FinishReason
+		}
+		if len(resp.Usage) > 0 {
+			aggregated.Usage = resp.Usage
+		}
+		aggregated.Message.Parts = append(aggregated.Message.Parts, resp.Message.Parts...)
+		for _, call := range resp.Message.ToolCalls {
+			call = mergeGeminiPartialFunctionCall(call)
+			key := call.ID
+			if key == "" {
+				key = call.Name
+			}
+			if idx, ok := callIndex[key]; ok {
+				aggregated.Message.ToolCalls[idx].Arguments = append(aggregated.Message.ToolCalls[idx].Arguments, call.Arguments...)
+				if strings.TrimSpace(call.ID) != "" {
+					aggregated.Message.ToolCalls[idx].ID = call.ID
+				}
+				if strings.TrimSpace(call.Name) != "" {
+					aggregated.Message.ToolCalls[idx].Name = call.Name
+				}
+				continue
+			}
+			callIndex[key] = len(aggregated.Message.ToolCalls)
+			aggregated.Message.ToolCalls = append(aggregated.Message.ToolCalls, call)
+		}
+	}
+	if len(aggregated.Message.Parts) == 0 && len(aggregated.Message.ToolCalls) == 0 {
+		return domain.UnifiedChatResponse{}, fmt.Errorf("Gemini stream 没有可解析事件")
+	}
+	return aggregated, nil
+}
+
+func splitSSEDataPayloads(body []byte) [][]byte {
+	chunks := bytes.Split(body, []byte("\n"))
+	payloads := make([][]byte, 0)
+	for _, line := range chunks {
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte("data:")) {
+			continue
+		}
+		payload := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+			continue
+		}
+		payloads = append(payloads, append([]byte(nil), payload...))
+	}
+	return payloads
+}
+
+func mergeGeminiPartialFunctionCall(call domain.UnifiedToolCall) domain.UnifiedToolCall {
+	if len(call.Arguments) > 0 && string(call.Arguments) != "null" {
+		return call
+	}
+	var functionCall map[string]json.RawMessage
+	if err := json.Unmarshal(call.Metadata["functionCall"], &functionCall); err != nil {
+		return call
+	}
+	if partial := functionCall["partialArgs"]; len(partial) > 0 {
+		var partialString string
+		if err := json.Unmarshal(partial, &partialString); err == nil {
+			call.Arguments = json.RawMessage(partialString)
+		}
+	}
+	return call
+}
+
 func EncodeGeminiChatResponse(resp domain.UnifiedChatResponse) ([]byte, error) {
 	payload := map[string]any{}
 	mergeRawFields(payload, resp.Metadata)
@@ -250,6 +329,7 @@ func filterGeminiMessageMetadata(metadata map[string]json.RawMessage) map[string
 	delete(filtered, "tool_call_id")
 	delete(filtered, "tool_name")
 	delete(filtered, "tool_calls")
+	delete(filtered, "cache_control")
 	if len(filtered) == 0 {
 		return nil
 	}
@@ -267,7 +347,7 @@ func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {
 		}
 	}
 	item := map[string]any{}
-	mergeRawFields(item, part.Metadata)
+	mergeRawFields(item, filterGeminiPartMetadata(part.Metadata))
 	desc := extractMediaDescriptor(part)
 	switch part.Type {
 	case "text":
@@ -298,6 +378,18 @@ func encodeGeminiPart(part domain.UnifiedPart) (map[string]any, error) {
 		return nil, fmt.Errorf("Gemini 暂不支持 part 类型: %s", part.Type)
 	}
 	return item, nil
+}
+
+func filterGeminiPartMetadata(metadata map[string]json.RawMessage) map[string]json.RawMessage {
+	if len(metadata) == 0 {
+		return metadata
+	}
+	filtered := cloneRawMap(metadata)
+	delete(filtered, "cache_control")
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func encodeGeminiToolCallPart(call domain.UnifiedToolCall) (map[string]any, error) {

@@ -19,7 +19,7 @@ COPY .env.example /app/.env.example
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates \
 	&& rm -rf /var/lib/apt/lists/* \
-	&& mkdir -p /app/data
+	&& mkdir -p /app/runtime
 
 EXPOSE 8080
 

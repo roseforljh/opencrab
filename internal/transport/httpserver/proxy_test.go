@@ -129,10 +129,10 @@ func TestOpenAIModelDetailReturnsSingleVisibleModel(t *testing.T) {
 func TestOpenAIResponseRetrieveInputItemsAndDelete(t *testing.T) {
 	store := NewMemoryResponseSessionStore(16)
 	store.Put(ResponseSession{
-		ResponseID: "resp_1",
-		SessionID:  "session_1",
-		Model:      "gpt-4.1",
-		InputItems: json.RawMessage(`[{"type":"message","role":"user","content":[{"type":"input_text","text":"ping"}]}]`),
+		ResponseID:   "resp_1",
+		SessionID:    "session_1",
+		Model:        "gpt-4.1",
+		InputItems:   json.RawMessage(`[{"type":"message","role":"user","content":[{"type":"input_text","text":"ping"}]}]`),
 		ResponseBody: json.RawMessage(`{"id":"resp_1","object":"response","model":"gpt-4.1","output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"pong","annotations":[]}]}],"output_text":"pong"}`),
 		Messages: []domain.GatewayMessage{
 			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}},
@@ -1254,6 +1254,160 @@ func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing
 	}
 	if !captureLogsContain(records, "decode_and_preprocess_duration") || !captureLogsContain(records, "write_response_duration") {
 		t.Fatalf("expected request logger timing fields, got %#v", *records)
+	}
+}
+
+func TestProxyClaudeMessagesSynthesizesClaudeStreamFromGeminiResponse(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"gemini"}, "X-Opencrab-Operation": {string(domain.ProtocolOperationGeminiGenerateContent)}},
+				Body:       []byte(`{"modelVersion":"gemini-2.5-pro","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[{"text":"pong"}]} }],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2,"totalTokenCount":3}}`),
+			}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(`{"model":"claude-sonnet-4-5","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("x-api-key", "sk-opencrab-test")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected code: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: message_start") || !strings.Contains(body, "event: content_block_delta") || !strings.Contains(body, "event: message_stop") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if !strings.Contains(body, `"text":"pong"`) || !strings.Contains(body, `"output_tokens":2`) {
+		t.Fatalf("expected Claude stream content and usage, got %s", body)
+	}
+	if strings.Contains(body, "candidates") || strings.Contains(body, "usageMetadata") {
+		t.Fatalf("unexpected Gemini payload leaked to Claude stream: %s", body)
+	}
+}
+
+func TestProxyClaudeMessagesRendersGeminiFunctionCallToClaudeSurface(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"gemini"}, "X-Opencrab-Operation": {string(domain.ProtocolOperationGeminiGenerateContent)}},
+				Body:       []byte(`{"modelVersion":"gemini-2.5-pro","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[{"functionCall":{"id":"call_lookup","name":"lookup","args":{"q":"crab"}}}]} }],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2,"totalTokenCount":3}}`),
+			}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(`{"model":"claude-sonnet-4-5","max_tokens":16,"tools":[{"name":"lookup","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("x-api-key", "sk-opencrab-test")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected code: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"tool_use"`) || !strings.Contains(body, `"id":"call_lookup"`) || !strings.Contains(body, `"name":"lookup"`) || !strings.Contains(body, `"q":"crab"`) {
+		t.Fatalf("expected Claude tool_use response, got %s", body)
+	}
+	if !strings.Contains(body, `"input_tokens":1`) || !strings.Contains(body, `"output_tokens":2`) {
+		t.Fatalf("expected Claude usage, got %s", body)
+	}
+	if strings.Contains(body, "functionCall") || strings.Contains(body, "candidates") || strings.Contains(body, "usageMetadata") {
+		t.Fatalf("unexpected Gemini payload leaked to Claude client: %s", body)
+	}
+}
+
+func TestProxyClaudeMessagesRendersOpenAIResponsesToolCallToClaudeSurface(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}, "X-Opencrab-Operation": {string(domain.ProtocolOperationOpenAIResponses)}},
+				Body:       []byte(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"fc_1","type":"function_call","call_id":"call_lookup","name":"lookup","arguments":"{\"q\":\"crab\"}"}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`),
+			}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(`{"model":"claude-sonnet-4-5","max_tokens":16,"tools":[{"name":"lookup","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("x-api-key", "sk-opencrab-test")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected code: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"tool_use"`) || !strings.Contains(body, `"id":"call_lookup"`) || !strings.Contains(body, `"name":"lookup"`) || !strings.Contains(body, `"q":"crab"`) {
+		t.Fatalf("expected Claude tool_use response, got %s", body)
+	}
+	if strings.Contains(body, `"object":"response"`) || strings.Contains(body, `"function_call"`) {
+		t.Fatalf("unexpected OpenAI Responses payload leaked to Claude client: %s", body)
+	}
+}
+
+func TestProxyChatCompletionsRendersOpenAIResponsesUpstreamToChatSurface(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}},
+				Body:       []byte(`{"id":"resp_1","object":"response","status":"completed","model":"gpt-5","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`),
+			}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"gpt-5","messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected code: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"object":"chat.completion"`) || !strings.Contains(body, `"content":"pong"`) {
+		t.Fatalf("expected chat completion response, got %s", body)
+	}
+	if strings.Contains(body, `"object":"response"`) || strings.Contains(body, `"output"`) {
+		t.Fatalf("unexpected responses payload leaked to chat client: %s", body)
+	}
+}
+
+func TestProxyChatCompletionsUsesOpenAIResponsesOperationHeader(t *testing.T) {
+	router := NewRouter(Dependencies{
+		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{
+				StatusCode: http.StatusOK,
+				Headers:    map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}, "X-Opencrab-Operation": {string(domain.ProtocolOperationOpenAIResponses)}},
+				Body:       []byte(`{"id":"resp_1","status":"completed","model":"gpt-5","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pong"}]}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`),
+			}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"gpt-5","messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected code: %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"object":"chat.completion"`) || !strings.Contains(body, `"content":"pong"`) {
+		t.Fatalf("expected chat completion response, got %s", body)
+	}
+	if strings.Contains(body, `"output"`) || strings.Contains(body, `"status":"completed"`) {
+		t.Fatalf("unexpected responses payload leaked to chat client: %s", body)
 	}
 }
 

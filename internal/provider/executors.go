@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -164,7 +165,57 @@ func (e *GeminiExecutor) Execute(ctx context.Context, input domain.ExecutorReque
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("x-goog-api-key", input.Channel.APIKey)
 	applyRequestHeaders(req, input.Request.RequestHeaders, map[string]struct{}{"x-goog-api-key": {}, "content-type": {}, "accept": {}})
-	return doExecutorRequest(e.client, req, payload.stream, payloadDebugMetadata(normalizedProvider, targetOperation, payload))
+	result, err := doExecutorRequest(e.client, req, payload.stream, payloadDebugMetadata(normalizedProvider, targetOperation, payload))
+	if err != nil || input.Request.Protocol == domain.ProtocolGemini || result == nil || result.Stream != nil || result.Response == nil || result.Response.StatusCode < 200 || result.Response.StatusCode >= 300 {
+		return result, err
+	}
+	unified, decodeErr := DecodeGeminiChatResponse(result.Response.Body)
+	if decodeErr != nil {
+		return result, nil
+	}
+	restoreToolCallNames(&unified, payload.body)
+	encoded, encodeErr := encodeExecutorResponseForProtocol(input.Request.Protocol, unified, false)
+	if encodeErr != nil {
+		return result, nil
+	}
+	result.Response.Body = encoded
+	result.Response.Headers = jsonResponseHeaders(result.Response.Headers)
+	return result, nil
+}
+
+func encodeExecutorResponseForProtocol(protocol domain.Protocol, resp domain.UnifiedChatResponse, stream bool) ([]byte, error) {
+	switch protocol {
+	case domain.ProtocolClaude:
+		resp.Protocol = domain.ProtocolClaude
+		if stream {
+			return EncodeClaudeChatStream(resp)
+		}
+		return EncodeClaudeChatResponse(resp)
+	case domain.ProtocolGemini:
+		resp.Protocol = domain.ProtocolGemini
+		if stream {
+			return EncodeGeminiChatStream(resp)
+		}
+		return EncodeGeminiChatResponse(resp)
+	case domain.ProtocolCodex:
+		resp.Protocol = domain.ProtocolOpenAI
+		if stream {
+			return EncodeOpenAIResponsesStream(resp)
+		}
+		return EncodeOpenAIResponsesResponse(resp)
+	default:
+		resp.Protocol = domain.ProtocolOpenAI
+		if stream {
+			return EncodeOpenAIChatStream(resp)
+		}
+		return EncodeOpenAIChatResponse(resp)
+	}
+}
+
+func jsonResponseHeaders(headers map[string][]string) map[string][]string {
+	cloned := cloneHeaders(headers)
+	cloned["Content-Type"] = []string{"application/json"}
+	return cloned
 }
 
 func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol, targetProvider string) domain.UnifiedChatRequest {
@@ -177,8 +228,15 @@ func toUnifiedRequest(input domain.ExecutorRequest, protocol domain.Protocol, ta
 	if input.Request.Protocol == "" {
 		input.Request.Protocol = protocol
 	}
+	nameMap := buildToolNameReverseMap(tools, input.Request.Protocol, targetProvider)
 	messages = sanitizeMessagesForTarget(messages, input.Request.Protocol, protocol, targetProvider)
 	metadata, tools = sanitizeRequestForTarget(metadata, tools, input.Request.Protocol, protocol, targetProvider)
+	if len(nameMap) > 0 {
+		if metadata == nil {
+			metadata = map[string]json.RawMessage{}
+		}
+		metadata["opencrab_tool_name_map"] = mustJSONRaw(nameMap)
+	}
 	return domain.UnifiedChatRequest{
 		Protocol: protocol,
 		Model:    input.UpstreamModel,
@@ -274,6 +332,9 @@ func sanitizeRequestMetadataForTarget(metadata map[string]json.RawMessage, sourc
 		rewriteClaudeToolChoiceToOpenAI(cleaned)
 	case sourceProtocol == domain.ProtocolClaude && targetProvider == "gemini":
 		rewriteClaudeThinkingToGemini(cleaned)
+		rewriteClaudeControlsToGemini(cleaned)
+		rewriteClaudeToolChoiceToOpenAI(cleaned)
+		rewriteOpenAIToolChoiceToGemini(cleaned)
 	}
 
 	switch sourceProtocol {
@@ -282,9 +343,97 @@ func sanitizeRequestMetadataForTarget(metadata map[string]json.RawMessage, sourc
 	case domain.ProtocolGemini:
 		deleteKeys("previous_response_id", "include", "reasoning", "store", "instructions", "tool_choice", "parallel_tool_calls", "thinking", "cache_control")
 	case domain.ProtocolClaude:
-		deleteKeys("previous_response_id", "include", "store", "parallel_tool_calls")
+		deleteKeys("previous_response_id", "include", "store", "metadata")
+	}
+	if targetProvider == "gemini" {
+		cleaned = filterGeminiTargetMetadata(cleaned)
 	}
 	_ = targetProtocol
+	return cleaned
+}
+
+func rewriteClaudeControlsToGemini(metadata map[string]json.RawMessage) {
+	if len(metadata) == 0 {
+		return
+	}
+	config := decodeJSONObject(metadata["generationConfig"])
+	if len(metadata["temperature"]) > 0 {
+		var temperature float64
+		if err := json.Unmarshal(metadata["temperature"], &temperature); err == nil {
+			config["temperature"] = temperature
+		}
+		delete(metadata, "temperature")
+	}
+	if len(metadata["top_p"]) > 0 {
+		var topP float64
+		if err := json.Unmarshal(metadata["top_p"], &topP); err == nil {
+			config["topP"] = topP
+		}
+		delete(metadata, "top_p")
+	}
+	if len(metadata["top_k"]) > 0 {
+		var topK int
+		if err := json.Unmarshal(metadata["top_k"], &topK); err == nil {
+			config["topK"] = topK
+		}
+		delete(metadata, "top_k")
+	}
+	if len(metadata["presence_penalty"]) > 0 {
+		var penalty float64
+		if err := json.Unmarshal(metadata["presence_penalty"], &penalty); err == nil {
+			config["presencePenalty"] = penalty
+		}
+		delete(metadata, "presence_penalty")
+	}
+	if len(metadata["frequency_penalty"]) > 0 {
+		var penalty float64
+		if err := json.Unmarshal(metadata["frequency_penalty"], &penalty); err == nil {
+			config["frequencyPenalty"] = penalty
+		}
+		delete(metadata, "frequency_penalty")
+	}
+	if len(metadata["stop_sequences"]) > 0 {
+		var stop any
+		if err := json.Unmarshal(metadata["stop_sequences"], &stop); err == nil {
+			config["stopSequences"] = stop
+		}
+		delete(metadata, "stop_sequences")
+	}
+	if len(metadata["max_tokens"]) > 0 {
+		var maxTokens int
+		if err := json.Unmarshal(metadata["max_tokens"], &maxTokens); err == nil {
+			config["maxOutputTokens"] = maxTokens
+		}
+		delete(metadata, "max_tokens")
+	}
+	if len(config) == 0 {
+		delete(metadata, "generationConfig")
+		return
+	}
+	if encoded, err := json.Marshal(config); err == nil {
+		metadata["generationConfig"] = encoded
+	}
+}
+
+func filterGeminiTargetMetadata(metadata map[string]json.RawMessage) map[string]json.RawMessage {
+	if len(metadata) == 0 {
+		return nil
+	}
+	allowed := map[string]struct{}{
+		"generationConfig": {},
+		"safetySettings":   {},
+		"toolConfig":       {},
+		"cachedContent":    {},
+	}
+	cleaned := map[string]json.RawMessage{}
+	for key, value := range metadata {
+		if _, ok := allowed[key]; ok {
+			cleaned[key] = value
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil
+	}
 	return cleaned
 }
 
@@ -302,6 +451,8 @@ func sanitizeRequestForTarget(metadata map[string]json.RawMessage, tools []json.
 	switch {
 	case sourceProtocol == domain.ProtocolOpenAI && targetProvider == "gemini":
 		tools = rewriteOpenAIToolsToGemini(tools)
+	case sourceProtocol == domain.ProtocolClaude && targetProvider == "gemini":
+		tools = rewriteClaudeToolsToGemini(tools)
 	case sourceProtocol == domain.ProtocolGemini && targetProvider == "openai":
 		tools = rewriteGeminiToolsToOpenAI(tools)
 	case sourceProtocol == domain.ProtocolOpenAI && targetProvider == "claude":
@@ -334,7 +485,67 @@ func sanitizeMessagesForTarget(messages []domain.UnifiedMessage, sourceProtocol 
 			return filtered
 		}
 	}
+	if sourceProtocol == domain.ProtocolClaude && targetProvider == "gemini" {
+		return sanitizeClaudeMessagesForGemini(messages)
+	}
 	return messages
+}
+
+func sanitizeClaudeMessagesForGemini(messages []domain.UnifiedMessage) []domain.UnifiedMessage {
+	toolNamesByID := map[string]string{}
+	for _, message := range messages {
+		for _, call := range message.ToolCalls {
+			if strings.TrimSpace(call.ID) != "" && strings.TrimSpace(call.Name) != "" {
+				toolNamesByID[call.ID] = call.Name
+			}
+		}
+	}
+	filtered := make([]domain.UnifiedMessage, 0, len(messages))
+	for _, message := range messages {
+		cleaned := domain.UnifiedMessage{Role: message.Role, ToolCalls: message.ToolCalls, InputItem: message.InputItem, Metadata: cloneRawMap(message.Metadata)}
+		cleaned.Parts = make([]domain.UnifiedPart, 0, len(message.Parts))
+		for _, part := range message.Parts {
+			if strings.EqualFold(message.Role, "tool") {
+				converted, ok := claudeToolPartToGeminiFunctionResponse(message, part, toolNamesByID)
+				if ok {
+					cleaned.Parts = append(cleaned.Parts, converted)
+					continue
+				}
+			}
+			cleaned.Parts = append(cleaned.Parts, cloneUnifiedPart(part))
+		}
+		if len(cleaned.Parts) == 0 && len(cleaned.ToolCalls) == 0 && len(cleaned.InputItem) == 0 {
+			continue
+		}
+		filtered = append(filtered, cleaned)
+	}
+	return filtered
+}
+
+func claudeToolPartToGeminiFunctionResponse(message domain.UnifiedMessage, part domain.UnifiedPart, toolNamesByID map[string]string) (domain.UnifiedPart, bool) {
+	if !strings.EqualFold(strings.TrimSpace(part.Type), "text") && !strings.EqualFold(strings.TrimSpace(part.Type), "tool_result") {
+		return domain.UnifiedPart{}, false
+	}
+	toolCallID := decodeStringRaw(message.Metadata["tool_call_id"])
+	if toolCallID == "" {
+		return domain.UnifiedPart{}, false
+	}
+	toolName := decodeStringRaw(message.Metadata["tool_name"])
+	if toolName == "" {
+		toolName = toolNamesByID[toolCallID]
+	}
+	if toolName == "" {
+		return domain.UnifiedPart{}, false
+	}
+	response := json.RawMessage(strings.TrimSpace(part.Text))
+	if !json.Valid(response) {
+		encoded, err := json.Marshal(part.Text)
+		if err != nil {
+			return domain.UnifiedPart{}, false
+		}
+		response = encoded
+	}
+	return domain.UnifiedPart{Type: "function_response", Metadata: map[string]json.RawMessage{"id": json.RawMessage(strconv.Quote(toolCallID)), "name": json.RawMessage(strconv.Quote(toolName)), "response": response}}, true
 }
 
 func sanitizeOpenAIMessagesForGemini(message domain.UnifiedMessage) (domain.UnifiedMessage, bool) {
@@ -346,6 +557,13 @@ func sanitizeOpenAIMessagesForGemini(message domain.UnifiedMessage) (domain.Unif
 	}
 	cleaned.Parts = make([]domain.UnifiedPart, 0, len(message.Parts))
 	for _, part := range message.Parts {
+		if strings.EqualFold(message.Role, "tool") {
+			converted, ok := openAIToolPartToGeminiFunctionResponse(message, part)
+			if ok {
+				cleaned.Parts = append(cleaned.Parts, converted)
+				continue
+			}
+		}
 		if shouldDropOpenAITextPartForGemini(part) {
 			continue
 		}
@@ -355,6 +573,26 @@ func sanitizeOpenAIMessagesForGemini(message domain.UnifiedMessage) (domain.Unif
 		return domain.UnifiedMessage{}, false
 	}
 	return cleaned, true
+}
+
+func openAIToolPartToGeminiFunctionResponse(message domain.UnifiedMessage, part domain.UnifiedPart) (domain.UnifiedPart, bool) {
+	if !strings.EqualFold(strings.TrimSpace(part.Type), "text") {
+		return domain.UnifiedPart{}, false
+	}
+	toolCallID := decodeStringRaw(message.Metadata["tool_call_id"])
+	toolName := decodeStringRaw(message.Metadata["tool_name"])
+	if toolCallID == "" || toolName == "" {
+		return domain.UnifiedPart{}, false
+	}
+	response := json.RawMessage(strings.TrimSpace(part.Text))
+	if !json.Valid(response) {
+		encoded, err := json.Marshal(part.Text)
+		if err != nil {
+			return domain.UnifiedPart{}, false
+		}
+		response = encoded
+	}
+	return domain.UnifiedPart{Type: "function_response", Metadata: map[string]json.RawMessage{"id": json.RawMessage(strconv.Quote(toolCallID)), "name": json.RawMessage(strconv.Quote(toolName)), "response": response}}, true
 }
 
 func shouldDropOpenAITextPartForGemini(part domain.UnifiedPart) bool {
@@ -722,6 +960,73 @@ func rewriteClaudeContainerToOpenAI(metadata map[string]json.RawMessage, tools [
 	return metadata, rewritten
 }
 
+func buildToolNameReverseMap(tools []json.RawMessage, sourceProtocol domain.Protocol, targetProvider string) map[string]string {
+	if targetProvider != "gemini" || len(tools) == 0 {
+		return nil
+	}
+	nameMap := map[string]string{}
+	for _, raw := range tools {
+		tool := decodeJSONObject(raw)
+		switch sourceProtocol {
+		case domain.ProtocolOpenAI:
+			if strings.TrimSpace(strings.ToLower(coalesceString(tool["type"]))) != "function" {
+				continue
+			}
+			functionPayload, _ := tool["function"].(map[string]any)
+			original, _ := functionPayload["name"].(string)
+			rememberSanitizedToolName(nameMap, original)
+		case domain.ProtocolClaude:
+			if strings.TrimSpace(strings.ToLower(coalesceString(tool["type"]))) != "" {
+				continue
+			}
+			original, _ := tool["name"].(string)
+			rememberSanitizedToolName(nameMap, original)
+		}
+	}
+	if len(nameMap) == 0 {
+		return nil
+	}
+	return nameMap
+}
+
+func rememberSanitizedToolName(nameMap map[string]string, original string) {
+	original = strings.TrimSpace(original)
+	if original == "" {
+		return
+	}
+	sanitized := sanitizeGeminiFunctionName(original)
+	if sanitized == "" || sanitized == original {
+		return
+	}
+	nameMap[sanitized] = original
+}
+
+func restoreToolCallNames(resp *domain.UnifiedChatResponse, payload []byte) {
+	nameMap := extractToolNameReverseMap(payload)
+	if len(nameMap) == 0 {
+		return
+	}
+	for i := range resp.Message.ToolCalls {
+		original, ok := nameMap[resp.Message.ToolCalls[i].Name]
+		if !ok || strings.TrimSpace(original) == "" {
+			continue
+		}
+		resp.Message.ToolCalls[i].Name = original
+	}
+}
+
+func extractToolNameReverseMap(payload []byte) map[string]string {
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return nil
+	}
+	var rawMap map[string]string
+	if err := json.Unmarshal(body["opencrab_tool_name_map"], &rawMap); err != nil || len(rawMap) == 0 {
+		return nil
+	}
+	return rawMap
+}
+
 func rewriteOpenAIToolsToGemini(tools []json.RawMessage) []json.RawMessage {
 	if len(tools) == 0 {
 		return tools
@@ -1010,6 +1315,43 @@ func rewriteClaudeToolsToOpenAI(tools []json.RawMessage) []json.RawMessage {
 			continue
 		}
 		rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+	}
+	return rewritten
+}
+
+func rewriteClaudeToolsToGemini(tools []json.RawMessage) []json.RawMessage {
+	if len(tools) == 0 {
+		return tools
+	}
+	rewritten := make([]json.RawMessage, 0, len(tools))
+	functionDeclarations := make([]map[string]any, 0)
+	for _, raw := range tools {
+		tool := decodeJSONObject(raw)
+		if len(tool) == 0 {
+			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+			continue
+		}
+		typeValue, _ := tool["type"].(string)
+		if strings.TrimSpace(strings.ToLower(typeValue)) != "" {
+			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+			continue
+		}
+		name, _ := tool["name"].(string)
+		name = sanitizeGeminiFunctionName(name)
+		if strings.TrimSpace(name) == "" || tool["input_schema"] == nil {
+			rewritten = append(rewritten, append(json.RawMessage(nil), raw...))
+			continue
+		}
+		declaration := map[string]any{
+			"name":        name,
+			"description": coalesceString(tool["description"]),
+			"parameters":  normalizeSchemaTypesForGemini(tool["input_schema"]),
+		}
+		functionDeclarations = append(functionDeclarations, declaration)
+	}
+	if len(functionDeclarations) > 0 {
+		encoded, _ := json.Marshal(map[string]any{"functionDeclarations": functionDeclarations})
+		rewritten = append(rewritten, encoded)
 	}
 	return rewritten
 }

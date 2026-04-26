@@ -15,7 +15,7 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("创建数据库目录失败: %w", err)
 	}
 
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", filepath.ToSlash(path))
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", filepath.ToSlash(path))
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("打开 sqlite 失败: %w", err)

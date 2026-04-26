@@ -976,8 +976,9 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 		return
 	}
 	providerName := normalizedHeaderProvider(result.Response.Headers)
+	operation := normalizedHeaderOperation(result.Response.Headers)
 	if requestWantsStreamForProtocol(protocol, req, requestBody) && shouldSynthesizeProtocolStream(protocol, providerName) {
-		unified, err := decodeUnifiedByProvider(providerName, result.Response.Body)
+		unified, err := decodeUnifiedByProviderAndOperation(providerName, operation, result.Response.Body)
 		if err == nil {
 			encoded, headers, streamErr := encodeProtocolStream(protocol, unified)
 			if streamErr == nil {
@@ -998,7 +999,7 @@ func writeGatewayResult(deps Dependencies, w http.ResponseWriter, req *http.Requ
 		return
 	}
 	var structuredUsage *usageMetrics
-	if unified, err := decodeUnifiedByProvider(providerName, result.Response.Body); err == nil {
+	if unified, err := decodeUnifiedByProviderAndOperation(providerName, operation, result.Response.Body); err == nil {
 		usage := usageMetricsFromUnified(unified.Usage)
 		structuredUsage = &usage
 	}
@@ -1027,7 +1028,8 @@ func writeResponsesGatewayResult(deps Dependencies, w http.ResponseWriter, req *
 	}
 	resp := encodeGatewayResponseForSurface(result.Response, surface)
 	providerName := normalizedHeaderProvider(resp.Headers)
-	unified, err := decodeUnifiedByProvider(providerName, resp.Body)
+	operation := normalizedHeaderOperation(resp.Headers)
+	unified, err := decodeUnifiedByProviderAndOperation(providerName, operation, resp.Body)
 	if err != nil {
 		if err := deps.CopyProxy(w, resp); err != nil {
 			logGatewayWriteFailure(req, deps.Logger, "proxy_passthrough", err)
@@ -1196,10 +1198,11 @@ func logGatewayWriteFailure(req *http.Request, logger *slog.Logger, stage string
 
 func encodeGatewayResponseForSurface(resp *domain.ProxyResponse, surface transform.Surface) *domain.ProxyResponse {
 	providerName := normalizedHeaderProvider(resp.Headers)
-	if protocolMatchesProvider(surface.Protocol, providerName) {
+	operation := normalizedHeaderOperation(resp.Headers)
+	if protocolMatchesProvider(surface.Protocol, providerName) && operationMatchesSurface(surface, operation) && !responseNeedsSurfaceRender(surface, resp.Body) {
 		return resp
 	}
-	unified, err := decodeUnifiedByProvider(providerName, resp.Body)
+	unified, err := decodeUnifiedByProviderAndOperation(providerName, operation, resp.Body)
 	if err != nil {
 		return resp
 	}
@@ -1210,12 +1213,40 @@ func encodeGatewayResponseForSurface(resp *domain.ProxyResponse, surface transfo
 	return &domain.ProxyResponse{StatusCode: resp.StatusCode, Headers: headers, Body: encoded}
 }
 
+func operationMatchesSurface(surface transform.Surface, operation domain.ProtocolOperation) bool {
+	return operation == "" || operation == surface.Operation
+}
+
+func responseNeedsSurfaceRender(surface transform.Surface, body []byte) bool {
+	if surface.Protocol != domain.ProtocolOpenAI || surface.Operation != domain.ProtocolOperationOpenAIChatCompletions {
+		return false
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	var objectType string
+	if err := json.Unmarshal(payload["object"], &objectType); err == nil && strings.TrimSpace(objectType) == "response" {
+		return true
+	}
+	_, hasOutput := payload["output"]
+	return hasOutput
+}
+
 func decodeUnifiedByProvider(providerName string, body []byte) (domain.UnifiedChatResponse, error) {
-	return transform.DecodeUpstreamResponse(providerName, body)
+	return decodeUnifiedByProviderAndOperation(providerName, "", body)
+}
+
+func decodeUnifiedByProviderAndOperation(providerName string, operation domain.ProtocolOperation, body []byte) (domain.UnifiedChatResponse, error) {
+	return transform.DecodeUpstreamResponseForOperation(providerName, operation, body)
 }
 
 func normalizedHeaderProvider(headers map[string][]string) string {
 	return domain.NormalizeProvider(firstHeaderValue(headers, "X-Opencrab-Provider"))
+}
+
+func normalizedHeaderOperation(headers map[string][]string) domain.ProtocolOperation {
+	return domain.ProtocolOperation(strings.TrimSpace(firstHeaderValue(headers, "X-Opencrab-Operation")))
 }
 
 func protocolMatchesProvider(protocol domain.Protocol, providerName string) bool {
