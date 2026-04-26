@@ -1308,6 +1308,8 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 		"completion_tokens": usage.CompletionTokens,
 		"total_tokens":      usage.TotalTokens,
 		"cache_hit":         usage.CacheHit,
+			"cached_tokens":         usage.CachedTokens,
+			"cache_creation_tokens": usage.CacheCreationTokens,
 		"test_mode":         false,
 		"duration_ms":       totalDurationMs,
 	}
@@ -1323,6 +1325,8 @@ func logGatewayRequestSummary(deps Dependencies, req *http.Request, requestBody 
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
 		CacheHit:         usage.CacheHit,
+			CachedTokens:        usage.CachedTokens,
+			CacheCreationTokens: usage.CacheCreationTokens,
 		RequestBody:      truncateLogBody(string(requestBody)),
 		ResponseBody:     loggedResponseBody,
 		Details:          details,
@@ -1996,7 +2000,7 @@ func applyClaudeContextManagement(gatewayReq domain.GatewayRequest) domain.Gatew
 		gatewayReq.Messages = clearHistoricalToolUses(gatewayReq.Messages)
 		edited = true
 	}
-	if clear, ok := decodeContextManagementBoolean(payload, "clear_thinking"); ok && clear {
+	if clear, ok := decodeContextManagementBoolean(payload, "clear_thinking"); ok && clear || contextManagementHasEdit(payload, "clear_thinking_20251015") {
 		gatewayReq.Messages = clearHistoricalThinking(gatewayReq.Messages)
 		edited = true
 	}
@@ -2004,6 +2008,27 @@ func applyClaudeContextManagement(gatewayReq domain.GatewayRequest) domain.Gatew
 		gatewayReq.Messages = repairGatewayTranscript(gatewayReq.Messages)
 	}
 	return gatewayReq
+}
+
+func contextManagementHasEdit(payload map[string]json.RawMessage, types ...string) bool {
+	raw := payload["edits"]
+	if len(raw) == 0 {
+		return false
+	}
+	var edits []struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &edits); err != nil {
+		return false
+	}
+	for _, edit := range edits {
+		for _, itemType := range types {
+			if strings.EqualFold(strings.TrimSpace(edit.Type), itemType) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func decodeContextManagementBoolean(payload map[string]json.RawMessage, keys ...string) (bool, bool) {
@@ -2080,7 +2105,7 @@ func clearHistoricalThinking(messages []domain.GatewayMessage) []domain.GatewayM
 		if len(next.Parts) > 0 {
 			filteredParts := make([]domain.UnifiedPart, 0, len(next.Parts))
 			for _, part := range next.Parts {
-				if part.Type == "reasoning" {
+				if isHistoricalThinkingPart(part) {
 					continue
 				}
 				filteredParts = append(filteredParts, part)
@@ -2090,6 +2115,20 @@ func clearHistoricalThinking(messages []domain.GatewayMessage) []domain.GatewayM
 		cleared = append(cleared, next)
 	}
 	return cleared
+}
+
+func isHistoricalThinkingPart(part domain.UnifiedPart) bool {
+	if part.Type == "reasoning" {
+		return true
+	}
+	if len(part.Metadata["thoughtSignature"]) > 0 || len(part.Metadata["thought_signature"]) > 0 {
+		return true
+	}
+	var thought bool
+	if err := json.Unmarshal(part.Metadata["thought"], &thought); err == nil && thought {
+		return true
+	}
+	return false
 }
 
 func extractPreviousResponseID(body []byte) (string, bool) {

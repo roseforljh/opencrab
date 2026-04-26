@@ -1,11 +1,11 @@
-# Graph Report - C:\Users\33039\Desktop\opencrab  (2026-04-26)
+# Graph Report - .  (2026-04-27)
 
 ## Corpus Check
-- 158 files ， ~140,173 words
+- 160 files ， ~142,852 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1506 nodes ， 2472 edges ， 78 communities detected
+- 1528 nodes ， 2503 edges ， 79 communities detected
 - Extraction: 100% EXTRACTED ， 0% INFERRED ， 0% AMBIGUOUS
 - Token cost: 0 input ， 0 output
 
@@ -33,11 +33,11 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (18): deleteOne(), handleDelete(), createEmptyDraft(), draftFromItem(), handleDelete(), handleEdit(), handleSave(), keyOf() (+10 more)
+Nodes (27): formatCompactNumber(), formatLatency(), formatNumber(), deleteOne(), handleDelete(), createEmptyDraft(), draftFromItem(), handleDelete() (+19 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.05
-Nodes (100): acceptGatewayRequest(), applyClaudeContextManagement(), buildAcceptedResponse(), buildGatewayJobStatusResponse(), buildStoredGatewayRequest(), clearHistoricalThinking(), clearHistoricalToolUses(), cloneHeaderMap() (+92 more)
+Nodes (102): acceptGatewayRequest(), applyClaudeContextManagement(), buildAcceptedResponse(), buildGatewayJobStatusResponse(), buildStoredGatewayRequest(), clearHistoricalThinking(), clearHistoricalToolUses(), cloneHeaderMap() (+94 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.06
@@ -48,12 +48,12 @@ Cohesion: 0.06
 Nodes (62): applyDispatchSettingsSummary(), boolToInt(), buildDashboardChannelMix(), buildDashboardDailyCounts(), buildDashboardModelRanking(), buildDashboardRecentLogs(), buildDashboardShareItems(), buildDashboardTrafficSeries() (+54 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.05
-Nodes (39): buildClaudeMessagesURL(), buildClaudeTestRequest(), buildGeminiGenerateContentURL(), buildGeminiTestRequest(), buildOpenAICompatibleTestRequest(), buildTestRequest(), defaultTestModel(), testHTTPClient() (+31 more)
-
-### Community 5 - "Community 5"
 Cohesion: 0.03
 Nodes (0): 
+
+### Community 5 - "Community 5"
+Cohesion: 0.04
+Nodes (31): testHTTPClient(), TestKimiRealChannel(), TestOpenRouterRealChannel(), buildGeminiCachedContentResponse(), decodeGeminiCachedContentName(), HandleGeminiCachedContentCreate(), HandleGeminiCachedContentGet(), mustMarshalJSON() (+23 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.04
@@ -77,7 +77,7 @@ Nodes (32): ChatCompletionsMessage, ChatCompletionsRequest, ChatProvider, Execut
 
 ### Community 11 - "Community 11"
 Cohesion: 0.1
-Nodes (37): appendResponsesItemEvents(), appendResponsesMessageEvents(), appendResponsesReasoningEvents(), appendResponsesStatusEvents(), appendResponsesStringFieldEvents(), BuildOpenAIResponsesEvents(), DecodeOpenAIResponsesRequest(), DecodeOpenAIResponsesResponse() (+29 more)
+Nodes (40): appendResponsesItemEvents(), appendResponsesMessageEvents(), appendResponsesReasoningEvents(), appendResponsesStatusEvents(), appendResponsesStringFieldEvents(), BuildOpenAIResponsesEvents(), DecodeOpenAIResponsesRequest(), DecodeOpenAIResponsesResponse() (+32 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.11
@@ -85,11 +85,11 @@ Nodes (22): adaptRequestForProvider(), buildRoutingCursorKey(), groupRoutesByPri
 
 ### Community 13 - "Community 13"
 Cohesion: 0.08
-Nodes (16): formatCompactNumber(), formatLatency(), formatNumber(), adminFetch(), getAdminAuthStatus(), getAdminDashboardSummary(), getAdminLogDetail(), getAdminLogs() (+8 more)
+Nodes (18): applyAPIKeyScopeToGatewayRequest(), extractGatewayAPIKey(), extractGatewaySessionID(), extractModel(), extractModelFromRequest(), extractSessionAffinityKey(), extractSSEUsageMetrics(), extractStringRawValue() (+10 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.08
-Nodes (18): applyAPIKeyScopeToGatewayRequest(), extractGatewayAPIKey(), extractGatewaySessionID(), extractModel(), extractModelFromRequest(), extractSessionAffinityKey(), extractSSEUsageMetrics(), extractStringRawValue() (+10 more)
+Cohesion: 0.1
+Nodes (8): adminFetch(), getAdminAuthStatus(), getAdminDashboardSummary(), getAdminLogDetail(), getAdminLogs(), getAdminRoutingOverview(), getAdminSecondarySecurityState(), resolveAdminFetchFailure()
 
 ### Community 15 - "Community 15"
 Cohesion: 0.15
@@ -124,7 +124,7 @@ Cohesion: 0.18
 Nodes (14): buildGeminiCachedContentCreateURL(), buildGeminiCachedContentGetURL(), buildGeminiStreamGenerateContentURL(), buildOpenAIRealtimeCallsURL(), buildOpenAIRealtimeClientSecretsURL(), buildOpenAIRealtimeWebSocketURL(), DialOpenAIRealtime(), doProxyRequest() (+6 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.12
+Cohesion: 0.11
 Nodes (0): 
 
 ### Community 24 - "Community 24"
@@ -140,12 +140,12 @@ Cohesion: 0.13
 Nodes (4): MemoryResponseSessionStore, ResponseSession, ResponseSessionStore, ResponseSessionStore
 
 ### Community 27 - "Community 27"
-Cohesion: 0.14
-Nodes (1): memoryJobStore
-
-### Community 28 - "Community 28"
 Cohesion: 0.21
 Nodes (7): buildAdminAuthStatus(), clearAdminSessionCookie(), hasValidAdminSession(), requestIsSecure(), requireAdminSession(), signAdminSession(), writeAdminSessionCookie()
+
+### Community 28 - "Community 28"
+Cohesion: 0.26
+Nodes (9): buildClaudeMessagesURL(), buildClaudeTestRequest(), buildGeminiGenerateContentURL(), buildGeminiTestRequest(), buildOpenAICompatibleTestRequest(), buildTestRequest(), defaultTestModel(), normalizeProvider() (+1 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.22
@@ -192,16 +192,16 @@ Cohesion: 0.2
 Nodes (0): 
 
 ### Community 40 - "Community 40"
-Cohesion: 0.28
-Nodes (6): Loader, ProfileRecord, Registry, ScopeType, applyProfileRecord(), cloneCapabilitySet()
+Cohesion: 0.2
+Nodes (0): 
 
 ### Community 41 - "Community 41"
 Cohesion: 0.28
-Nodes (4): NewGatewayAttemptLogStore(), NewRequestLogStore(), GatewayAttemptLogStore, RequestLogStore
+Nodes (6): Loader, ProfileRecord, Registry, ScopeType, applyProfileRecord(), cloneCapabilitySet()
 
 ### Community 42 - "Community 42"
-Cohesion: 0.46
-Nodes (7): extractRealtimeModelFromBody(), extractRealtimeModelFromJSON(), extractRealtimeModelFromMultipart(), HandleOpenAIRealtimeCalls(), HandleOpenAIRealtimeClientSecrets(), maybeProxyOpenAIRealtimeWebSocket(), proxyRealtimeSockets()
+Cohesion: 0.28
+Nodes (4): NewGatewayAttemptLogStore(), NewRequestLogStore(), GatewayAttemptLogStore, RequestLogStore
 
 ### Community 43 - "Community 43"
 Cohesion: 0.25
@@ -216,8 +216,8 @@ Cohesion: 0.29
 Nodes (3): normalizeCapabilityList(), capabilityProfileConfig, CapabilityProfileStore
 
 ### Community 46 - "Community 46"
-Cohesion: 0.25
-Nodes (0): 
+Cohesion: 0.46
+Nodes (7): extractRealtimeModelFromBody(), extractRealtimeModelFromJSON(), extractRealtimeModelFromMultipart(), HandleOpenAIRealtimeCalls(), HandleOpenAIRealtimeClientSecrets(), maybeProxyOpenAIRealtimeWebSocket(), proxyRealtimeSockets()
 
 ### Community 47 - "Community 47"
 Cohesion: 0.25
@@ -276,7 +276,7 @@ Cohesion: 0.5
 Nodes (2): parseDispatchBool(), DispatchRuntimeConfigStore
 
 ### Community 61 - "Community 61"
-Cohesion: 0.5
+Cohesion: 0.4
 Nodes (0): 
 
 ### Community 62 - "Community 62"
@@ -343,6 +343,10 @@ Nodes (0):
 Cohesion: 1.0
 Nodes (0): 
 
+### Community 78 - "Community 78"
+Cohesion: 1.0
+Nodes (0): 
+
 ## Knowledge Gaps
 - **126 isolated node(s):** `surfaceSupport`, `providerMatrix`, `ScopeType`, `ProfileRecord`, `Loader` (+121 more)
   These have ＋1 connection - possible missing edges or undocumented components.
@@ -362,11 +366,13 @@ Nodes (0):
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 74`** (2 nodes): `loading-state.tsx`, `LoadingState()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 75`** (1 nodes): `next-env.d.ts`
+- **Thin community `Community 75`** (2 nodes): `admin-api-server.test.ts`, `assert()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 76`** (1 nodes): `tailwind.config.ts`
+- **Thin community `Community 76`** (1 nodes): `next-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 77`** (1 nodes): `console-data.ts`
+- **Thin community `Community 77`** (1 nodes): `tailwind.config.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 78`** (1 nodes): `console-data.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
@@ -383,6 +389,6 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Community 3` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 4` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
-- **Should `Community 5` be split into smaller, more focused modules?**
   _Cohesion score 0.03 - nodes in this community are weakly interconnected._
+- **Should `Community 5` be split into smaller, more focused modules?**
+  _Cohesion score 0.04 - nodes in this community are weakly interconnected._

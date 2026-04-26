@@ -10,7 +10,7 @@ import (
 func AnalyzeGatewayRequest(req domain.GatewayRequest) RequestProfile {
 	required := map[Capability]struct{}{}
 
-	analyzeMessageParts(required, req.Messages)
+	analyzeMessageParts(required, req.Protocol, req.Messages)
 	analyzeOpenAIMetadata(required, req)
 	analyzeClaudeMetadata(required, req)
 	analyzeGeminiMetadata(required, req)
@@ -69,7 +69,7 @@ func AnalyzeGatewayRequest(req domain.GatewayRequest) RequestProfile {
 	}
 }
 
-func analyzeMessageParts(required map[Capability]struct{}, messages []domain.GatewayMessage) {
+func analyzeMessageParts(required map[Capability]struct{}, protocol domain.Protocol, messages []domain.GatewayMessage) {
 	for _, message := range messages {
 		if len(message.ToolCalls) > 0 {
 			addCapability(required, CapabilityFunctionTools)
@@ -87,7 +87,7 @@ func analyzeMessageParts(required map[Capability]struct{}, messages []domain.Gat
 				addCapability(required, CapabilityMultimodalFile)
 			}
 		}
-		if firstPartMetadataKey(message.Parts, "thoughtSignature", "thought_signature") {
+		if protocol == domain.ProtocolGemini && firstPartMetadataKey(message.Parts, "thoughtSignature", "thought_signature") {
 			addCapability(required, CapabilityGeminiThoughtSignatures)
 		}
 		if hasRawMetadataKey(message.Metadata, "cache_control") {

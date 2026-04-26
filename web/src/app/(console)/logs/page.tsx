@@ -1,10 +1,10 @@
 import { ErrorState } from "@/components/shared/error-state";
+import { LocalDateTime } from "@/components/shared/local-date-time";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionCard } from "@/components/shared/section-card";
 import { StaticTable, type StaticTableColumn } from "@/components/shared/static-table";
 import {
-  formatDateTime,
   formatLatency,
   formatNumber,
   type AdminRequestLogSummary
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 type LogRow = {
   id: number;
-  time: string;
+  createdAt: string;
   model: string;
   channel: string;
   statusCode: number;
@@ -55,7 +55,7 @@ function StatusPill({ statusCode }: { statusCode: number }) {
 const columns: StaticTableColumn<LogRow>[] = [
   {
     header: "时间",
-    cell: (row) => row.time,
+    cell: (row) => <LocalDateTime value={row.createdAt} />,
     className: "whitespace-nowrap"
   },
   {
@@ -120,14 +120,18 @@ export default async function LogsPage({
       const detailSummary = parseLogDetails(log.details);
       return {
         id: log.id,
-        time: formatDateTime(log.created_at),
+        createdAt: log.created_at,
         model: log.model,
         channel: detailSummary.selectedChannel ?? log.channel,
         statusCode: log.status_code,
         statusText: isSuccessStatus(log.status_code) ? "成功" : "异常",
         latency: formatLatency(log.latency_ms),
         totalTokens: formatNumber(log.total_tokens),
-        cacheHit: log.cache_hit ? "命中" : "未命中",
+        cacheHit: detailSummary.cachedTokens && detailSummary.cachedTokens > 0
+          ? `命中 · 读 ${formatNumber(detailSummary.cachedTokens)}${detailSummary.cacheCreationTokens && detailSummary.cacheCreationTokens > 0 ? ` · 写 ${formatNumber(detailSummary.cacheCreationTokens)}` : ""}`
+          : detailSummary.cacheCreationTokens && detailSummary.cacheCreationTokens > 0
+            ? `未命中 · 写 ${formatNumber(detailSummary.cacheCreationTokens)}`
+            : log.cache_hit ? "命中" : "未命中",
         detailSummary,
         raw: log
       };

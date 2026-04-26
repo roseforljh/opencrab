@@ -383,10 +383,12 @@ func ExtractSessionAffinityKey(req *http.Request, gatewayReq domain.GatewayReque
 }
 
 type usageMetrics struct {
-	PromptTokens     int64
-	CompletionTokens int64
-	TotalTokens      int64
-	CacheHit         bool
+	PromptTokens        int64
+	CompletionTokens    int64
+	TotalTokens         int64
+	CachedTokens        int64
+	CacheCreationTokens int64
+	CacheHit            bool
 }
 
 func usageMetricsFromUnified(usage map[string]int64) usageMetrics {
@@ -405,12 +407,19 @@ func usageMetricsFromUnified(usage map[string]int64) usageMetrics {
 	if totalTokens == 0 {
 		totalTokens = promptTokens + completionTokens
 	}
-	cacheHit := usage["cached_tokens"] > 0 || usage["prompt_cache_hit_tokens"] > 0
+	cachedTokens := usage["cached_tokens"]
+	if cachedTokens == 0 {
+		cachedTokens = usage["prompt_cache_hit_tokens"]
+	}
+	cacheCreationTokens := usage["cache_creation_input_tokens"]
+	cacheHit := cachedTokens > 0
 	return usageMetrics{
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      totalTokens,
-		CacheHit:         cacheHit,
+		PromptTokens:        promptTokens,
+		CompletionTokens:    completionTokens,
+		TotalTokens:         totalTokens,
+		CachedTokens:        cachedTokens,
+		CacheCreationTokens: cacheCreationTokens,
+		CacheHit:            cacheHit,
 	}
 }
 
@@ -422,7 +431,8 @@ func extractUsageMetrics(body []byte) usageMetrics {
 			TotalTokens          int64 `json:"total_tokens"`
 			PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
 			PromptTokensDetails  struct {
-				CachedTokens int64 `json:"cached_tokens"`
+				CachedTokens        int64 `json:"cached_tokens"`
+				CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
 			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
 	}
@@ -432,12 +442,18 @@ func extractUsageMetrics(body []byte) usageMetrics {
 		if totalTokens == 0 {
 			totalTokens = payload.Usage.PromptTokens + payload.Usage.CompletionTokens
 		}
-		if payload.Usage.PromptTokens > 0 || payload.Usage.CompletionTokens > 0 || totalTokens > 0 || payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0 {
+		if payload.Usage.PromptTokens > 0 || payload.Usage.CompletionTokens > 0 || totalTokens > 0 || payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0 || payload.Usage.PromptTokensDetails.CacheCreationTokens > 0 {
+			cachedTokens := payload.Usage.PromptTokensDetails.CachedTokens
+			if cachedTokens == 0 {
+				cachedTokens = payload.Usage.PromptCacheHitTokens
+			}
 			return usageMetrics{
-				PromptTokens:     payload.Usage.PromptTokens,
-				CompletionTokens: payload.Usage.CompletionTokens,
-				TotalTokens:      totalTokens,
-				CacheHit:         payload.Usage.PromptCacheHitTokens > 0 || payload.Usage.PromptTokensDetails.CachedTokens > 0,
+				PromptTokens:        payload.Usage.PromptTokens,
+				CompletionTokens:    payload.Usage.CompletionTokens,
+				TotalTokens:         totalTokens,
+				CachedTokens:        cachedTokens,
+				CacheCreationTokens: payload.Usage.PromptTokensDetails.CacheCreationTokens,
+				CacheHit:            cachedTokens > 0,
 			}
 		}
 	}
@@ -448,7 +464,8 @@ func extractUsageMetrics(body []byte) usageMetrics {
 			OutputTokens       int64 `json:"output_tokens"`
 			TotalTokens        int64 `json:"total_tokens"`
 			InputTokensDetails struct {
-				CachedTokens int64 `json:"cached_tokens"`
+				CachedTokens        int64 `json:"cached_tokens"`
+				CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
 			} `json:"input_tokens_details"`
 		} `json:"usage"`
 	}
@@ -457,12 +474,14 @@ func extractUsageMetrics(body []byte) usageMetrics {
 		if totalTokens == 0 {
 			totalTokens = responsesPayload.Usage.InputTokens + responsesPayload.Usage.OutputTokens
 		}
-		if responsesPayload.Usage.InputTokens > 0 || responsesPayload.Usage.OutputTokens > 0 || totalTokens > 0 || responsesPayload.Usage.InputTokensDetails.CachedTokens > 0 {
+		if responsesPayload.Usage.InputTokens > 0 || responsesPayload.Usage.OutputTokens > 0 || totalTokens > 0 || responsesPayload.Usage.InputTokensDetails.CachedTokens > 0 || responsesPayload.Usage.InputTokensDetails.CacheCreationTokens > 0 {
 			return usageMetrics{
-				PromptTokens:     responsesPayload.Usage.InputTokens,
-				CompletionTokens: responsesPayload.Usage.OutputTokens,
-				TotalTokens:      totalTokens,
-				CacheHit:         responsesPayload.Usage.InputTokensDetails.CachedTokens > 0,
+				PromptTokens:        responsesPayload.Usage.InputTokens,
+				CompletionTokens:    responsesPayload.Usage.OutputTokens,
+				TotalTokens:         totalTokens,
+				CachedTokens:        responsesPayload.Usage.InputTokensDetails.CachedTokens,
+				CacheCreationTokens: responsesPayload.Usage.InputTokensDetails.CacheCreationTokens,
+				CacheHit:            responsesPayload.Usage.InputTokensDetails.CachedTokens > 0,
 			}
 		}
 	}
@@ -484,7 +503,7 @@ func extractSSEUsageMetrics(body []byte) usageMetrics {
 			continue
 		}
 		metrics := extractUsageMetricsFromEventPayload([]byte(payload))
-		if metrics.PromptTokens == 0 && metrics.CompletionTokens == 0 && metrics.TotalTokens == 0 && !metrics.CacheHit {
+		if metrics.PromptTokens == 0 && metrics.CompletionTokens == 0 && metrics.TotalTokens == 0 && metrics.CachedTokens == 0 && metrics.CacheCreationTokens == 0 && !metrics.CacheHit {
 			continue
 		}
 		seen = true
@@ -524,12 +543,20 @@ func extractUsageMetricsFromEventPayload(body []byte) usageMetrics {
 
 	var messageDelta struct {
 		Usage struct {
-			OutputTokens int64 `json:"output_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &messageDelta); err == nil {
-		if messageDelta.Usage.OutputTokens > 0 {
-			return usageMetrics{CompletionTokens: messageDelta.Usage.OutputTokens, TotalTokens: messageDelta.Usage.OutputTokens}
+		if messageDelta.Usage.OutputTokens > 0 || messageDelta.Usage.CacheReadInputTokens > 0 || messageDelta.Usage.CacheCreationInputTokens > 0 {
+			return usageMetrics{
+				CompletionTokens:    messageDelta.Usage.OutputTokens,
+				TotalTokens:         messageDelta.Usage.OutputTokens,
+				CachedTokens:        messageDelta.Usage.CacheReadInputTokens,
+				CacheCreationTokens: messageDelta.Usage.CacheCreationInputTokens,
+				CacheHit:            messageDelta.Usage.CacheReadInputTokens > 0,
+			}
 		}
 	}
 
@@ -540,7 +567,8 @@ func extractUsageMetricsFromEventPayload(body []byte) usageMetrics {
 				OutputTokens       int64 `json:"output_tokens"`
 				TotalTokens        int64 `json:"total_tokens"`
 				InputTokensDetails struct {
-					CachedTokens int64 `json:"cached_tokens"`
+					CachedTokens        int64 `json:"cached_tokens"`
+					CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
 				} `json:"input_tokens_details"`
 			} `json:"usage"`
 		} `json:"response"`
@@ -553,9 +581,11 @@ func extractUsageMetricsFromEventPayload(body []byte) usageMetrics {
 		totalTokens = responseCompleted.Response.Usage.InputTokens + responseCompleted.Response.Usage.OutputTokens
 	}
 	return usageMetrics{
-		PromptTokens:     responseCompleted.Response.Usage.InputTokens,
-		CompletionTokens: responseCompleted.Response.Usage.OutputTokens,
-		TotalTokens:      totalTokens,
-		CacheHit:         responseCompleted.Response.Usage.InputTokensDetails.CachedTokens > 0,
+		PromptTokens:        responseCompleted.Response.Usage.InputTokens,
+		CompletionTokens:    responseCompleted.Response.Usage.OutputTokens,
+		TotalTokens:         totalTokens,
+		CachedTokens:        responseCompleted.Response.Usage.InputTokensDetails.CachedTokens,
+		CacheCreationTokens: responseCompleted.Response.Usage.InputTokensDetails.CacheCreationTokens,
+		CacheHit:            responseCompleted.Response.Usage.InputTokensDetails.CachedTokens > 0,
 	}
 }

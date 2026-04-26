@@ -185,3 +185,32 @@ func TestCollapseNativeContinuationMessagesPreservesTrailingPendingToolExchange(
 		t.Fatalf("unexpected collapsed pending tool exchange: %#v", collapsed)
 	}
 }
+
+func TestApplyClaudeContextManagementSupportsClearThinkingEdits(t *testing.T) {
+	input := domain.GatewayRequest{
+		Metadata: map[string]json.RawMessage{
+			"context_management": json.RawMessage(`{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`),
+		},
+		Messages: []domain.GatewayMessage{
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "hidden", Metadata: map[string]json.RawMessage{"thoughtSignature": json.RawMessage(`"sig_1"`), "thought": json.RawMessage(`true`)}}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "visible"}}},
+		},
+	}
+
+	got := applyClaudeContextManagement(input)
+	if len(got.Messages) != 2 || len(got.Messages[0].Parts) != 0 || len(got.Messages[1].Parts) != 1 || got.Messages[1].Parts[0].Text != "visible" {
+		t.Fatalf("unexpected context-managed transcript: %#v", got.Messages)
+	}
+}
+
+func TestClearHistoricalThinkingDropsGeminiThoughtSignatureParts(t *testing.T) {
+	input := []domain.GatewayMessage{
+		{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "hidden", Metadata: map[string]json.RawMessage{"thoughtSignature": json.RawMessage(`"sig_1"`), "thought": json.RawMessage(`true`)}}}},
+		{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "visible"}}},
+	}
+
+	got := clearHistoricalThinking(input)
+	if len(got) != 2 || len(got[0].Parts) != 0 || len(got[1].Parts) != 1 || got[1].Parts[0].Text != "visible" {
+		t.Fatalf("unexpected cleared thinking transcript: %#v", got)
+	}
+}

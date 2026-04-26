@@ -476,11 +476,11 @@ func TestListRequestLogSummariesSupportsServerSideFiltering(t *testing.T) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = db.ExecContext(context.Background(), `
-INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at) VALUES
-('req-1', 'gpt-4o', 'attempt-channel', 200, 0, 0, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_attempt","selected_channel":"attempt-channel","provider":"OpenAI"}', ?),
-('req-1', 'gpt-4o', 'final-channel', 200, 12, 10, 2, 12, 0, '{}', '{}', '{"log_type":"gateway_request","selected_channel":"final-channel","provider":"OpenAI","request_path":"/v1/chat/completions","response_status":200}', ?),
-('req-2', 'claude-3-7', 'bridge-channel', 502, 4, 0, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_request","selected_channel":"bridge-channel","provider":"ClaudeProxy","request_path":"/v1/chat/completions","response_status":502,"error_message":"upstream failed"}', ?),
-('req-3', 'gpt-5.4', 'codex-test', 200, 2523, 0, 0, 0, 0, '{}', '{}', '{"provider":"OpenAI","request_path":"/api/admin/channels/3/test","test_mode":true,"message":"ok"}', ?);
+INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, request_body, response_body, details, created_at) VALUES
+('req-1', 'gpt-4o', 'attempt-channel', 200, 0, 0, 0, 0, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_attempt","selected_channel":"attempt-channel","provider":"OpenAI"}', ?),
+('req-1', 'gpt-4o', 'final-channel', 200, 12, 10, 2, 12, 5, 3, 0, '{}', '{}', '{"log_type":"gateway_request","selected_channel":"final-channel","provider":"OpenAI","request_path":"/v1/chat/completions","response_status":200,"cached_tokens":5,"cache_creation_tokens":3}', ?),
+('req-2', 'claude-3-7', 'bridge-channel', 502, 4, 0, 0, 0, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_request","selected_channel":"bridge-channel","provider":"ClaudeProxy","request_path":"/v1/chat/completions","response_status":502,"error_message":"upstream failed"}', ?),
+('req-3', 'gpt-5.4', 'codex-test', 200, 2523, 0, 0, 0, 0, 0, 0, '{}', '{}', '{"provider":"OpenAI","request_path":"/api/admin/channels/3/test","test_mode":true,"message":"ok"}', ?);
 `, now, now, now, now)
 	if err != nil {
 		t.Fatalf("seed logs: %v", err)
@@ -536,8 +536,8 @@ func TestGetRoutingOverviewIncludesRecentCursorStates(t *testing.T) {
 	_, err = db.ExecContext(context.Background(), `
 INSERT INTO routing_cursors(route_key, next_index, updated_at) VALUES
 ('gpt-4o|openai|matched|1', 2, ?);
-INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at) VALUES
-('req-1', 'gpt-4o', 'claude-a', 200, 10, 1, 2, 3, 0, '{}', '{}', '{"log_type":"gateway_request"}', ?);`, now, now)
+INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, request_body, response_body, details, created_at) VALUES
+('req-1', 'gpt-4o', 'claude-a', 200, 10, 1, 2, 3, 0, 0, 0, '{}', '{}', '{"log_type":"gateway_request"}', ?);`, now, now)
 	if err != nil {
 		t.Fatalf("seed overview: %v", err)
 	}

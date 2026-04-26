@@ -4,11 +4,12 @@ import { ChannelMix } from "@/components/shared/channel-mix";
 import { DashboardChart } from "@/components/shared/dashboard-chart";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
+import { LocalDateTime } from "@/components/shared/local-date-time";
 import { RuntimePressureGauge } from "@/components/shared/runtime-pressure-gauge";
 import { SectionCard } from "@/components/shared/section-card";
 import { StatCard } from "@/components/shared/stat-card";
 import { StaticTable, type StaticTableColumn } from "@/components/shared/static-table";
-import { formatCompactNumber, formatDateTime, formatLatency, formatNumber, formatPercent } from "@/lib/admin-api";
+import { formatCompactNumber, formatLatency, formatNumber, formatPercent } from "@/lib/admin-api";
 import { getAdminDashboardSummary } from "@/lib/admin-api-server";
 import { getDictionary } from "@/lib/i18n-shared";
 import { getServerLanguage } from "@/lib/i18n-server";
@@ -37,7 +38,7 @@ function DashboardStatusPill({ status }: { status: string }) {
 }
 
 const columns: StaticTableColumn<RecentLog>[] = [
-  { header: "时间", cell: (row) => row.time },
+  { header: "时间", cell: (row) => <LocalDateTime value={row.time} />, className: "whitespace-nowrap" },
   { header: "模型", cell: (row) => <span className="font-medium text-foreground">{row.model}</span> },
   { header: "渠道", cell: (row) => row.channel },
   { header: "状态", cell: (row) => <DashboardStatusPill status={row.status} /> },
@@ -54,7 +55,7 @@ export default async function DashboardPage() {
     const routingOverview = summary.routing_overview;
 
     const recentLogs: RecentLog[] = summary.recent_logs.map((log) => ({
-      time: formatDateTime(log.time),
+      time: log.time,
       model: log.model,
       channel: log.channel,
       status: log.status,

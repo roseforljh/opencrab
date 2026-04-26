@@ -27,7 +27,7 @@ func NewGatewayAttemptLogStore(db *sql.DB) *GatewayAttemptLogStore {
 }
 
 func (s *RequestLogStore) List(ctx context.Context) ([]domain.RequestLog, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at FROM request_logs ORDER BY id DESC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, request_body, response_body, details, created_at FROM request_logs ORDER BY id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("查询 request_logs 失败: %w", err)
 	}
@@ -37,7 +37,7 @@ func (s *RequestLogStore) List(ctx context.Context) ([]domain.RequestLog, error)
 	for rows.Next() {
 		var item domain.RequestLog
 		var cacheHit int
-		if err := rows.Scan(&item.ID, &item.RequestID, &item.Model, &item.Channel, &item.StatusCode, &item.LatencyMs, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &cacheHit, &item.RequestBody, &item.ResponseBody, &item.Details, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.RequestID, &item.Model, &item.Channel, &item.StatusCode, &item.LatencyMs, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &item.CachedTokens, &item.CacheCreationTokens, &cacheHit, &item.RequestBody, &item.ResponseBody, &item.Details, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("读取 request_log 失败: %w", err)
 		}
 		item.CacheHit = cacheHit == 1
@@ -53,7 +53,7 @@ func (s *RequestLogStore) List(ctx context.Context) ([]domain.RequestLog, error)
 func (s *RequestLogStore) Create(ctx context.Context, item domain.RequestLog) error {
 	_, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, request_body, response_body, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.RequestID,
 		item.Model,
 		item.Channel,
@@ -62,6 +62,8 @@ func (s *RequestLogStore) Create(ctx context.Context, item domain.RequestLog) er
 		item.PromptTokens,
 		item.CompletionTokens,
 		item.TotalTokens,
+		item.CachedTokens,
+		item.CacheCreationTokens,
 		boolToInt(item.CacheHit),
 		item.RequestBody,
 		item.ResponseBody,

@@ -522,6 +522,30 @@ func TestResponsesCodecStripsClaudeOnlyContentPartMetadata(t *testing.T) {
 	}
 }
 
+func TestResponsesCodecStripsCacheControlFromPreservedInputItems(t *testing.T) {
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{{
+			Role: "user",
+			Parts: []domain.UnifiedPart{{
+				Type:      "mystery_block",
+				InputItem: json.RawMessage(`{"type":"mystery_block","cache_control":{"type":"ephemeral"},"foo":1}`),
+			}},
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request with preserved input item: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, `"cache_control"`) {
+		t.Fatalf("cache_control should be stripped from preserved responses input items: %s", body)
+	}
+	if !strings.Contains(body, `"type":"mystery_block"`) || !strings.Contains(body, `"foo":1`) {
+		t.Fatalf("expected preserved input item payload to survive: %s", body)
+	}
+}
+
 func TestResponsesCodecFlattensImageURLObjectForInputImage(t *testing.T) {
 	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
 		Protocol: domain.ProtocolOpenAI,
@@ -664,6 +688,39 @@ func TestResponsesCodecPreservesFunctionCallInputItemShape(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"type":"function_call"`) || !strings.Contains(string(encoded), `"status":"completed"`) {
 		t.Fatalf("unexpected re-encoded function call item: %s", string(encoded))
+	}
+}
+
+func TestResponsesCodecStripsCacheControlFromPreservedOutputItems(t *testing.T) {
+	decodedResp, err := DecodeOpenAIResponsesResponse([]byte(`{
+		"id":"resp_1",
+		"object":"response",
+		"status":"completed",
+		"model":"gpt-5.4",
+		"output":[
+			{"id":"fc_1","type":"function_call","call_id":"fc_1","name":"opencode","arguments":"{\"prompt\":\"ping\"}","status":"completed","cache_control":{"type":"ephemeral"}}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode responses response: %v", err)
+	}
+	if len(decodedResp.Message.ToolCalls) != 1 || len(decodedResp.Message.ToolCalls[0].OutputItem) == 0 {
+		t.Fatalf("expected preserved function call output item: %+v", decodedResp.Message.ToolCalls)
+	}
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{{Role: "assistant", ToolCalls: decodedResp.Message.ToolCalls}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request from preserved output item: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, `"cache_control"`) {
+		t.Fatalf("cache_control should be stripped from preserved responses output items: %s", body)
+	}
+	if !strings.Contains(body, `"type":"function_call"`) || !strings.Contains(body, `"status":"completed"`) {
+		t.Fatalf("expected preserved function call output item payload to survive: %s", body)
 	}
 }
 
@@ -1084,8 +1141,161 @@ func TestEncodeOpenAIResponsesRequestStripsToolReferenceFromToolOutput(t *testin
 	if strings.Contains(body, `"tool_reference"`) {
 		t.Fatalf("tool_reference should be stripped from responses tool output: %s", body)
 	}
-	if !strings.Contains(body, `"output_text"`) {
-		t.Fatalf("expected supported tool output content to survive: %s", body)
+	if strings.Contains(body, `"output_text"`) {
+		t.Fatalf("tool output content must not remain output_text: %s", body)
+	}
+	if !strings.Contains(body, `"input_text"`) {
+		t.Fatalf("expected supported tool output content to survive as input_text: %s", body)
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestFlattensStructuredToolOutputArrays(t *testing.T) {
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "old question"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "Read", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", Parts: []domain.UnifiedPart{
+				{Type: "tool_result", NativePayload: json.RawMessage(`{"content":[{"type":"output_text","text":"done"}]}`)},
+				{Type: "tool_result", NativePayload: json.RawMessage(`{"content":[{"type":"output_text","text":"more"}]}`)},
+			}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, `"output":[[`) {
+		t.Fatalf("structured tool output should be flattened: %s", body)
+	}
+	for _, snippet := range []string{`"type":"function_call_output"`, `"call_id":"call_1"`, `"text":"done"`, `"text":"more"`} {
+		if !strings.Contains(body, snippet) {
+			t.Fatalf("expected %s in encoded responses payload: %s", snippet, body)
+		}
+	}
+	if strings.Contains(body, `"type":"output_text"`) {
+		t.Fatalf("tool output items must not encode as output_text: %s", body)
+	}
+	if !strings.Contains(body, `"type":"input_text"`) {
+		t.Fatalf("tool output items should encode as input_text: %s", body)
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestKeepsSingleStructuredToolOutputAsArray(t *testing.T) {
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "old question"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "Read", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", Parts: []domain.UnifiedPart{
+				{Type: "tool_result", NativePayload: json.RawMessage(`{"content":[{"type":"output_text","text":"done"}]}`)},
+			}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, `"output":{"type":"input_text"`) {
+		t.Fatalf("single structured tool output should stay array-shaped: %s", body)
+	}
+	if !strings.Contains(body, `"output":[{"text":"done","type":"input_text"}]`) {
+		t.Fatalf("expected single structured output array in payload: %s", body)
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestPreservesTrailingToolOutputAfterReminderOnlyText(t *testing.T) {
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "old question"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "Read", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", Parts: []domain.UnifiedPart{{
+				Type: "tool_result",
+				Text: "<system-reminder>Warning: the file exists but is shorter than the provided offset (188). The file has 188 lines.</system-reminder>",
+				NativePayload: json.RawMessage(`{"content":"<system-reminder>Warning: the file exists but is shorter than the provided offset (188). The file has 188 lines.</system-reminder>","tool_use_id":"call_1","type":"tool_result"}`),
+				Metadata: map[string]json.RawMessage{
+					"content": json.RawMessage(`"<system-reminder>Warning: the file exists but is shorter than the provided offset (188). The file has 188 lines.</system-reminder>"`),
+					"tool_use_id": json.RawMessage(`"call_1"`),
+				},
+			}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"type":"function_call_output"`) || !strings.Contains(body, `"call_id":"call_1"`) {
+		t.Fatalf("expected trailing tool output to survive projection: %s", body)
+	}
+}
+
+func TestEncodeOpenAIResponsesRequestNormalizesStructuredToolOutputTextType(t *testing.T) {
+	req := domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: []domain.UnifiedMessage{
+			{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "old question"}}},
+			{Role: "assistant", ToolCalls: []domain.UnifiedToolCall{{ID: "call_1", Name: "Read", Arguments: json.RawMessage(`{}`)}}},
+			{Role: "tool", Parts: []domain.UnifiedPart{{
+				Type:          "tool_result",
+				NativePayload: json.RawMessage(`{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":"Launching skill: pua"}]}`),
+			}}, Metadata: map[string]json.RawMessage{"tool_call_id": json.RawMessage(`"call_1"`)}},
+		},
+	}
+	data, err := EncodeOpenAIResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"text"}]`) || strings.Contains(body, `"type":"text","text":"Launching skill: pua"`) {
+		t.Fatalf("structured tool output text type should be normalized for responses: %s", body)
+	}
+	if strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"output_text"}]`) {
+		t.Fatalf("tool output text blocks must not become output_text: %s", body)
+	}
+	if !strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"input_text"}]`) {
+		t.Fatalf("expected structured tool output text to become input_text: %s", body)
+	}
+}
+
+func TestClaudeToolResultBridgeToResponsesNormalizesTextBlocks(t *testing.T) {
+	decoded, err := DecodeClaudeChatRequest([]byte(`{
+		"model":"claude-sonnet",
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"Read","input":{}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":"Launching skill: pua"}]}]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("decode claude request: %v", err)
+	}
+	data, err := EncodeOpenAIResponsesRequest(domain.UnifiedChatRequest{
+		Protocol: domain.ProtocolOpenAI,
+		Model:    "gpt-5.4",
+		Messages: decoded.Messages,
+	}, nil)
+	if err != nil {
+		t.Fatalf("encode responses request: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"type":"function_call_output"`) || !strings.Contains(body, `"call_id":"call_1"`) {
+		t.Fatalf("expected bridged function_call_output in responses payload: %s", body)
+	}
+	if strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"text"}]`) || strings.Contains(body, `"type":"text","text":"Launching skill: pua"`) {
+		t.Fatalf("claude tool_result text block should not leak as responses text type: %s", body)
+	}
+	if strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"output_text"}]`) {
+		t.Fatalf("claude tool_result text block must not become output_text: %s", body)
+	}
+	if !strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"input_text"}]`) {
+		t.Fatalf("expected claude tool_result text block to become input_text: %s", body)
 	}
 }
 

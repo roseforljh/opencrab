@@ -57,3 +57,53 @@ func TestRenderClientResponseGeminiStream(t *testing.T) {
 		t.Fatalf("unexpected gemini stream: headers=%#v body=%s", headers, string(body))
 	}
 }
+
+func TestBuildExecutorPayloadBridgesClaudeToolResultToResponsesInputText(t *testing.T) {
+	gatewayReq, err := NormalizeGatewayRequest(
+		Surface{Protocol: domain.ProtocolClaude, Operation: domain.ProtocolOperationClaudeMessages},
+		[]byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"tools":[{"name":"Read","input_schema":{"type":"object"}}],"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"Read","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":"Launching skill: pua"}]}]}]}`),
+		NormalizeOptions{},
+	)
+	if err != nil {
+		t.Fatalf("normalize claude request: %v", err)
+	}
+	unified := domain.UnifiedChatRequest{
+		Protocol: gatewayReq.Protocol,
+		Model:    "gpt-5.4",
+		Stream:   gatewayReq.Stream,
+		Tools:    gatewayReq.Tools,
+		Metadata: gatewayReq.Metadata,
+	}
+	for _, message := range gatewayReq.Messages {
+		unified.Messages = append(unified.Messages, domain.UnifiedMessage{
+			Role:      message.Role,
+			Parts:     message.Parts,
+			ToolCalls: message.ToolCalls,
+			InputItem: message.InputItem,
+			Metadata:  message.Metadata,
+		})
+	}
+	payload, err := BuildExecutorPayload(
+		Surface{Protocol: domain.ProtocolOpenAI, Operation: domain.ProtocolOperationOpenAIResponses},
+		unified,
+		gatewayReq.Session,
+		"https://api.example.com/v1",
+		"gpt-5.4",
+	)
+	if err != nil {
+		t.Fatalf("build responses payload: %v", err)
+	}
+	body := string(payload.Body)
+	if !strings.Contains(body, `"type":"function_call_output"`) || !strings.Contains(body, `"call_id":"call_1"`) {
+		t.Fatalf("expected bridged function_call_output in responses payload: %s", body)
+	}
+	if strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"text"}]`) || strings.Contains(body, `"type":"text","text":"Launching skill: pua"`) {
+		t.Fatalf("claude tool_result text block should not leak as responses text type: %s", body)
+	}
+	if strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"output_text"}]`) {
+		t.Fatalf("claude tool_result text block must not become output_text: %s", body)
+	}
+	if !strings.Contains(body, `"output":[{"text":"Launching skill: pua","type":"input_text"}]`) {
+		t.Fatalf("expected claude tool_result text block to become input_text: %s", body)
+	}
+}

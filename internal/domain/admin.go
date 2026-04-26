@@ -49,35 +49,39 @@ type ModelRoute struct {
 }
 
 type RequestLog struct {
-	ID               int64  `json:"id"`
-	RequestID        string `json:"request_id"`
-	Model            string `json:"model"`
-	Channel          string `json:"channel"`
-	StatusCode       int    `json:"status_code"`
-	LatencyMs        int64  `json:"latency_ms"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
-	TotalTokens      int64  `json:"total_tokens"`
-	CacheHit         bool   `json:"cache_hit"`
-	RequestBody      string `json:"request_body"`
-	ResponseBody     string `json:"response_body"`
-	Details          string `json:"details"`
-	CreatedAt        string `json:"created_at"`
+	ID                  int64  `json:"id"`
+	RequestID           string `json:"request_id"`
+	Model               string `json:"model"`
+	Channel             string `json:"channel"`
+	StatusCode          int    `json:"status_code"`
+	LatencyMs           int64  `json:"latency_ms"`
+	PromptTokens        int64  `json:"prompt_tokens"`
+	CompletionTokens    int64  `json:"completion_tokens"`
+	TotalTokens         int64  `json:"total_tokens"`
+	CachedTokens        int64  `json:"cached_tokens"`
+	CacheCreationTokens int64  `json:"cache_creation_tokens"`
+	CacheHit            bool   `json:"cache_hit"`
+	RequestBody         string `json:"request_body"`
+	ResponseBody        string `json:"response_body"`
+	Details             string `json:"details"`
+	CreatedAt           string `json:"created_at"`
 }
 
 type RequestLogSummary struct {
-	ID               int64  `json:"id"`
-	RequestID        string `json:"request_id"`
-	Model            string `json:"model"`
-	Channel          string `json:"channel"`
-	StatusCode       int    `json:"status_code"`
-	LatencyMs        int64  `json:"latency_ms"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
-	TotalTokens      int64  `json:"total_tokens"`
-	CacheHit         bool   `json:"cache_hit"`
-	Details          string `json:"details"`
-	CreatedAt        string `json:"created_at"`
+	ID                  int64  `json:"id"`
+	RequestID           string `json:"request_id"`
+	Model               string `json:"model"`
+	Channel             string `json:"channel"`
+	StatusCode          int    `json:"status_code"`
+	LatencyMs           int64  `json:"latency_ms"`
+	PromptTokens        int64  `json:"prompt_tokens"`
+	CompletionTokens    int64  `json:"completion_tokens"`
+	TotalTokens         int64  `json:"total_tokens"`
+	CachedTokens        int64  `json:"cached_tokens"`
+	CacheCreationTokens int64  `json:"cache_creation_tokens"`
+	CacheHit            bool   `json:"cache_hit"`
+	Details             string `json:"details"`
+	CreatedAt           string `json:"created_at"`
 }
 
 type RequestLogListFilter struct {

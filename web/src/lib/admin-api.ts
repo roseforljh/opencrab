@@ -56,6 +56,8 @@ export type AdminRequestLogSummary = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cached_tokens: number;
+  cache_creation_tokens: number;
   cache_hit: boolean;
   details: string;
   created_at: string;
@@ -77,6 +79,8 @@ export type AdminRequestLogDetail = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cached_tokens: number;
+  cache_creation_tokens: number;
   cache_hit: boolean;
   request_body: string;
   response_body: string;

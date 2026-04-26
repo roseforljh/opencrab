@@ -108,6 +108,29 @@ func TestEvaluateGatewayRouteAllowsClaudeThinkingOnOpenAI(t *testing.T) {
 	}
 }
 
+func TestEvaluateGatewayRouteAllowsClaudeThoughtSignatureHistoryOnOpenAI(t *testing.T) {
+	result := EvaluateGatewayRoute(
+		context.Background(),
+		nil,
+		domain.GatewayRequest{
+			Protocol:  domain.ProtocolClaude,
+			Operation: domain.ProtocolOperationClaudeMessages,
+			Model:     "m",
+			Messages: []domain.GatewayMessage{
+				{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "hidden", Metadata: map[string]json.RawMessage{"thoughtSignature": json.RawMessage(`"sig_1"`), "thought": json.RawMessage(`true`)}}}},
+				{Role: "user", Parts: []domain.UnifiedPart{{Type: "text", Text: "ping"}}},
+			},
+		},
+		domain.GatewayRoute{
+			ModelAlias: "m",
+			Channel:    domain.UpstreamChannel{Name: "openai-a", Provider: "openai"},
+		},
+	)
+	if !result.Executable {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
 func TestEvaluateGatewayRouteRejectsResponsesSessionOnNonOpenAI(t *testing.T) {
 	result := EvaluateGatewayRoute(
 		context.Background(),

@@ -32,6 +32,8 @@ export type LogDetailsSummary = {
   affinityKey?: string;
   requestPath?: string;
   responseStatus?: number;
+  cachedTokens?: number;
+  cacheCreationTokens?: number;
   visitedAliases?: string[];
   skips?: { reason?: string; channel?: string; cooldown_until?: string }[];
 };
@@ -65,6 +67,8 @@ export function parseLogDetails(value: string): LogDetailsSummary {
       affinityKey: typeof payload.affinity_key === "string" ? payload.affinity_key : undefined,
       requestPath: typeof payload.request_path === "string" ? payload.request_path : undefined,
       responseStatus: typeof payload.response_status === "number" ? payload.response_status : undefined,
+      cachedTokens: typeof payload.cached_tokens === "number" ? payload.cached_tokens : undefined,
+      cacheCreationTokens: typeof payload.cache_creation_tokens === "number" ? payload.cache_creation_tokens : undefined,
       visitedAliases: Array.isArray(payload.visited_aliases) ? payload.visited_aliases.filter((item): item is string => typeof item === "string") : undefined,
       skips: Array.isArray(payload.skips)
         ? payload.skips.map((item) => (typeof item === "object" && item !== null ? item as { reason?: string; channel?: string; cooldown_until?: string } : {}))

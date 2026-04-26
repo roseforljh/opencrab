@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { LocalDateTime } from "@/components/shared/local-date-time";
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { Button } from "@/components/ui/button";
-import { formatDateTime, formatNumber, type AdminRequestLogDetail, type AdminRequestLogSummary } from "@/lib/admin-api";
+import { formatNumber, type AdminRequestLogDetail, type AdminRequestLogSummary } from "@/lib/admin-api";
 import { buildRoutingNarrative, parseLogDetails } from "@/app/(console)/logs/log-utils";
 
 function formatJsonBlock(value: string) {
@@ -124,7 +125,11 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
   return (
     <DetailDrawer
       title={`请求详情 · ${row.request_id}`}
-      description={`${formatDateTime(row.created_at)} · ${row.model} · ${selectedChannel} · ${statusText}`}
+      description={
+        <>
+          <LocalDateTime value={row.created_at} /> · {row.model} · {selectedChannel} · {statusText}
+        </>
+      }
       triggerLabel="查看详情"
       trigger={
         <Button
@@ -166,6 +171,14 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
             <div>
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">缓存命中</p>
               <p className="mt-1">{detailRow.cache_hit ? "是" : "否"}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">缓存读取 Tokens</p>
+              <p className="mt-1">{formatNumber(details.cachedTokens ?? 0)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">缓存创建 Tokens</p>
+              <p className="mt-1">{formatNumber(details.cacheCreationTokens ?? 0)}</p>
             </div>
           </div>
 
@@ -249,7 +262,7 @@ export function LogDetailTrigger({ row }: { row: AdminRequestLogSummary }) {
                 {details.skips.map((skip, index) => (
                   <div key={`${skip.channel ?? "skip"}-${index}`} className="rounded-lg border border-border/50 bg-background/80 px-3 py-2">
                     <div>{skip.channel ?? "未知渠道"} · {skip.reason ?? "未知原因"}</div>
-                    {skip.cooldown_until ? <div className="mt-1 text-xs text-muted-foreground">恢复时间: {formatDateTime(skip.cooldown_until)}</div> : null}
+                    {skip.cooldown_until ? <div className="mt-1 text-xs text-muted-foreground">恢复时间: <LocalDateTime value={skip.cooldown_until} /></div> : null}
                   </div>
                 ))}
               </div>

@@ -770,6 +770,44 @@ func TestClaudeContextManagementClearsToolHistoryBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestClaudeContextManagementClearsThoughtSignatureHistoryBeforeExecution(t *testing.T) {
+	store := NewMemoryResponseSessionStore(16)
+	store.Put(ResponseSession{
+		ResponseID: "resp_ctx_sig_1",
+		Model:      "claude-sonnet",
+		Messages: []domain.GatewayMessage{
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "hidden", Metadata: map[string]json.RawMessage{"thoughtSignature": json.RawMessage(`"sig_1"`), "thought": json.RawMessage(`true`)}}}},
+			{Role: "assistant", Parts: []domain.UnifiedPart{{Type: "text", Text: "visible"}}},
+		},
+		UpdatedAt: time.Now(),
+	})
+
+	var captured domain.GatewayRequest
+	router := NewRouter(Dependencies{
+		VerifyAPIKey:     func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
+		ResponseSessions: store,
+		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
+			captured = req
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test"}`)}}, nil
+		},
+		CopyProxy:  copyProxyForTest,
+		CopyStream: copyStreamForTest,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(`{"model":"gpt-4.1","input":[{"role":"user","content":[{"type":"input_text","text":"ping"}]}],"previous_response_id":"resp_ctx_sig_1","context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`))
+	req.Header.Set("Authorization", "Bearer sk-opencrab-test")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	}
+	if len(captured.Messages) != 1 {
+		t.Fatalf("native responses continuation should not replay stored history: %#v", captured.Messages)
+	}
+	if captured.Messages[0].Role != "user" || len(captured.Messages[0].Parts) != 1 || captured.Messages[0].Parts[0].Text != "ping" {
+		t.Fatalf("unexpected request payload after thought cleanup: %#v", captured.Messages)
+	}
+}
+
 func TestGeminiCachedContentCreateAndUse(t *testing.T) {
 	store := NewMemoryResponseSessionStore(16)
 	var captured domain.GatewayRequest
@@ -1222,7 +1260,7 @@ func TestProxyClaudeMessagesSynthesizesClaudeStreamFromOpenAIResponse(t *testing
 		Logger:       logger,
 		VerifyAPIKey: func(ctx context.Context, rawKey string) (bool, error) { return true, nil },
 		ExecuteGateway: func(ctx context.Context, requestID string, req domain.GatewayRequest) (*domain.ExecutionResult, error) {
-			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`)}, Metadata: &domain.GatewayExecutionMetadata{DegradedSuccess: false, AttemptCount: 1, SelectedChannel: "openai-upstream"}}, nil
+			return &domain.ExecutionResult{Response: &domain.ProxyResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}, "X-Opencrab-Provider": {"openai"}}, Body: []byte(`{"id":"chatcmpl-test","model":"gpt-4.1","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"pong"}}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3,"prompt_tokens_details":{"cached_tokens":7,"cache_creation_input_tokens":11}}}`)}, Metadata: &domain.GatewayExecutionMetadata{DegradedSuccess: false, AttemptCount: 1, SelectedChannel: "openai-upstream"}}, nil
 		},
 		CreateRequestLog: func(ctx context.Context, item domain.RequestLog) error {
 			logged = item

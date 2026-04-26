@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import type {
   AdminApiKey,
@@ -18,6 +19,16 @@ const ADMIN_API_BASE = process.env.OPENCRAB_ADMIN_API_BASE ?? "http://127.0.0.1:
 type ListResponse<T> = {
   items: T[];
 };
+
+export function resolveAdminFetchFailure(status: number, message: string) {
+  if (status === 401) {
+    return { redirectTo: "/login", message };
+  }
+  if (status === 428) {
+    return { redirectTo: "/init", message };
+  }
+  return { redirectTo: null, message };
+}
 
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const cookieStore = await cookies();
@@ -42,7 +53,11 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `请求失败: ${response.status}`);
+    const failure = resolveAdminFetchFailure(response.status, message || `请求失败: ${response.status}`);
+    if (failure.redirectTo) {
+      redirect(failure.redirectTo);
+    }
+    throw new Error(failure.message);
   }
 
   return response.json() as Promise<T>;

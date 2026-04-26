@@ -198,7 +198,7 @@ func ListRequestLogSummaries(ctx context.Context, db *sql.DB, filter domain.Requ
 	if limit <= 0 {
 		limit = 200
 	}
-	logs, err := listRequestLogSummaries(ctx, db, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, details, created_at FROM request_logs ORDER BY created_at DESC LIMIT ?`, limit)
+	logs, err := listRequestLogSummaries(ctx, db, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, details, created_at FROM request_logs ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return domain.RequestLogSummaryListResult{}, err
 	}
@@ -209,7 +209,7 @@ func ListRequestLogSummariesSince(ctx context.Context, db *sql.DB, since time.Ti
 	if limit <= 0 {
 		limit = 1000
 	}
-	return listRequestLogSummaries(ctx, db, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, details, created_at FROM request_logs WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?`, since.UTC().Format(time.RFC3339), limit)
+	return listRequestLogSummaries(ctx, db, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, details, created_at FROM request_logs WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?`, since.UTC().Format(time.RFC3339), limit)
 }
 
 func listRequestLogSummaries(ctx context.Context, db *sql.DB, query string, args ...any) ([]domain.RequestLogSummary, error) {
@@ -223,7 +223,7 @@ func listRequestLogSummaries(ctx context.Context, db *sql.DB, query string, args
 	for rows.Next() {
 		var item domain.RequestLogSummary
 		var cacheHit int
-		if err := rows.Scan(&item.ID, &item.RequestID, &item.Model, &item.Channel, &item.StatusCode, &item.LatencyMs, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &cacheHit, &item.Details, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.RequestID, &item.Model, &item.Channel, &item.StatusCode, &item.LatencyMs, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &item.CachedTokens, &item.CacheCreationTokens, &cacheHit, &item.Details, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("读取 request_log 摘要失败: %w", err)
 		}
 		item.CacheHit = cacheHit == 1
@@ -240,8 +240,8 @@ func listRequestLogSummaries(ctx context.Context, db *sql.DB, query string, args
 func GetRequestLogDetail(ctx context.Context, db *sql.DB, id int64) (domain.RequestLog, error) {
 	var item domain.RequestLog
 	var cacheHit int
-	err := db.QueryRowContext(ctx, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at FROM request_logs WHERE id = ? LIMIT 1`, id).
-		Scan(&item.ID, &item.RequestID, &item.Model, &item.Channel, &item.StatusCode, &item.LatencyMs, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &cacheHit, &item.RequestBody, &item.ResponseBody, &item.Details, &item.CreatedAt)
+	err := db.QueryRowContext(ctx, `SELECT id, request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, request_body, response_body, details, created_at FROM request_logs WHERE id = ? LIMIT 1`, id).
+		Scan(&item.ID, &item.RequestID, &item.Model, &item.Channel, &item.StatusCode, &item.LatencyMs, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &item.CachedTokens, &item.CacheCreationTokens, &cacheHit, &item.RequestBody, &item.ResponseBody, &item.Details, &item.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return domain.RequestLog{}, fmt.Errorf("请求日志不存在")
@@ -1538,7 +1538,7 @@ func decodeScopeList(value string) []string {
 func CreateRequestLog(ctx context.Context, db *sql.DB, item domain.RequestLog) error {
 	_, err := db.ExecContext(
 		ctx,
-		`INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cache_hit, request_body, response_body, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO request_logs(request_id, model, channel, status_code, latency_ms, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_tokens, cache_hit, request_body, response_body, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.RequestID,
 		item.Model,
 		item.Channel,
@@ -1547,6 +1547,8 @@ func CreateRequestLog(ctx context.Context, db *sql.DB, item domain.RequestLog) e
 		item.PromptTokens,
 		item.CompletionTokens,
 		item.TotalTokens,
+		item.CachedTokens,
+		item.CacheCreationTokens,
 		boolToInt(item.CacheHit),
 		item.RequestBody,
 		item.ResponseBody,

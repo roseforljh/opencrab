@@ -16,7 +16,7 @@ export function DetailDrawer({
   children
 }: {
   title: string;
-  description: string;
+  description: ReactNode;
   triggerLabel: string;
   trigger?: ReactNode;
   open?: boolean;

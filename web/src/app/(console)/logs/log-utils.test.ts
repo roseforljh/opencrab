@@ -46,7 +46,9 @@ const requestLog: AdminRequestLogSummary = {
     request_path: "/v1/chat/completions",
     provider: "OpenAI",
     upstream_model: "gpt-5.4",
-    response_status: 200
+    response_status: 200,
+    cached_tokens: 512,
+    cache_creation_tokens: 128
   }),
   created_at: "2026-04-18T17:19:48Z"
 };

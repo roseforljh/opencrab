@@ -622,7 +622,7 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 			if err := json.Unmarshal(message.InputItem, &item); err != nil {
 				return nil, err
 			}
-			return []any{item}, nil
+			return []any{sanitizeResponsesPreservedItem(item)}, nil
 		}
 		output, err := encodeResponsesToolOutput(message)
 		if err != nil {
@@ -642,7 +642,7 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 			if err := json.Unmarshal(part.InputItem, &item); err != nil {
 				return nil, err
 			}
-			items = append(items, item)
+			items = append(items, sanitizeResponsesPreservedItem(item))
 		}
 	}
 	if len(message.Parts) > 0 {
@@ -664,7 +664,7 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 			if err := json.Unmarshal(call.InputItem, &item); err != nil {
 				return nil, err
 			}
-			items = append(items, item)
+			items = append(items, sanitizeResponsesPreservedItem(item))
 			continue
 		}
 		callID := call.ID
@@ -680,7 +680,7 @@ func encodeResponsesInputItems(message domain.UnifiedMessage) ([]any, error) {
 		if len(call.Metadata) > 0 {
 			mergeRawFields(item, call.Metadata)
 		}
-		items = append(items, item)
+		items = append(items, sanitizeResponsesPreservedItem(item))
 	}
 	if len(items) == 0 {
 		return nil, fmt.Errorf("Responses 消息不能为空")
@@ -720,11 +720,17 @@ func encodeResponsesToolOutput(message domain.UnifiedMessage) (any, error) {
 		return []any{}, nil
 	}
 	values = sanitizeResponsesToolOutputValues(values)
+	values = flattenResponsesToolOutputSegments(values)
 	if len(values) == 0 {
 		return []any{}, nil
 	}
 	if len(values) == 1 {
-		return values[0], nil
+		switch values[0].(type) {
+		case map[string]any:
+			return []any{values[0]}, nil
+		default:
+			return values[0], nil
+		}
 	}
 	allStrings := true
 	texts := make([]string, 0, len(values))
@@ -753,6 +759,48 @@ func sanitizeResponsesToolOutputValues(values []any) []any {
 	return cleaned
 }
 
+func flattenResponsesToolOutputSegments(values []any) []any {
+	flattened := make([]any, 0, len(values))
+	for _, value := range values {
+		items, ok := value.([]any)
+		if !ok {
+			flattened = append(flattened, value)
+			continue
+		}
+		flattened = append(flattened, items...)
+	}
+	return flattened
+}
+
+func sanitizeResponsesPreservedItem(item map[string]any) map[string]any {
+	if len(item) == 0 {
+		return item
+	}
+	cleaned := make(map[string]any, len(item))
+	for key, value := range item {
+		if key == "cache_control" {
+			continue
+		}
+		cleaned[key] = sanitizeResponsesPreservedValue(value)
+	}
+	return cleaned
+}
+
+func sanitizeResponsesPreservedValue(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, sanitizeResponsesPreservedValue(item))
+		}
+		return items
+	case map[string]any:
+		return sanitizeResponsesPreservedItem(typed)
+	default:
+		return value
+	}
+}
+
 func sanitizeResponsesToolOutputValue(value any) (any, bool) {
 	switch typed := value.(type) {
 	case []any:
@@ -765,7 +813,9 @@ func sanitizeResponsesToolOutputValue(value any) (any, bool) {
 		}
 		return items, true
 	case map[string]any:
-		if rawType, _ := typed["type"].(string); strings.TrimSpace(strings.ToLower(rawType)) == "tool_reference" {
+		rawType, _ := typed["type"].(string)
+		normalizedType := strings.TrimSpace(strings.ToLower(rawType))
+		if normalizedType == "tool_reference" {
 			return nil, false
 		}
 		cleaned := map[string]any{}
@@ -774,6 +824,9 @@ func sanitizeResponsesToolOutputValue(value any) (any, bool) {
 			if ok {
 				cleaned[key] = sanitized
 			}
+		}
+		if normalizedType == "text" || normalizedType == "input_text" || normalizedType == "output_text" {
+			cleaned["type"] = "input_text"
 		}
 		return cleaned, true
 	default:
@@ -1148,7 +1201,7 @@ func encodeResponsesOutput(message domain.UnifiedMessage) ([]map[string]any, str
 				if err := json.Unmarshal(call.OutputItem, &item); err != nil {
 					return nil, "", err
 				}
-				items = append(items, item)
+				items = append(items, sanitizeResponsesPreservedItem(item))
 				continue
 			}
 			callID := call.ID

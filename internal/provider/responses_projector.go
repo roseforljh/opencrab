@@ -54,6 +54,10 @@ func normalizeResponsesTextPart(part domain.UnifiedPart) (domain.UnifiedPart, bo
 	}
 	text := sanitizeResponsesText(cloned.Text)
 	if strings.TrimSpace(text) == "" {
+		if len(cloned.NativePayload) > 0 || len(cloned.InputItem) > 0 || len(cloned.OutputItem) > 0 {
+			cloned.Text = ""
+			return cloned, true
+		}
 		return domain.UnifiedPart{}, false
 	}
 	cloned.Text = text
