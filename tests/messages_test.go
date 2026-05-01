@@ -258,7 +258,7 @@ func TestMessagesFallsBackToOpenAIJSON(t *testing.T) {
 	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
 	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
 
-	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"system":"You are helpful","tools":[{"name":"lookup","description":"Look up data","input_schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}],"tool_choice":{"type":"tool","name":"lookup"},"messages":[{"role":"user","content":[{"type":"text","text":"Need weather"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"lookup","input":{"city":"Paris"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"Paris is sunny"}]}]}`
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"system":"You are helpful","stop_sequences":["END","DONE"],"temperature":0.25,"top_p":0.8,"tools":[{"name":"lookup","description":"Look up data","input_schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}],"tool_choice":{"type":"tool","name":"lookup"},"messages":[{"role":"user","content":[{"type":"text","text":"Need weather"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"lookup","input":{"city":"Paris"}}]},{"role":"user","content":[{"type":"text","text":"before result"},{"type":"tool_result","tool_use_id":"toolu_1","content":"Paris is sunny"},{"type":"text","text":"after result"}]}]}`
 	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
 	defer response.Body.Close()
 
@@ -278,6 +278,16 @@ func TestMessagesFallsBackToOpenAIJSON(t *testing.T) {
 	if receivedBody["max_tokens"] == nil {
 		t.Fatalf("expected max_tokens in fallback body")
 	}
+	if receivedBody["temperature"] != 0.25 {
+		t.Fatalf("expected mapped temperature, got %#v", receivedBody["temperature"])
+	}
+	if receivedBody["top_p"] != 0.8 {
+		t.Fatalf("expected mapped top_p, got %#v", receivedBody["top_p"])
+	}
+	stop, ok := receivedBody["stop"].([]any)
+	if !ok || len(stop) != 2 || stop[0] != "END" || stop[1] != "DONE" {
+		t.Fatalf("expected mapped stop sequences, got %#v", receivedBody["stop"])
+	}
 	tools, ok := receivedBody["tools"].([]any)
 	if !ok || len(tools) != 1 {
 		t.Fatalf("expected one mapped tool, got %#v", receivedBody["tools"])
@@ -287,14 +297,26 @@ func TestMessagesFallsBackToOpenAIJSON(t *testing.T) {
 		t.Fatalf("expected mapped tool_choice, got %#v", receivedBody["tool_choice"])
 	}
 	messages, ok := receivedBody["messages"].([]any)
-	if !ok || len(messages) != 4 {
-		t.Fatalf("expected four mapped openai messages, got %#v", receivedBody["messages"])
+	if !ok || len(messages) != 6 {
+		t.Fatalf("expected six mapped openai messages, got %#v", receivedBody["messages"])
 	}
 	if first, ok := messages[0].(map[string]any); !ok || first["role"] != "system" {
 		t.Fatalf("expected first mapped message to be system, got %#v", messages[0])
 	}
-	if fourth, ok := messages[3].(map[string]any); !ok || fourth["role"] != "tool" {
-		t.Fatalf("expected tool_result to map to tool role, got %#v", messages[3])
+	if second, ok := messages[1].(map[string]any); !ok || second["role"] != "user" || second["content"] != "Need weather" {
+		t.Fatalf("expected initial user text to stay ordered, got %#v", messages[1])
+	}
+	if third, ok := messages[2].(map[string]any); !ok || third["role"] != "assistant" {
+		t.Fatalf("expected assistant tool_use message, got %#v", messages[2])
+	}
+	if fourth, ok := messages[3].(map[string]any); !ok || fourth["role"] != "user" || fourth["content"] != "before result" {
+		t.Fatalf("expected user text before tool_result to stay before tool role, got %#v", messages[3])
+	}
+	if fifth, ok := messages[4].(map[string]any); !ok || fifth["role"] != "tool" {
+		t.Fatalf("expected tool_result to map to tool role, got %#v", messages[4])
+	}
+	if sixth, ok := messages[5].(map[string]any); !ok || sixth["role"] != "user" || sixth["content"] != "after result" {
+		t.Fatalf("expected user text after tool_result to stay after tool role, got %#v", messages[5])
 	}
 
 	body, err := io.ReadAll(response.Body)
@@ -369,6 +391,226 @@ func TestMessagesFallsBackToOpenAIStream(t *testing.T) {
 	}
 	if strings.Contains(text, "[DONE]") {
 		t.Fatalf("expected raw openai done marker to be consumed, got %s", text)
+	}
+}
+
+func TestMessagesFallbackMapsOpenAIErrorTypes(t *testing.T) {
+	testCases := []struct {
+		name         string
+		statusCode   int
+		expectedType string
+	}{
+		{name: "forbidden", statusCode: http.StatusForbidden, expectedType: "permission_error"},
+		{name: "not found", statusCode: http.StatusNotFound, expectedType: "not_found_error"},
+		{name: "rate limited", statusCode: http.StatusTooManyRequests, expectedType: "rate_limit_error"},
+		{name: "overloaded", statusCode: 529, expectedType: "overloaded_error"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "try next", http.StatusServiceUnavailable)
+			}))
+			defer claudeUpstream.Close()
+
+			openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.statusCode)
+				_, _ = w.Write([]byte(`{"error":{"type":"upstream_error","message":"mapped error"}}`))
+			}))
+			defer openAIUpstream.Close()
+
+			apiAddr := reserveLocalAddress(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+			defer stopProcess(t, cmd)
+			createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+			createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+			response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+			defer response.Body.Close()
+
+			if response.StatusCode != tc.statusCode {
+				body, _ := io.ReadAll(response.Body)
+				t.Fatalf("expected status %d, got %d: %s", tc.statusCode, response.StatusCode, string(body))
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if !strings.Contains(string(body), `"type":"`+tc.expectedType+`"`) {
+				t.Fatalf("expected anthropic error type %q, got %s", tc.expectedType, string(body))
+			}
+		})
+	}
+}
+
+func TestMessagesFallsBackToOpenAIStreamToolUse(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl_stream_tool\",\"object\":\"chat.completion.chunk\",\"model\":\"claude-sonnet-4-5\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"city\\\":\\\"Pa\"}}]},\"finish_reason\":null}]}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl_stream_tool\",\"object\":\"chat.completion.chunk\",\"model\":\"claude-sonnet-4-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"ris\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":3,\"total_tokens\":10}}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		flusher.Flush()
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected stream tool fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read stream tool fallback body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{"event: content_block_start", `"type":"tool_use"`, `"name":"lookup"`, `"type":"input_json_delta"`, `"partial_json":"{\"city\":\"Pa"`, `"partial_json":"ris\"}"`, `"stop_reason":"tool_use"`} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected bridged tool_use stream marker %q, got %s", marker, text)
+		}
+	}
+}
+
+func TestMessagesFallsBackToOpenAIMultiToolUseStream(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl_stream_multi_tool\",\"object\":\"chat.completion.chunk\",\"model\":\"claude-sonnet-4-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\"}}]},\"finish_reason\":null}]}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl_stream_multi_tool\",\"object\":\"chat.completion.chunk\",\"model\":\"claude-sonnet-4-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_2\",\"type\":\"function\",\"function\":{\"name\":\"weather\",\"arguments\":\"{}\"}}]},\"finish_reason\":null}]}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl_stream_multi_tool\",\"object\":\"chat.completion.chunk\",\"model\":\"claude-sonnet-4-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		flusher.Flush()
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read multi tool stream body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{`"index":0`, `"index":1`, `"name":"lookup"`, `"name":"weather"`} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected multi tool-use stream marker %q, got %s", marker, text)
+		}
+	}
+	if strings.Count(text, `"name":"lookup"`) < 2 {
+		t.Fatalf("expected lookup tool block to reopen with preserved identity, got %s", text)
+	}
+}
+
+func TestMessagesFallbackRejectsUnsupportedRole(t *testing.T) {
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createOpenAIChannel(t, apiAddr, "openai-only", "https://example.com/v1", "openai-key", "claude-sonnet-4-5")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"system","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read unsupported role body: %v", err)
+	}
+	text := string(body)
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(text, `"invalid_request_error"`) || !strings.Contains(text, `messages[0].role`) {
+		t.Fatalf("expected stable invalid role error, got %d: %s", response.StatusCode, text)
+	}
+}
+
+func TestMessagesFallbackRejectsMissingToolIdentifiers(t *testing.T) {
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createOpenAIChannel(t, apiAddr, "openai-only", "https://example.com/v1", "openai-key", "claude-sonnet-4-5")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"assistant","content":[{"type":"tool_use","name":"lookup","input":{}}]}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read missing tool identifier body: %v", err)
+	}
+	text := string(body)
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(text, `"invalid_request_error"`) || !strings.Contains(text, `tool_use.id is required`) {
+		t.Fatalf("expected stable missing tool id error, got %d: %s", response.StatusCode, text)
+	}
+
+	response = doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","input":{}}]}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	body, err = io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read missing tool name body: %v", err)
+	}
+	text = string(body)
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(text, `tool_use.name is required`) {
+		t.Fatalf("expected stable missing tool name error, got %d: %s", response.StatusCode, text)
+	}
+
+	response = doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"user","content":[{"type":"tool_result","content":"done"}]}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	body, err = io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read missing tool_result id body: %v", err)
+	}
+	text = string(body)
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(text, `tool_result.tool_use_id is required`) {
+		t.Fatalf("expected stable missing tool_result id error, got %d: %s", response.StatusCode, text)
 	}
 }
 

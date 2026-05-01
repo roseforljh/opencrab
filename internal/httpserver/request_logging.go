@@ -87,7 +87,36 @@ func parseClaudeUsage(body []byte) (int, int, int) {
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return 0, 0, 0
+		var inputTokens, outputTokens int
+		for _, line := range strings.Split(string(body), "\n") {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var eventPayload struct {
+				Message struct {
+					Usage struct {
+						InputTokens int `json:"input_tokens"`
+					} `json:"usage"`
+				} `json:"message"`
+				Usage struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &eventPayload); err != nil {
+				continue
+			}
+			if eventPayload.Message.Usage.InputTokens > 0 {
+				inputTokens = eventPayload.Message.Usage.InputTokens
+			}
+			if eventPayload.Usage.InputTokens > 0 {
+				inputTokens = eventPayload.Usage.InputTokens
+			}
+			if eventPayload.Usage.OutputTokens > 0 {
+				outputTokens = eventPayload.Usage.OutputTokens
+			}
+		}
+		return inputTokens, outputTokens, inputTokens + outputTokens
 	}
 	return payload.Usage.InputTokens, payload.Usage.OutputTokens, payload.Usage.InputTokens + payload.Usage.OutputTokens
 }

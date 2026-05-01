@@ -54,14 +54,17 @@ func bridgeClaudeMessagesToOpenAI(ctx context.Context, chatProvider ChatCompleti
 }
 
 type anthropicBridgeRequest struct {
-	Model      string                   `json:"model"`
-	MaxTokens  int                      `json:"max_tokens"`
-	Stream     bool                     `json:"stream,omitempty"`
-	System     json.RawMessage          `json:"system,omitempty"`
-	Messages   []anthropicBridgeMessage `json:"messages"`
-	Tools      []anthropicBridgeTool    `json:"tools,omitempty"`
-	ToolChoice json.RawMessage          `json:"tool_choice,omitempty"`
-	Thinking   json.RawMessage          `json:"thinking,omitempty"`
+	Model         string                   `json:"model"`
+	MaxTokens     int                      `json:"max_tokens"`
+	Stream        bool                     `json:"stream,omitempty"`
+	System        json.RawMessage          `json:"system,omitempty"`
+	StopSequences []string                 `json:"stop_sequences,omitempty"`
+	Temperature   *float64                 `json:"temperature,omitempty"`
+	TopP          *float64                 `json:"top_p,omitempty"`
+	Messages      []anthropicBridgeMessage `json:"messages"`
+	Tools         []anthropicBridgeTool    `json:"tools,omitempty"`
+	ToolChoice    json.RawMessage          `json:"tool_choice,omitempty"`
+	Thinking      json.RawMessage          `json:"thinking,omitempty"`
 }
 
 type anthropicBridgeMessage struct {
@@ -111,6 +114,15 @@ func buildOpenAIChatCompletionsBody(body []byte) ([]byte, error) {
 		"max_tokens": request.MaxTokens,
 		"stream":     request.Stream,
 		"messages":   messages,
+	}
+	if len(request.StopSequences) > 0 {
+		payload["stop"] = request.StopSequences
+	}
+	if request.Temperature != nil {
+		payload["temperature"] = *request.Temperature
+	}
+	if request.TopP != nil {
+		payload["top_p"] = *request.TopP
 	}
 	if len(request.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(request.Tools))
@@ -164,25 +176,28 @@ func bridgeMessageToOpenAIMessages(message anthropicBridgeMessage, index int) ([
 	case "assistant":
 		return bridgeAssistantMessageToOpenAI(blocks, index)
 	default:
-		text, err := bridgeBlocksToText(blocks, fmt.Sprintf("messages[%d].content", index))
-		if err != nil {
-			return nil, err
-		}
-		return []map[string]any{{"role": role, "content": text}}, nil
+		return nil, &RequestError{StatusCode: http.StatusBadRequest, Message: fmt.Sprintf("messages[%d].role %q is not supported when routing Claude Messages through OpenAI chat completions", index, role), UpstreamFamily: "openai"}
 	}
 }
 
 func bridgeUserMessageToOpenAI(blocks []anthropicContentBlock, index int) ([]map[string]any, error) {
 	texts := make([]string, 0)
 	messages := make([]map[string]any, 0, 1)
+	flushText := func() {
+		if len(texts) == 0 {
+			return
+		}
+		messages = append(messages, map[string]any{"role": "user", "content": strings.Join(texts, "\n")})
+		texts = nil
+	}
 	for _, block := range blocks {
 		switch block.Type {
 		case "text":
 			texts = append(texts, block.Text)
 		case "tool_result":
-			if len(texts) > 0 {
-				messages = append(messages, map[string]any{"role": "user", "content": strings.Join(texts, "\n")})
-				texts = nil
+			flushText()
+			if strings.TrimSpace(block.ToolUseID) == "" {
+				return nil, &RequestError{StatusCode: http.StatusBadRequest, Message: fmt.Sprintf("messages[%d].content.tool_result.tool_use_id is required when routing Claude Messages through OpenAI chat completions", index), UpstreamFamily: "openai"}
 			}
 			content, err := bridgeContentText(block.Content, fmt.Sprintf("messages[%d].content.tool_result", index))
 			if err != nil {
@@ -195,8 +210,9 @@ func bridgeUserMessageToOpenAI(blocks []anthropicContentBlock, index int) ([]map
 			return nil, &RequestError{StatusCode: http.StatusBadRequest, Message: fmt.Sprintf("messages[%d].content block type %q is not supported when routing Claude Messages through OpenAI chat completions", index, block.Type), UpstreamFamily: "openai"}
 		}
 	}
-	if len(texts) > 0 || len(messages) == 0 {
-		messages = append([]map[string]any{{"role": "user", "content": strings.Join(texts, "\n")}}, messages...)
+	flushText()
+	if len(messages) == 0 {
+		messages = append(messages, map[string]any{"role": "user", "content": ""})
 	}
 	return messages, nil
 }
@@ -209,6 +225,12 @@ func bridgeAssistantMessageToOpenAI(blocks []anthropicContentBlock, index int) (
 		case "text":
 			texts = append(texts, block.Text)
 		case "tool_use":
+			if strings.TrimSpace(block.ID) == "" {
+				return nil, &RequestError{StatusCode: http.StatusBadRequest, Message: fmt.Sprintf("messages[%d].content.tool_use.id is required when routing Claude Messages through OpenAI chat completions", index), UpstreamFamily: "openai"}
+			}
+			if strings.TrimSpace(block.Name) == "" {
+				return nil, &RequestError{StatusCode: http.StatusBadRequest, Message: fmt.Sprintf("messages[%d].content.tool_use.name is required when routing Claude Messages through OpenAI chat completions", index), UpstreamFamily: "openai"}
+			}
 			arguments := "{}"
 			if len(bytes.TrimSpace(block.Input)) > 0 {
 				arguments = string(bytes.TrimSpace(block.Input))
@@ -480,15 +502,32 @@ func mapOpenAIErrorType(statusCode int, openAIType string) string {
 	switch statusCode {
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return "invalid_request_error"
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusUnauthorized:
 		return "authentication_error"
+	case http.StatusForbidden:
+		return "permission_error"
+	case http.StatusNotFound:
+		return "not_found_error"
 	case http.StatusTooManyRequests:
 		return "rate_limit_error"
 	case http.StatusGatewayTimeout:
 		return "timeout_error"
+	case 529:
+		return "overloaded_error"
 	}
-	if strings.EqualFold(openAIType, "invalid_request_error") {
+	switch strings.ToLower(strings.TrimSpace(openAIType)) {
+	case "invalid_request_error":
 		return "invalid_request_error"
+	case "authentication_error":
+		return "authentication_error"
+	case "permission_error":
+		return "permission_error"
+	case "not_found_error":
+		return "not_found_error"
+	case "rate_limit_error":
+		return "rate_limit_error"
+	case "overloaded_error":
+		return "overloaded_error"
 	}
 	return "api_error"
 }
@@ -498,8 +537,17 @@ type openAIStreamChunk struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Delta struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role      string `json:"role"`
+			Content   string `json:"content"`
+			ToolCalls []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
@@ -548,7 +596,7 @@ func writeClaudeStreamFromOpenAI(body io.Reader, writer *io.PipeWriter) error {
 	}
 	if state.messageStarted && !state.messageStopped {
 		if state.blockStarted {
-			if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}); err != nil {
+			if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": state.blockIndex}); err != nil {
 				return err
 			}
 		}
@@ -561,8 +609,16 @@ type claudeStreamState struct {
 	messageStarted bool
 	blockStarted   bool
 	messageStopped bool
+	blockType      string
+	blockIndex     int
 	messageID      string
 	model          string
+	toolBlocks     map[int]claudeToolBlockState
+}
+
+type claudeToolBlockState struct {
+	id   string
+	name string
 }
 
 func handleOpenAIStreamEvent(lines []string, writer *io.PipeWriter, state *claudeStreamState) error {
@@ -582,7 +638,7 @@ func handleOpenAIStreamEvent(lines []string, writer *io.PipeWriter, state *claud
 	if data == "[DONE]" {
 		if state.messageStarted && !state.messageStopped {
 			if state.blockStarted {
-				if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}); err != nil {
+				if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": state.blockIndex}); err != nil {
 					return err
 				}
 				state.blockStarted = false
@@ -625,25 +681,65 @@ func handleOpenAIStreamEvent(lines []string, writer *io.PipeWriter, state *claud
 		return nil
 	}
 	choice := chunk.Choices[0]
-	if strings.TrimSpace(choice.Delta.Content) != "" {
-		if !state.blockStarted {
-			state.blockStarted = true
-			if err := writeAnthropicStreamEvent(writer, "content_block_start", map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "text", "text": ""}}); err != nil {
-				return err
-			}
-		}
-		if err := writeAnthropicStreamEvent(writer, "content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": choice.Delta.Content}}); err != nil {
-			return err
-		}
+	if state.toolBlocks == nil {
+		state.toolBlocks = map[int]claudeToolBlockState{}
 	}
-	if choice.FinishReason != nil {
-		if state.blockStarted {
-			if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}); err != nil {
+	if strings.TrimSpace(choice.Delta.Content) != "" {
+		if state.blockStarted && state.blockType != "text" {
+			if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": state.blockIndex}); err != nil {
 				return err
 			}
 			state.blockStarted = false
 		}
-		if err := writeAnthropicStreamEvent(writer, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": mapOpenAIFinishReason(*choice.FinishReason), "stop_sequence": nil}, "usage": map[string]any{"output_tokens": chunk.Usage.CompletionTokens}}); err != nil {
+		if !state.blockStarted {
+			state.blockStarted = true
+			state.blockType = "text"
+			state.blockIndex = 0
+			if err := writeAnthropicStreamEvent(writer, "content_block_start", map[string]any{"type": "content_block_start", "index": state.blockIndex, "content_block": map[string]any{"type": "text", "text": ""}}); err != nil {
+				return err
+			}
+		}
+		if err := writeAnthropicStreamEvent(writer, "content_block_delta", map[string]any{"type": "content_block_delta", "index": state.blockIndex, "delta": map[string]any{"type": "text_delta", "text": choice.Delta.Content}}); err != nil {
+			return err
+		}
+	}
+	for _, toolCall := range choice.Delta.ToolCalls {
+		toolState := state.toolBlocks[toolCall.Index]
+		if strings.TrimSpace(toolCall.ID) != "" {
+			toolState.id = toolCall.ID
+		}
+		if strings.TrimSpace(toolCall.Function.Name) != "" {
+			toolState.name = toolCall.Function.Name
+		}
+		state.toolBlocks[toolCall.Index] = toolState
+		if state.blockStarted && (state.blockType != "tool_use" || state.blockIndex != toolCall.Index) {
+			if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": state.blockIndex}); err != nil {
+				return err
+			}
+			state.blockStarted = false
+		}
+		if !state.blockStarted {
+			state.blockStarted = true
+			state.blockType = "tool_use"
+			state.blockIndex = toolCall.Index
+			if err := writeAnthropicStreamEvent(writer, "content_block_start", map[string]any{"type": "content_block_start", "index": state.blockIndex, "content_block": map[string]any{"type": "tool_use", "id": toolState.id, "name": toolState.name, "input": map[string]any{}}}); err != nil {
+				return err
+			}
+		}
+		if strings.TrimSpace(toolCall.Function.Arguments) != "" {
+			if err := writeAnthropicStreamEvent(writer, "content_block_delta", map[string]any{"type": "content_block_delta", "index": state.blockIndex, "delta": map[string]any{"type": "input_json_delta", "partial_json": toolCall.Function.Arguments}}); err != nil {
+				return err
+			}
+		}
+	}
+	if choice.FinishReason != nil {
+		if state.blockStarted {
+			if err := writeAnthropicStreamEvent(writer, "content_block_stop", map[string]any{"type": "content_block_stop", "index": state.blockIndex}); err != nil {
+				return err
+			}
+			state.blockStarted = false
+		}
+		if err := writeAnthropicStreamEvent(writer, "message_delta", map[string]any{"type": "message_delta", "delta": map[string]any{"stop_reason": mapOpenAIFinishReason(*choice.FinishReason), "stop_sequence": nil}, "usage": map[string]any{"input_tokens": chunk.Usage.PromptTokens, "output_tokens": chunk.Usage.CompletionTokens}}); err != nil {
 			return err
 		}
 		if err := writeAnthropicStreamEvent(writer, "message_stop", map[string]any{"type": "message_stop"}); err != nil {
