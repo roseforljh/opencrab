@@ -35,6 +35,40 @@ func TestHealthzEndpoint(t *testing.T) {
 	assertContentTypeContains(t, response, "application/json")
 }
 
+func TestPublicModelsListsOnlyEnabledOpenAIChatModels(t *testing.T) {
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+
+	createCompatChannel(t, apiAddr, map[string]any{"name": "openai-main", "provider": "OpenAI", "endpoint": "https://api.openai.com/v1", "api_key": "sk-test", "enabled": true, "model_ids": []string{"gpt-5.4", "gpt-4o-mini"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+	createCompatChannel(t, apiAddr, map[string]any{"name": "claude-main", "provider": "Claude", "endpoint": "https://api.anthropic.com", "api_key": "claude-test", "enabled": true, "model_ids": []string{"claude-sonnet-4-5", "gpt-5.4"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+	createCompatChannel(t, apiAddr, map[string]any{"name": "openai-disabled", "provider": "OpenAI", "endpoint": "https://api.openai.com/v1", "api_key": "sk-disabled", "enabled": false, "model_ids": []string{"gpt-5.5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-main", "provider": "Gemini", "endpoint": "https://generativelanguage.googleapis.com/v1beta", "api_key": "gemini-test", "enabled": true, "model_ids": []string{"gemini-2.5-pro"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	response := waitForGET(t, fmt.Sprintf("http://%s/v1/models", apiAddr), 10*time.Second)
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read public models body: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected /v1/models to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	text := string(body)
+	if !strings.Contains(text, `"id":"gpt-5.4"`) || !strings.Contains(text, `"id":"gpt-4o-mini"`) {
+		t.Fatalf("expected enabled openai models in list, got %s", text)
+	}
+	for _, unexpected := range []string{"claude-sonnet-4-5", "gemini-2.5-pro", "gpt-5.5"} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("expected %s to be excluded from public openai models, got %s", unexpected, text)
+		}
+	}
+}
+
 func TestAdminCompatibilityReadEndpoints(t *testing.T) {
 	apiAddr := reserveLocalAddress(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -225,6 +259,40 @@ func TestAdminChannelTestUsesOpenAICompatibleUpstream(t *testing.T) {
 	}
 	if receivedAuthorization != "Bearer sk-test" {
 		t.Fatalf("expected bearer auth on probe, got %q", receivedAuthorization)
+	}
+}
+
+func TestAdminChannelTestAddsV1ForOpenAIEndpointWithoutVersion(t *testing.T) {
+	var receivedPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_test","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}]}`))
+	}))
+	defer upstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+
+	createPayload := fmt.Sprintf(`{"name":"openai-main","provider":"OpenAI","endpoint":%q,"api_key":"sk-test","enabled":true,"model_ids":["gpt-4.1"],"rpm_limit":1000,"max_inflight":32,"safety_factor":0.9,"enabled_for_async":true,"dispatch_weight":100}`, upstream.URL)
+	createResponse := doPOST(t, fmt.Sprintf("http://%s/api/admin/channels", apiAddr), createPayload, map[string]string{"Content-Type": "application/json"})
+	createBody, _ := io.ReadAll(createResponse.Body)
+	createResponse.Body.Close()
+	if createResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("expected create channel 201, got %d: %s", createResponse.StatusCode, string(createBody))
+	}
+
+	testResponse := doPOST(t, fmt.Sprintf("http://%s/api/admin/channels/1/test", apiAddr), `{"model":"gpt-4.1"}`, map[string]string{"Content-Type": "application/json"})
+	defer testResponse.Body.Close()
+	if testResponse.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(testResponse.Body)
+		t.Fatalf("expected channel test 200, got %d: %s", testResponse.StatusCode, string(body))
+	}
+	if receivedPath != "/v1/chat/completions" {
+		t.Fatalf("expected openai-compatible probe to auto-prefix /v1, got %q", receivedPath)
 	}
 }
 
@@ -510,6 +578,35 @@ func TestChatCompletionsProxyJSON(t *testing.T) {
 	}
 	if !strings.Contains(string(body), `"content":"pong"`) {
 		t.Fatalf("expected assistant message in body, got %s", string(body))
+	}
+}
+
+func TestChatCompletionsProxyAddsV1ForOpenAIEndpointWithoutVersion(t *testing.T) {
+	var receivedPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_test","object":"chat.completion","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`))
+	}))
+	defer upstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createOpenAIChannel(t, apiAddr, "openai-json", upstream.URL, "test-upstream-key", "gpt-4o-mini")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/chat/completions", apiAddr), `{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected chat completions to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	if receivedPath != "/v1/chat/completions" {
+		t.Fatalf("expected runtime route to auto-prefix /v1, got %q", receivedPath)
 	}
 }
 

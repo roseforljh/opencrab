@@ -97,8 +97,19 @@ func buildRuntimeUpstreamURL(family string, endpoint string, model string) strin
 	case runtimeRouteFamilyGemini:
 		return joinURL(endpoint, fmt.Sprintf("/models/%s:generateContent", url.PathEscape(model)))
 	default:
-		return joinURL(endpoint, "/chat/completions")
+		return joinURL(normalizeOpenAICompatibleEndpoint(endpoint), "/chat/completions")
 	}
+}
+
+func normalizeOpenAICompatibleEndpoint(endpoint string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if trimmed == "" {
+		return trimmed
+	}
+	if strings.HasSuffix(strings.ToLower(trimmed), "/v1") {
+		return trimmed
+	}
+	return trimmed + "/v1"
 }
 
 func buildRuntimeGeminiStreamURL(endpoint string, model string) string {

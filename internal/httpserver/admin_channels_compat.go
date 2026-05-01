@@ -525,6 +525,31 @@ func (s *adminCompatChannelStore) listModels() []map[string]any {
 	return items
 }
 
+func (s *adminCompatChannelStore) listRuntimeModels(family string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	seen := make(map[string]struct{})
+	aliases := make([]string, 0)
+	for _, channel := range s.channels {
+		if !channel.Enabled || normalizeRuntimeRouteFamily(channel.Provider) != family {
+			continue
+		}
+		for _, modelID := range channel.ModelIDs {
+			alias := strings.TrimSpace(modelID)
+			if alias == "" {
+				continue
+			}
+			if _, ok := seen[alias]; ok {
+				continue
+			}
+			seen[alias] = struct{}{}
+			aliases = append(aliases, alias)
+		}
+	}
+	sort.Strings(aliases)
+	return aliases
+}
+
 func (s *adminCompatChannelStore) listModelRoutes() []map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -592,7 +617,7 @@ func testOpenAICompatibleChannel(channel *adminCompatChannel, model string) (str
 		"messages":   []map[string]string{{"role": "user", "content": "ping"}},
 		"max_tokens": 16,
 	})
-	request, err := http.NewRequest(http.MethodPost, joinURL(channel.Endpoint, "/chat/completions"), bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, joinURL(normalizeOpenAICompatibleEndpoint(channel.Endpoint), "/chat/completions"), bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("构造测试请求失败: %w", err)
 	}

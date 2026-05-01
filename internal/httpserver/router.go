@@ -29,6 +29,7 @@ func NewRouter(service *gateway.Service) http.Handler {
 	mux.HandleFunc("GET /api/admin/logs", adminLogsHandler)
 	mux.HandleFunc("GET /api/admin/logs/{id}", adminLogDetailHandler)
 	mux.HandleFunc("DELETE /api/admin/logs", clearRequestLogsHandler)
+	mux.HandleFunc("GET /v1/models", modelsHandler)
 	mux.Handle("/v1/chat/completions", newChatCompletionsHandler(service))
 	mux.Handle("/v1/messages", newMessagesHandler(service))
 	mux.Handle("/v1beta/models/", newGeminiModelsHandler(service))
