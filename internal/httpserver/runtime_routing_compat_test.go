@@ -64,3 +64,44 @@ func TestResolveMessagesRoutesFiltersOpenAIByCapability(t *testing.T) {
 		t.Fatal("expected incompatible openai-only request to fail")
 	}
 }
+
+func TestResolveMessagesRoutesFiltersGeminiByCapability(t *testing.T) {
+	previous := compatChannels
+	store := newAdminCompatChannelStore()
+	store.channels[1] = &adminCompatChannel{ID: 1, Name: "claude", Provider: "Claude", Endpoint: "https://claude.example", APIKey: "claude-key", Enabled: true, ModelIDs: []string{"claude-sonnet-4-5"}, DispatchWeight: 100}
+	store.channels[2] = &adminCompatChannel{ID: 2, Name: "gemini", Provider: "Gemini", Endpoint: "https://gemini.example/v1beta", APIKey: "gemini-key", Enabled: true, ModelIDs: []string{"claude-sonnet-4-5"}, DispatchWeight: 90}
+	compatChannels = store
+	defer func() { compatChannels = previous }()
+
+	routes, err := resolveMessagesRoutes("claude-sonnet-4-5", []byte(`{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"user","content":"ping"}]}`))
+	if err != nil {
+		t.Fatalf("expected compatible request to resolve, got %v", err)
+	}
+	if len(routes) != 2 || routes[0].Family != runtimeRouteFamilyClaude || routes[1].Family != runtimeRouteFamilyGemini {
+		t.Fatalf("expected claude then gemini routes, got %#v", routes)
+	}
+
+	routes, err = resolveMessagesRoutes("claude-sonnet-4-5", []byte(`{"model":"claude-sonnet-4-5","max_tokens":128,"metadata":{"source":"test"},"messages":[{"role":"user","content":"ping"}]}`))
+	if err != nil {
+		t.Fatalf("expected claude-only routing for gemini-incompatible request, got %v", err)
+	}
+	if len(routes) != 1 || routes[0].Family != runtimeRouteFamilyClaude {
+		t.Fatalf("expected only claude route, got %#v", routes)
+	}
+
+	store = newAdminCompatChannelStore()
+	store.channels[2] = &adminCompatChannel{ID: 2, Name: "gemini", Provider: "Gemini", Endpoint: "https://gemini.example/v1beta", APIKey: "gemini-key", Enabled: true, ModelIDs: []string{"claude-sonnet-4-5"}, DispatchWeight: 90}
+	compatChannels = store
+	_, err = resolveMessagesRoutes("claude-sonnet-4-5", []byte(`{"model":"claude-sonnet-4-5","max_tokens":128,"metadata":{"source":"test"},"messages":[{"role":"user","content":"ping"}]}`))
+	if err == nil {
+		t.Fatal("expected gemini-only incompatible request to fail")
+	}
+
+	routes, err = resolveMessagesRoutes("claude-sonnet-4-5", []byte(`{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"messages":[{"role":"user","content":"ping"}]}`))
+	if err != nil {
+		t.Fatalf("expected stream request to resolve, got %v", err)
+	}
+	if len(routes) != 1 || routes[0].URL != "https://gemini.example/v1beta/models/claude-sonnet-4-5:streamGenerateContent?alt=sse" {
+		t.Fatalf("expected gemini stream route, got %#v", routes)
+	}
+}

@@ -394,6 +394,285 @@ func TestMessagesFallsBackToOpenAIStream(t *testing.T) {
 	}
 }
 
+func TestMessagesFallsBackToGeminiJSON(t *testing.T) {
+	var claudeHits int
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claudeHits++
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	var receivedAPIKey string
+	var receivedBody map[string]any
+	geminiUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAPIKey = r.Header.Get("X-Goog-Api-Key")
+		if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"parts":[{"text":"fallback-gemini-ok"}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":3,"totalTokenCount":10}}`))
+	}))
+	defer geminiUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-fallback", "provider": "Gemini", "endpoint": geminiUpstream.URL + "/v1beta", "api_key": "gemini-key", "enabled": true, "model_ids": []string{"claude-sonnet-4-5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"system":"You are helpful","temperature":0.25,"top_p":0.8,"messages":[{"role":"user","content":"Need answer"}]}`
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected gemini fallback request to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	if claudeHits != 1 {
+		t.Fatalf("expected claude upstream to be attempted once, got %d", claudeHits)
+	}
+	if receivedAPIKey != "gemini-key" {
+		t.Fatalf("expected gemini API key, got %q", receivedAPIKey)
+	}
+	if _, ok := receivedBody["systemInstruction"].(map[string]any); !ok {
+		t.Fatalf("expected gemini systemInstruction, got %#v", receivedBody["systemInstruction"])
+	}
+	contents, ok := receivedBody["contents"].([]any)
+	if !ok || len(contents) != 1 {
+		t.Fatalf("expected gemini contents, got %#v", receivedBody["contents"])
+	}
+	generationConfig, ok := receivedBody["generationConfig"].(map[string]any)
+	if !ok || generationConfig["maxOutputTokens"] == nil || generationConfig["temperature"] != 0.25 || generationConfig["topP"] != 0.8 {
+		t.Fatalf("expected gemini generationConfig mapping, got %#v", receivedBody["generationConfig"])
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read gemini fallback body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"type":"message"`) || !strings.Contains(text, `"fallback-gemini-ok"`) {
+		t.Fatalf("expected bridged claude message body, got %s", text)
+	}
+	if !strings.Contains(text, `"input_tokens":7`) || !strings.Contains(text, `"output_tokens":3`) {
+		t.Fatalf("expected gemini usage mapping, got %s", text)
+	}
+}
+
+func TestMessagesFallsBackToGeminiStream(t *testing.T) {
+	var claudeHits int
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claudeHits++
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	geminiUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hel\"}]},\"index\":0}]}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"lo\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":2,\"totalTokenCount\":7}}\n\n"))
+		flusher.Flush()
+	}))
+	defer geminiUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-fallback", "provider": "Gemini", "endpoint": geminiUpstream.URL + "/v1beta", "api_key": "gemini-key", "enabled": true, "model_ids": []string{"claude-sonnet-4-5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected gemini stream fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	if claudeHits != 1 {
+		t.Fatalf("expected claude upstream to be attempted once, got %d", claudeHits)
+	}
+	assertContentTypeContains(t, response, "text/event-stream")
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read gemini stream fallback body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{"event: message_start", "event: content_block_start", "event: content_block_delta", `"text":"Hel"`, `"text":"lo"`, `"output_tokens":2`, "event: message_stop"} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected gemini bridged stream marker %q, got %s", marker, text)
+		}
+	}
+}
+
+func TestMessagesFallsBackToGeminiToolUseJSON(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	var receivedBody map[string]any
+	geminiUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"parts":[{"functionCall":{"id":"call_1","name":"lookup","args":{"city":"Paris"}}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":4,"totalTokenCount":13}}`))
+	}))
+	defer geminiUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-fallback", "provider": "Gemini", "endpoint": geminiUpstream.URL + "/v1beta", "api_key": "gemini-key", "enabled": true, "model_ids": []string{"claude-sonnet-4-5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"tools":[{"name":"lookup","description":"Look up data","input_schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}],"tool_choice":{"type":"tool","name":"lookup"},"messages":[{"role":"user","content":"Need weather"}]}`
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected gemini tool fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	tools, ok := receivedBody["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("expected gemini tools payload, got %#v", receivedBody["tools"])
+	}
+	toolConfig, ok := receivedBody["toolConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected gemini toolConfig, got %#v", receivedBody["toolConfig"])
+	}
+	callingConfig := toolConfig["functionCallingConfig"].(map[string]any)
+	if callingConfig["mode"] != "ANY" {
+		t.Fatalf("expected gemini tool choice ANY, got %#v", callingConfig)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read gemini tool fallback body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"type":"tool_use"`) || !strings.Contains(text, `"name":"lookup"`) || !strings.Contains(text, `"stop_reason":"tool_use"`) {
+		t.Fatalf("expected bridged claude tool_use response, got %s", text)
+	}
+}
+
+func TestMessagesFallbackRejectsUnsupportedGeminiFields(t *testing.T) {
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-only", "provider": "Gemini", "endpoint": "https://example.com/v1beta", "api_key": "gemini-key", "enabled": true, "model_ids": []string{"claude-sonnet-4-5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"metadata":{"source":"test"},"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected unsupported gemini fallback field to return 400, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read unsupported gemini field body: %v", err)
+	}
+	if !strings.Contains(string(body), `metadata is not supported when routing Claude Messages through Gemini`) {
+		t.Fatalf("expected stable unsupported gemini field error, got %s", string(body))
+	}
+
+	response = doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"stop_sequences":["END"],"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected unsupported gemini stop_sequences to return 400, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err = io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read unsupported gemini stop_sequences body: %v", err)
+	}
+	if !strings.Contains(string(body), `stop_sequences is not supported when routing Claude Messages through Gemini`) {
+		t.Fatalf("expected stable unsupported gemini stop_sequences error, got %s", string(body))
+	}
+}
+
+func TestMessagesFallbackRejectsInvalidRoleForGemini(t *testing.T) {
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-only", "provider": "Gemini", "endpoint": "https://example.com/v1beta", "api_key": "gemini-key", "enabled": true, "model_ids": []string{"claude-sonnet-4-5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"messages":[{"role":"system","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected invalid role to return 400, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read invalid role body: %v", err)
+	}
+	if !strings.Contains(string(body), `messages[0].role must be 'user' or 'assistant'`) {
+		t.Fatalf("expected stable invalid role error, got %s", string(body))
+	}
+}
+
+func TestMessagesFallsBackToGeminiToolUseStreamWithArgumentUpdates(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	geminiUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"call_1\",\"name\":\"lookup\",\"args\":{\"city\":\"Pa\"}}}],\"role\":\"model\"},\"index\":0}]}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"call_1\",\"name\":\"lookup\",\"args\":{\"city\":\"Paris\"}}}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":7,\"candidatesTokenCount\":3,\"totalTokenCount\":10}}\n\n"))
+		flusher.Flush()
+	}))
+	defer geminiUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createCompatChannel(t, apiAddr, map[string]any{"name": "gemini-fallback", "provider": "Gemini", "endpoint": geminiUpstream.URL + "/v1beta", "api_key": "gemini-key", "enabled": true, "model_ids": []string{"claude-sonnet-4-5"}, "rpm_limit": 1000, "max_inflight": 32, "safety_factor": 0.9, "enabled_for_async": true, "dispatch_weight": 100})
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"tools":[{"name":"lookup","description":"Look up data","input_schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}],"messages":[{"role":"user","content":"Need weather"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected gemini tool stream fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read gemini tool stream body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{`"partial_json":"{\"city\":\"Pa\"}"`, `"partial_json":"ris\"}"`, `"stop_reason":"tool_use"`} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected gemini tool delta marker %q, got %s", marker, text)
+		}
+	}
+}
+
 func TestMessagesFallbackUsesOpenAIResponsesWhenMetadataPresent(t *testing.T) {
 	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "try next", http.StatusServiceUnavailable)

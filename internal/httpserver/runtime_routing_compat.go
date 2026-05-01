@@ -32,14 +32,14 @@ func resolveMessagesRoutes(model string, body []byte) ([]gateway.UpstreamRouteCa
 	}
 	claudeChannels := compatChannels.resolveRuntimeChannels(runtimeRouteFamilyClaude, alias)
 	openAIChannels := compatChannels.resolveRuntimeChannels(runtimeRouteFamilyOpenAI, alias)
+	geminiChannels := compatChannels.resolveRuntimeChannels(runtimeRouteFamilyGemini, alias)
 	openAIOperation, openAICompatibilityErr := gateway.ResolveClaudeMessagesOpenAIOperation(body)
-	if len(claudeChannels) == 0 && len(openAIChannels) == 0 {
+	geminiCompatibilityErr := gateway.ResolveClaudeMessagesGeminiCompatibility(body)
+	if len(claudeChannels) == 0 && len(openAIChannels) == 0 && len(geminiChannels) == 0 {
 		return nil, &gateway.RoutingError{Message: fmt.Sprintf("No enabled claude route configured for model %s", alias)}
 	}
-	if len(claudeChannels) == 0 && len(openAIChannels) > 0 && openAICompatibilityErr != nil {
-		return nil, openAICompatibilityErr
-	}
-	items := make([]gateway.UpstreamRouteCandidate, 0, len(claudeChannels)+len(openAIChannels))
+	stream := requestsStream(body)
+	items := make([]gateway.UpstreamRouteCandidate, 0, len(claudeChannels)+len(openAIChannels)+len(geminiChannels))
 	for _, channel := range claudeChannels {
 		items = append(items, gateway.UpstreamRouteCandidate{
 			Family: runtimeRouteFamilyClaude,
@@ -56,6 +56,28 @@ func resolveMessagesRoutes(model string, body []byte) ([]gateway.UpstreamRouteCa
 				APIKey:    channel.APIKey,
 			})
 		}
+	}
+	if geminiCompatibilityErr == nil {
+		for _, channel := range geminiChannels {
+			url := buildRuntimeUpstreamURL(runtimeRouteFamilyGemini, "", channel.Endpoint, alias)
+			if stream {
+				url = buildRuntimeGeminiStreamURL(channel.Endpoint, alias)
+			}
+			items = append(items, gateway.UpstreamRouteCandidate{
+				Family: runtimeRouteFamilyGemini,
+				URL:    url,
+				APIKey: channel.APIKey,
+			})
+		}
+	}
+	if len(items) > 0 {
+		return items, nil
+	}
+	if len(openAIChannels) > 0 && openAICompatibilityErr != nil {
+		return nil, openAICompatibilityErr
+	}
+	if len(geminiChannels) > 0 && geminiCompatibilityErr != nil {
+		return nil, geminiCompatibilityErr
 	}
 	return items, nil
 }

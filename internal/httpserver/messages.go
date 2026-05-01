@@ -93,7 +93,7 @@ func (h *messagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		requestError := &gateway.RequestError{}
 		if errors.As(err, &requestError) {
 			statusCode = requestError.StatusCode
-			logClaudeRequest(request.Model, "openai", statusCode, startedAt, body, nil, err)
+			logClaudeRequest(request.Model, requestError.UpstreamFamily, statusCode, startedAt, body, nil, err)
 			writeAnthropicError(w, statusCode, requestError.Message, "invalid_request_error")
 			return
 		}
@@ -179,6 +179,9 @@ func parseMessagesEnvelope(body []byte) (bool, string, int, error) {
 	for index, message := range payload.Messages {
 		if strings.TrimSpace(message.Role) == "" {
 			return false, "", 0, &anthropicValidationError{message: fmt.Sprintf("messages[%d].role is required", index)}
+		}
+		if role := strings.TrimSpace(message.Role); role != "user" && role != "assistant" {
+			return false, "", 0, &anthropicValidationError{message: fmt.Sprintf("messages[%d].role must be 'user' or 'assistant'", index)}
 		}
 	}
 	return payload.Stream, payload.Model, *payload.MaxTokens, nil

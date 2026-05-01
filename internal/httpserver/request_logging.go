@@ -39,6 +39,10 @@ func logClaudeRequest(model string, providerFamily string, statusCode int, start
 		provider = "openai"
 		channel = "openai"
 	}
+	if strings.EqualFold(strings.TrimSpace(providerFamily), "gemini") {
+		provider = "gemini"
+		channel = "gemini"
+	}
 	details := map[string]any{
 		"log_type":         "gateway_request",
 		"provider":         provider,

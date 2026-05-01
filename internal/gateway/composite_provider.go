@@ -33,6 +33,9 @@ func (p *compositeProvider) Messages(ctx context.Context, request MessagesReques
 	if request.UpstreamFamily == "openai" {
 		return bridgeClaudeMessagesToOpenAI(ctx, p.chatProvider, request)
 	}
+	if request.UpstreamFamily == "gemini" {
+		return bridgeClaudeMessagesToGemini(ctx, p.generateContentProvider, request)
+	}
 	return p.messagesProvider.Messages(ctx, request)
 }
 
