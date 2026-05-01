@@ -63,18 +63,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 路由与接口
 - 路由定义集中在 `internal/transport/httpserver/router.go`。
 - 健康检查接口：`/healthz`、`/readyz`
-- 管理接口统一挂在 `/api/admin/*`，覆盖 channels、models、model-routes、api-keys、logs、settings。
-- 代理接口覆盖 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1beta/models/{model}:generateContent`、`POST /v1beta/models/{model}:streamGenerateContent`。
+- 管理接口统一挂在 `/api/admin/*`，覆盖 auth（登录/密码/二级密码）、channels、models、model-routes、api-keys、logs、settings、capability-profiles、dashboard/summary、routing/overview。
+- 代理接口覆盖：
+  - OpenAI: `/v1/models`、`/v1/chat/completions`、`/v1/responses/*`、`/v1/realtime/*`
+  - Claude: `/v1/messages`、`/v1/messages/count_tokens`
+  - Gemini: `/v1beta/models/{model}:generateContent`、`/v1beta/models/{model}:streamGenerateContent`、`/v1beta/cachedContents`
+  - Codex: `/v1/codex/responses`
+  - 网关内部: `/v1/requests/{requestID}`、`/v1/requests/{requestID}/events`（异步 job 状态/事件）
 
 ### 数据与分层
 - 持久化只有 SQLite。
 - SQLite 相关实现集中在 `internal/store/sqlite`。
-- migration 文件当前在：
-  - `0001_initial.sql`
-  - `0002_request_logs_details.sql`
-  - `0003_request_logs_usage.sql`
+- migration 文件在 `internal/store/sqlite/migrations/`，共 18 个文件，覆盖初始表、请求日志、路由游标、sticky routing、response sessions、gateway jobs、dispatch 控制面、API Key scope、capability profiles 等。不要假设只有前 3 个。
 - `internal/domain` 放领域对象和输入输出结构。
-- `internal/usecase/usecase.go` 目前基本为空，不要假设仓库已经形成完整 usecase 层。当前实际在用的 usecase 逻辑包括 rate limiter 与 `GatewayService` 的运行时路由。
+- `internal/usecase` 层当前包含 `GatewayService`（运行时路由）、`GatewayJobDispatcher`（异步 job 调度）、`RateLimiter`、`DispatchQuotaManager` 等，不要假设 usecase 层为空。
+- `internal/provider` 包含三个 executor：`OpenAIExecutor`、`ClaudeExecutor`、`GeminiExecutor`，以及协议编解码、stream 合成、responses projector 等跨协议桥接逻辑。
+- `internal/capability` 为每个请求评估 provider 能力兼容性，支持通过 admin API 按 scope 调整 capability profiles。
 
 ### 当前运行时事实
 - 实际代理转发按 `models`、`model_routes`、`gateway.routing_strategy`、`routing_cursors` 做真实运行时路由。
@@ -82,6 +86,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 当前实现已接入 cooldown 过滤、`fallback_model` alias 重入、sticky routing 与运行时决策日志。
 - `model_routes.priority` 是线上真实请求路由策略的一部分，不只是后台展示顺序。
 - API Key 只在创建时返回一次明文，数据库里保存的是哈希值。
+- `GatewayJobDispatcher` 是异步 job 调度引擎：启动时按 `dispatch.worker_concurrency` 启动 worker，支持 priority queues、exponential/fixed backoff、死信队列、idempotency key 去重。同步代理请求也可通过 `dispatch.sync_hold_ms` 桥接到异步调度。
+- `POST /v1/responses` 及 Codex 请求默认走异步模式（创建 job → 返回 `request_id` → 轮询 `/v1/requests/{id}`），非流式 chat/completions 在 `dispatch.sync_hold_ms > 0` 时也可能走异步桥接。
 
 ## 前端架构
 ### 页面壳层

@@ -1,0 +1,1 @@
+{"name":"persist-check-channel-2","provider":"OpenAI","endpoint":"https://api.openai.com/v1","api_key":"sk-test","enabled":true,"model_ids":["gpt-4.1"],"rpm_limit":1000,"max_inflight":32,"safety_factor":0.9,"enabled_for_async":true,"dispatch_weight":100}

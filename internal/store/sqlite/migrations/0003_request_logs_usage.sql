@@ -1,6 +1,0 @@
-ALTER TABLE request_logs ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE request_logs ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE request_logs ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE request_logs ADD COLUMN cache_hit INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE request_logs ADD COLUMN request_body TEXT NOT NULL DEFAULT '';
-ALTER TABLE request_logs ADD COLUMN response_body TEXT NOT NULL DEFAULT '';

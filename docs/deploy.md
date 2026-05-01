@@ -37,14 +37,16 @@ docker compose up --build
 - 前端：`http://127.0.0.1:13000`
 - 后端：`http://127.0.0.1:18080`
 
-SQLite 数据文件会挂载到宿主机 `./data/opencrab.db`。
-
 ## 3. 当前环境变量
 
-- `OPENCRAB_APP_NAME`
-- `OPENCRAB_ENV`
 - `OPENCRAB_HTTP_ADDR`
-- `OPENCRAB_DB_PATH`
+- `OPENCRAB_GATEWAY_PROVIDER`
+- `OPENCRAB_UPSTREAM_BASE_URL`
+- `OPENCRAB_UPSTREAM_API_KEY`
+- `OPENCRAB_UPSTREAM_TIMEOUT`
+- `OPENCRAB_ANTHROPIC_BASE_URL`
+- `OPENCRAB_ANTHROPIC_API_KEY`
+- `OPENCRAB_ANTHROPIC_VERSION`
 
 参考：根目录 `.env.example`
 
@@ -57,48 +59,26 @@ SQLite 数据文件会挂载到宿主机 `./data/opencrab.db`。
 
 ### 管理接口
 
+- `GET /api/admin/auth/status`
+- `GET /api/admin/auth/security`
+- `GET /api/admin/dashboard/summary`
 - `GET /api/admin/channels`
-- `POST /api/admin/channels`
-- `PUT /api/admin/channels/{id}`
-- `DELETE /api/admin/channels/{id}`
 - `GET /api/admin/api-keys`
-- `POST /api/admin/api-keys`
-- `PUT /api/admin/api-keys/{id}`
-- `DELETE /api/admin/api-keys/{id}`
 - `GET /api/admin/models`
-- `POST /api/admin/models`
-- `PUT /api/admin/models/{id}`
-- `DELETE /api/admin/models/{id}`
 - `GET /api/admin/model-routes`
-- `POST /api/admin/model-routes`
-- `PUT /api/admin/model-routes/{id}`
-- `DELETE /api/admin/model-routes/{id}`
 - `GET /api/admin/logs`
+- `GET /api/admin/settings`
 
-### 代理接口
+### 网关接口
 
-- `GET /v1/models`
 - `POST /v1/chat/completions`
-- `POST /v1/responses`
-- `GET /v1/responses`
-- `POST /v1/realtime/client_secrets`
-- `POST /v1/realtime/calls`
-- `GET /v1/realtime`
-- `POST /v1/codex/responses`
-- `GET /v1/requests/{requestID}`
-- `GET /v1/requests/{requestID}/events`
 - `POST /v1/messages`
-- `POST /v1/messages/count_tokens`
-- `POST /v1beta/cachedContents`
-- `GET /v1beta/cachedContents/{cacheID}`
-- `POST /v1beta/models/{model}:generateContent`
-- `POST /v1beta/models/{model}:streamGenerateContent`
 
 ## 5. 当前限制
 
-当前后端已具备多协议网关基础能力，但仍处于修复与收敛阶段：
+当前后端只实现了最小网关骨架，重点是先把两条主协议入口接通：
 
-1. `responses` 与 `realtime` 仍有协议保真修复项，不能默认等同上游原生语义。
-2. `/v1/models` 当前仍以本地可见模型为主，不是完整上游模型发现面。
-3. 日志查询目前还是基础列表，没有复杂筛选。
-4. Docker 运行在当前环境里还未完成真实 daemon 级实测。
+1. OpenAI 兼容目前只覆盖 `POST /v1/chat/completions`。
+2. Claude 原生目前只覆盖 `POST /v1/messages`。
+3. 其它协议面，比如 `responses`、`realtime`、`/v1/models`、多媒体专用接口，还没有接回。
+4. 当前管理接口是为了现有 web SSR 不报错而补的兼容只读 stub，不是完整控制台后端。

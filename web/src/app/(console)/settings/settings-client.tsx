@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 
@@ -66,6 +67,7 @@ export function SettingsClient({
   initialGroups: AdminSettingGroup[];
   initialSecurityState: AdminSecondarySecurityState;
 }) {
+	const router = useRouter();
   const [groups, setGroups] = useState(initialGroups);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export function SettingsClient({
   const [secondarySaving, setSecondarySaving] = useState(false);
   const [secondaryMessage, setSecondaryMessage] = useState<string | null>(null);
   const [searchValue, setSearchValue] = useState("");
+  const [clearingLogs, setClearingLogs] = useState(false);
 
   const handleChange = (groupTitle: string, key: string, value: string) => {
     setGroups((current) =>
@@ -114,6 +117,24 @@ export function SettingsClient({
       setError(requestError instanceof Error ? requestError.message : "设置保存失败");
     } finally {
       setSavingKey(null);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    setError(null);
+    setClearingLogs(true);
+    try {
+      const response = await fetch("/api/admin/logs", {
+        method: "DELETE"
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "清空日志失败");
+      }
+      router.refresh();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "清空日志失败");
+    } finally {
+      setClearingLogs(false);
     }
   };
 
@@ -456,10 +477,11 @@ export function SettingsClient({
                 <div className="text-sm text-danger/80">永久删除所有请求日志和异常记录，此操作不可恢复。</div>
               </div>
               <ConfirmDialog
-                trigger={<Button variant="danger" className="shrink-0">清空日志</Button>}
+                trigger={<Button variant="danger" className="shrink-0" disabled={clearingLogs}>{clearingLogs ? "清空中..." : "清空日志"}</Button>}
                 title="确认清空系统日志"
                 description="该操作会删除当前所有请求日志和异常记录，只建议在测试环境或明确需要时执行。"
                 confirmLabel="确认清空"
+                onConfirm={handleClearLogs}
               />
             </div>
             <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">

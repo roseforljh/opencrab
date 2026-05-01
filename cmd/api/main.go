@@ -2,25 +2,41 @@ package main
 
 import (
 	"log"
+	"net/http"
 
-	"opencrab/internal/app"
+	"opencrab/internal/anthropic"
+	"opencrab/internal/config"
+	"opencrab/internal/gemini"
+	"opencrab/internal/gateway"
+	"opencrab/internal/httpserver"
+	"opencrab/internal/openai"
 )
 
-// main 是整个后端服务的启动入口。
-//
-// 这里当前只做三件事情：
-// 1. 创建应用实例。
-// 2. 启动 HTTP 服务。
-// 3. 在启动失败时直接输出错误并退出。
-//
-// 后续数据库、配置、日志、依赖注入都会先汇总到 app 包，再由这里统一启动。
 func main() {
-	application, err := app.New()
+	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("创建应用失败: %v", err)
+		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	if err := application.Run(); err != nil {
+	provider := openai.NewClient(cfg.Gateway.OpenAI.Timeout)
+	claudeProvider := anthropic.NewClient(
+		cfg.Gateway.Claude.Version,
+		cfg.Gateway.Claude.Timeout,
+	)
+	geminiProvider := gemini.NewClient(cfg.Gateway.Gemini.Timeout)
+	if err := httpserver.InitCompatStorage(cfg.StatePath); err != nil {
+		log.Fatalf("初始化兼容存储失败: %v", err)
+	}
+	service := gateway.NewService(gateway.NewCompositeProvider(provider, claudeProvider, geminiProvider))
+	handler := httpserver.NewRouter(service)
+
+	server := &http.Server{
+		Addr:    cfg.HTTPAddr,
+		Handler: handler,
+	}
+
+	log.Printf("opencrab api listening on %s", cfg.HTTPAddr)
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("启动应用失败: %v", err)
 	}
 }
