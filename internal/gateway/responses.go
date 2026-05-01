@@ -1,27 +1,8 @@
 package gateway
 
-import (
-	"context"
-	"net/http"
-)
+import "context"
 
-type MessagesRequest struct {
-	Model           string
-	Stream          bool
-	Body            []byte
-	ContentType     string
-	Accept          string
-	Authorization   string
-	Headers         http.Header
-	MaxTokens       int
-	UpstreamFamily  string
-	UpstreamOperation string
-	UpstreamURL     string
-	UpstreamAPIKey  string
-	RouteCandidates []UpstreamRouteCandidate
-}
-
-func (s *Service) Messages(ctx context.Context, request MessagesRequest) (*ProxyResponse, error) {
+func (s *Service) Responses(ctx context.Context, request ResponsesRequest) (*ProxyResponse, error) {
 	if len(request.RouteCandidates) > 0 {
 		var lastErr error
 		for index, candidate := range request.RouteCandidates {
@@ -30,7 +11,7 @@ func (s *Service) Messages(ctx context.Context, request MessagesRequest) (*Proxy
 			attempt.UpstreamOperation = candidate.Operation
 			attempt.UpstreamURL = candidate.URL
 			attempt.UpstreamAPIKey = candidate.APIKey
-			response, err := s.provider.Messages(ctx, attempt)
+			response, err := s.provider.Responses(ctx, attempt)
 			if err != nil {
 				lastErr = err
 				if index < len(request.RouteCandidates)-1 && shouldRetryCandidate(err, nil) {
@@ -48,5 +29,5 @@ func (s *Service) Messages(ctx context.Context, request MessagesRequest) (*Proxy
 			return nil, lastErr
 		}
 	}
-	return s.provider.Messages(ctx, request)
+	return s.provider.Responses(ctx, request)
 }

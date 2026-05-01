@@ -80,18 +80,18 @@ func (h *chatCompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		statusCode = http.StatusBadRequest
 		validationError := &requestValidationError{}
 		if errors.As(err, &validationError) {
-			logOpenAIRequest("", statusCode, startedAt, body, nil, err)
+			logOpenAIRequest("", statusCode, startedAt, body, nil, err, "/v1/chat/completions")
 			writeOpenAIError(w, statusCode, validationError.message, "invalid_request_error", validationError.param, nil)
 			return
 		}
-		logOpenAIRequest("", statusCode, startedAt, body, nil, err)
+		logOpenAIRequest("", statusCode, startedAt, body, nil, err, "/v1/chat/completions")
 		writeOpenAIError(w, statusCode, err.Error(), "invalid_request_error", nil, nil)
 		return
 	}
 
 	if h.service == nil {
 		statusCode = http.StatusInternalServerError
-		logOpenAIRequest("", statusCode, startedAt, body, nil, errors.New("Gateway service not configured"))
+		logOpenAIRequest("", statusCode, startedAt, body, nil, errors.New("Gateway service not configured"), "/v1/chat/completions")
 		writeOpenAIError(w, statusCode, "Gateway service not configured", "server_error", nil, nil)
 		return
 	}
@@ -110,7 +110,7 @@ func (h *chatCompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	routes, err := resolveChatCompletionsRoutes(request.Model)
 	if err != nil {
 		statusCode = http.StatusBadGateway
-		logOpenAIRequest(request.Model, statusCode, startedAt, body, nil, err)
+		logOpenAIRequest(request.Model, statusCode, startedAt, body, nil, err, "/v1/chat/completions")
 		writeOpenAIError(w, statusCode, err.Error(), "server_error", nil, nil)
 		return
 	}
@@ -119,7 +119,7 @@ func (h *chatCompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	response, err := h.service.ChatCompletions(r.Context(), request)
 	if err != nil {
 		statusCode = upstreamStatusCode(err)
-		logOpenAIRequest(request.Model, statusCode, startedAt, body, nil, err)
+		logOpenAIRequest(request.Model, statusCode, startedAt, body, nil, err, "/v1/chat/completions")
 		writeOpenAIError(w, statusCode, upstreamErrorMessage(err), upstreamErrorType(statusCode), nil, nil)
 		return
 	}
@@ -131,12 +131,12 @@ func (h *chatCompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	if response.Stream {
 		captured, streamErr := streamResponse(r.Context(), w, response.Body)
-		logOpenAIRequest(request.Model, statusCode, startedAt, body, captured, streamErr)
+		logOpenAIRequest(request.Model, statusCode, startedAt, body, captured, streamErr, "/v1/chat/completions")
 		return
 	}
 
 	responseBody, readErr := readAndReplayResponse(w, response)
-	logOpenAIRequest(request.Model, statusCode, startedAt, body, responseBody, readErr)
+	logOpenAIRequest(request.Model, statusCode, startedAt, body, responseBody, readErr, "/v1/chat/completions")
 }
 
 func normalizeChatCompletionsRequest(r *http.Request, body []byte) (gateway.ChatCompletionsRequest, error) {

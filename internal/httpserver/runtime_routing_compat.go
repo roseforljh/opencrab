@@ -13,42 +13,55 @@ const (
 	runtimeRouteFamilyOpenAI = "openai"
 	runtimeRouteFamilyClaude = "claude"
 	runtimeRouteFamilyGemini = "gemini"
+	runtimeRouteOperationChatCompletions = "chat_completions"
+	runtimeRouteOperationResponses       = "responses"
 )
 
 func resolveChatCompletionsRoutes(model string) ([]gateway.UpstreamRouteCandidate, error) {
-	return resolveRuntimeRouteCandidates(runtimeRouteFamilyOpenAI, model)
+	return resolveRuntimeRouteCandidates(runtimeRouteFamilyOpenAI, runtimeRouteOperationChatCompletions, model)
 }
 
-func resolveMessagesRoutes(model string) ([]gateway.UpstreamRouteCandidate, error) {
+func resolveResponsesRoutes(model string) ([]gateway.UpstreamRouteCandidate, error) {
+	return resolveRuntimeRouteCandidates(runtimeRouteFamilyOpenAI, runtimeRouteOperationResponses, model)
+}
+
+func resolveMessagesRoutes(model string, body []byte) ([]gateway.UpstreamRouteCandidate, error) {
 	alias := strings.TrimSpace(model)
 	if alias == "" {
 		return nil, &gateway.RoutingError{Message: "Model is required"}
 	}
 	claudeChannels := compatChannels.resolveRuntimeChannels(runtimeRouteFamilyClaude, alias)
 	openAIChannels := compatChannels.resolveRuntimeChannels(runtimeRouteFamilyOpenAI, alias)
+	openAIOperation, openAICompatibilityErr := gateway.ResolveClaudeMessagesOpenAIOperation(body)
 	if len(claudeChannels) == 0 && len(openAIChannels) == 0 {
 		return nil, &gateway.RoutingError{Message: fmt.Sprintf("No enabled claude route configured for model %s", alias)}
+	}
+	if len(claudeChannels) == 0 && len(openAIChannels) > 0 && openAICompatibilityErr != nil {
+		return nil, openAICompatibilityErr
 	}
 	items := make([]gateway.UpstreamRouteCandidate, 0, len(claudeChannels)+len(openAIChannels))
 	for _, channel := range claudeChannels {
 		items = append(items, gateway.UpstreamRouteCandidate{
 			Family: runtimeRouteFamilyClaude,
-			URL:    buildRuntimeUpstreamURL(runtimeRouteFamilyClaude, channel.Endpoint, alias),
+			URL:    buildRuntimeUpstreamURL(runtimeRouteFamilyClaude, "", channel.Endpoint, alias),
 			APIKey: channel.APIKey,
 		})
 	}
-	for _, channel := range openAIChannels {
-		items = append(items, gateway.UpstreamRouteCandidate{
-			Family: runtimeRouteFamilyOpenAI,
-			URL:    buildRuntimeUpstreamURL(runtimeRouteFamilyOpenAI, channel.Endpoint, alias),
-			APIKey: channel.APIKey,
-		})
+	if openAICompatibilityErr == nil {
+		for _, channel := range openAIChannels {
+			items = append(items, gateway.UpstreamRouteCandidate{
+				Family:    runtimeRouteFamilyOpenAI,
+				Operation: openAIOperation,
+				URL:       buildRuntimeUpstreamURL(runtimeRouteFamilyOpenAI, openAIOperation, channel.Endpoint, alias),
+				APIKey:    channel.APIKey,
+			})
+		}
 	}
 	return items, nil
 }
 
 func resolveGeminiGenerateContentRoutes(model string) ([]gateway.UpstreamRouteCandidate, error) {
-	return resolveRuntimeRouteCandidates(runtimeRouteFamilyGemini, model)
+	return resolveRuntimeRouteCandidates(runtimeRouteFamilyGemini, "", model)
 }
 
 func resolveGeminiStreamGenerateContentRoutes(model string) ([]gateway.UpstreamRouteCandidate, error) {
@@ -70,7 +83,7 @@ func resolveGeminiStreamGenerateContentRoutes(model string) ([]gateway.UpstreamR
 	return items, nil
 }
 
-func resolveRuntimeRouteCandidates(family string, model string) ([]gateway.UpstreamRouteCandidate, error) {
+func resolveRuntimeRouteCandidates(family string, operation string, model string) ([]gateway.UpstreamRouteCandidate, error) {
 	alias := strings.TrimSpace(model)
 	if alias == "" {
 		return nil, &gateway.RoutingError{Message: "Model is required"}
@@ -82,21 +95,25 @@ func resolveRuntimeRouteCandidates(family string, model string) ([]gateway.Upstr
 	items := make([]gateway.UpstreamRouteCandidate, 0, len(channels))
 	for _, channel := range channels {
 		items = append(items, gateway.UpstreamRouteCandidate{
-			Family: family,
-			URL:    buildRuntimeUpstreamURL(family, channel.Endpoint, alias),
-			APIKey: channel.APIKey,
+			Family:    family,
+			Operation: operation,
+			URL:       buildRuntimeUpstreamURL(family, operation, channel.Endpoint, alias),
+			APIKey:    channel.APIKey,
 		})
 	}
 	return items, nil
 }
 
-func buildRuntimeUpstreamURL(family string, endpoint string, model string) string {
+func buildRuntimeUpstreamURL(family string, operation string, endpoint string, model string) string {
 	switch family {
 	case runtimeRouteFamilyClaude:
 		return joinURL(endpoint, "/v1/messages")
 	case runtimeRouteFamilyGemini:
 		return joinURL(endpoint, fmt.Sprintf("/models/%s:generateContent", url.PathEscape(model)))
 	default:
+		if operation == runtimeRouteOperationResponses {
+			return joinURL(normalizeOpenAICompatibleEndpoint(endpoint), "/responses")
+		}
 		return joinURL(normalizeOpenAICompatibleEndpoint(endpoint), "/chat/completions")
 	}
 }

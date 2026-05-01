@@ -1,0 +1,1 @@
+{"model":"gpt-5.4","messages":[{"role":"user","content":"请调用 get_weather 工具查询 Paris 的天气，不要直接回答。"}],"tools":[{"type":"function","function":{"name":"get_weather","description":"获取某个城市的天气","parameters":{"type":"object","properties":{"city":{"type":"string","description":"城市名"}},"required":["city"]}}}],"tool_choice":"required","max_tokens":128}

@@ -16,6 +16,7 @@ type ChatCompletionsRequest struct {
 	Authorization   string
 	Headers         http.Header
 	UpstreamFamily  string
+	UpstreamOperation string
 	UpstreamURL     string
 	UpstreamAPIKey  string
 	RouteCandidates []UpstreamRouteCandidate
@@ -23,8 +24,24 @@ type ChatCompletionsRequest struct {
 
 type UpstreamRouteCandidate struct {
 	Family string
+	Operation string
 	URL    string
 	APIKey string
+}
+
+type ResponsesRequest struct {
+	Model            string
+	Stream           bool
+	Body             []byte
+	ContentType      string
+	Accept           string
+	Authorization    string
+	Headers          http.Header
+	UpstreamFamily   string
+	UpstreamOperation string
+	UpstreamURL      string
+	UpstreamAPIKey   string
+	RouteCandidates  []UpstreamRouteCandidate
 }
 
 type ProxyResponse struct {
@@ -39,12 +56,17 @@ type ChatCompletionsProvider interface {
 	ChatCompletions(ctx context.Context, request ChatCompletionsRequest) (*ProxyResponse, error)
 }
 
+type ResponsesProvider interface {
+	Responses(ctx context.Context, request ResponsesRequest) (*ProxyResponse, error)
+}
+
 type MessagesProvider interface {
 	Messages(ctx context.Context, request MessagesRequest) (*ProxyResponse, error)
 }
 
 type Provider interface {
 	ChatCompletionsProvider
+	ResponsesProvider
 	MessagesProvider
 	GenerateContentProvider
 }
@@ -106,6 +128,7 @@ func (s *Service) ChatCompletions(ctx context.Context, request ChatCompletionsRe
 		for index, candidate := range request.RouteCandidates {
 			attempt := request
 			attempt.UpstreamFamily = candidate.Family
+			attempt.UpstreamOperation = candidate.Operation
 			attempt.UpstreamURL = candidate.URL
 			attempt.UpstreamAPIKey = candidate.APIKey
 			response, err := s.provider.ChatCompletions(ctx, attempt)

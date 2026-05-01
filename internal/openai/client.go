@@ -29,44 +29,52 @@ func NewClient(timeout time.Duration) *Client {
 }
 
 func (c *Client) ChatCompletions(ctx context.Context, request gateway.ChatCompletionsRequest) (*gateway.ProxyResponse, error) {
-	upstreamURL := strings.TrimSpace(request.UpstreamURL)
+	return c.doJSONRequest(ctx, request.Stream, request.Body, request.ContentType, request.Accept, request.Authorization, request.UpstreamAPIKey, request.UpstreamURL, request.Headers)
+}
+
+func (c *Client) Responses(ctx context.Context, request gateway.ResponsesRequest) (*gateway.ProxyResponse, error) {
+	return c.doJSONRequest(ctx, request.Stream, request.Body, request.ContentType, request.Accept, request.Authorization, request.UpstreamAPIKey, request.UpstreamURL, request.Headers)
+}
+
+func (c *Client) doJSONRequest(ctx context.Context, stream bool, body []byte, contentType string, accept string, authorization string, upstreamAPIKey string, upstreamURL string, headers http.Header) (*gateway.ProxyResponse, error) {
+	upstreamURL = strings.TrimSpace(upstreamURL)
 	if upstreamURL == "" {
 		return nil, &gateway.RoutingError{Message: "No enabled OpenAI-compatible route configured for model"}
 	}
 	requestContext := ctx
 	var cancel context.CancelFunc
-	if !request.Stream && c.timeout > 0 {
+	if !stream && c.timeout > 0 {
 		requestContext, cancel = context.WithTimeout(ctx, c.timeout)
 		defer cancel()
 	}
 
-	upstreamRequest, err := http.NewRequestWithContext(requestContext, http.MethodPost, upstreamURL, bytes.NewReader(request.Body))
+	upstreamRequest, err := http.NewRequestWithContext(requestContext, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("创建上游请求失败: %w", err)
 	}
 
-	contentType := strings.TrimSpace(request.ContentType)
+	contentType = strings.TrimSpace(contentType)
 	if contentType == "" {
 		contentType = "application/json"
 	}
 	upstreamRequest.Header.Set("Content-Type", contentType)
 
-	accept := strings.TrimSpace(request.Accept)
+	accept = strings.TrimSpace(accept)
 	if accept == "" {
 		accept = "application/json"
 	}
 	upstreamRequest.Header.Set("Accept", accept)
 
-	if auth := c.resolveAuthorization(request); auth != "" {
+	if auth := c.resolveAuthorization(authorization, upstreamAPIKey, headers); auth != "" {
 		upstreamRequest.Header.Set("Authorization", auth)
 	}
 
-	copyOptionalHeader(upstreamRequest.Header, request.Headers, "OpenAI-Beta")
-	copyOptionalHeader(upstreamRequest.Header, request.Headers, "OpenAI-Organization")
-	copyOptionalHeader(upstreamRequest.Header, request.Headers, "OpenAI-Project")
-	copyOptionalHeader(upstreamRequest.Header, request.Headers, "Idempotency-Key")
-	copyOptionalHeader(upstreamRequest.Header, request.Headers, "Prefer")
-	copyOptionalHeader(upstreamRequest.Header, request.Headers, "User")
+	copyOptionalHeader(upstreamRequest.Header, headers, "OpenAI-Beta")
+	copyOptionalHeader(upstreamRequest.Header, headers, "OpenAI-Organization")
+	copyOptionalHeader(upstreamRequest.Header, headers, "OpenAI-Project")
+	copyOptionalHeader(upstreamRequest.Header, headers, "Idempotency-Key")
+	copyOptionalHeader(upstreamRequest.Header, headers, "Prefer")
+	copyOptionalHeader(upstreamRequest.Header, headers, "User")
 
 	response, err := c.http.Do(upstreamRequest)
 	if err != nil {
@@ -81,14 +89,14 @@ func (c *Client) ChatCompletions(ctx context.Context, request gateway.ChatComple
 	}, nil
 }
 
-func (c *Client) resolveAuthorization(request gateway.ChatCompletionsRequest) string {
-	if key := strings.TrimSpace(request.UpstreamAPIKey); key != "" {
+func (c *Client) resolveAuthorization(authorization string, upstreamAPIKey string, headers http.Header) string {
+	if key := strings.TrimSpace(upstreamAPIKey); key != "" {
 		return "Bearer " + key
 	}
-	if auth := strings.TrimSpace(request.Authorization); auth != "" {
+	if auth := strings.TrimSpace(authorization); auth != "" {
 		return auth
 	}
-	if key := strings.TrimSpace(request.Headers.Get("X-API-Key")); key != "" {
+	if key := strings.TrimSpace(headers.Get("X-API-Key")); key != "" {
 		return "Bearer " + key
 	}
 	return ""

@@ -27,7 +27,7 @@ func main() {
 	if err := httpserver.InitCompatStorage(cfg.StatePath); err != nil {
 		log.Fatalf("初始化兼容存储失败: %v", err)
 	}
-	service := gateway.NewService(gateway.NewCompositeProvider(provider, claudeProvider, geminiProvider))
+	service := gateway.NewService(gateway.NewCompositeProvider(provider, provider, claudeProvider, geminiProvider))
 	handler := httpserver.NewRouter(service)
 
 	server := &http.Server{

@@ -62,6 +62,7 @@ type anthropicBridgeRequest struct {
 	Temperature   *float64                 `json:"temperature,omitempty"`
 	TopP          *float64                 `json:"top_p,omitempty"`
 	Messages      []anthropicBridgeMessage `json:"messages"`
+	Metadata      json.RawMessage          `json:"metadata,omitempty"`
 	Tools         []anthropicBridgeTool    `json:"tools,omitempty"`
 	ToolChoice    json.RawMessage          `json:"tool_choice,omitempty"`
 	Thinking      json.RawMessage          `json:"thinking,omitempty"`
@@ -85,16 +86,29 @@ type anthropicContentBlock struct {
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
+	Source    json.RawMessage `json:"source,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
 }
 
 func buildOpenAIChatCompletionsBody(body []byte) ([]byte, error) {
-	var request anthropicBridgeRequest
-	if err := json.Unmarshal(body, &request); err != nil {
-		return nil, &RequestError{StatusCode: http.StatusBadRequest, Message: "Invalid JSON body", UpstreamFamily: "openai"}
+	fields, err := parseAnthropicBridgeRequest(body)
+	if err != nil {
+		return nil, err
 	}
-	if len(bytes.TrimSpace(request.Thinking)) > 0 && string(bytes.TrimSpace(request.Thinking)) != "null" {
-		return nil, newUnsupportedFallbackFieldError("thinking")
+	request := fields.Request
+	for key := range fields.Raw {
+		if _, ok := supportedAnthropicBridgeFields[key]; !ok {
+			return nil, unsupportedOpenAIFieldError(key)
+		}
+	}
+	if hasMeaningfulRawJSON(fields.Raw["thinking"]) {
+		return nil, unsupportedOpenAIFieldError("thinking")
+	}
+	if hasMeaningfulRawJSON(fields.Raw["top_k"]) {
+		return nil, unsupportedOpenAIFieldError("top_k")
+	}
+	if hasMeaningfulRawJSON(fields.Raw["metadata"]) {
+		return nil, unsupportedOpenAIFieldError("metadata")
 	}
 	messages := make([]map[string]any, 0, len(request.Messages)+1)
 	if systemText, err := bridgeSystemToOpenAIMessages(request.System); err != nil {

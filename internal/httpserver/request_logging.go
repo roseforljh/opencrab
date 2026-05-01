@@ -11,13 +11,17 @@ import (
 	"opencrab/internal/gateway"
 )
 
-func logOpenAIRequest(model string, statusCode int, startedAt time.Time, requestBody []byte, responseBody []byte, err error) {
+
+func logOpenAIRequest(model string, statusCode int, startedAt time.Time, requestBody []byte, responseBody []byte, err error, requestPath string) {
 	promptTokens, completionTokens, totalTokens := parseOpenAIUsage(responseBody)
+	if strings.TrimSpace(requestPath) == "" {
+		requestPath = "/v1/chat/completions"
+	}
 	details := map[string]any{
 		"log_type":         "gateway_request",
 		"provider":         "openai",
 		"selected_channel": "openai",
-		"request_path":     "/v1/chat/completions",
+		"request_path":     requestPath,
 		"response_status":  statusCode,
 		"upstream_model":   model,
 	}
@@ -71,10 +75,67 @@ func parseOpenAIUsage(body []byte) (int, int, int) {
 			PromptTokens     int `json:"prompt_tokens"`
 			CompletionTokens int `json:"completion_tokens"`
 			TotalTokens      int `json:"total_tokens"`
+			InputTokens      int `json:"input_tokens"`
+			OutputTokens     int `json:"output_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return 0, 0, 0
+		var inputTokens, outputTokens, totalTokens int
+		for _, line := range strings.Split(string(body), "\n") {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var eventPayload struct {
+				Usage struct {
+					PromptTokens     int `json:"prompt_tokens"`
+					CompletionTokens int `json:"completion_tokens"`
+					TotalTokens      int `json:"total_tokens"`
+					InputTokens      int `json:"input_tokens"`
+					OutputTokens     int `json:"output_tokens"`
+				} `json:"usage"`
+				Response struct {
+					Usage struct {
+						InputTokens  int `json:"input_tokens"`
+						OutputTokens int `json:"output_tokens"`
+					} `json:"usage"`
+				} `json:"response"`
+			}
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &eventPayload); err != nil {
+				continue
+			}
+			if eventPayload.Usage.PromptTokens > 0 {
+				inputTokens = eventPayload.Usage.PromptTokens
+			}
+			if eventPayload.Usage.CompletionTokens > 0 {
+				outputTokens = eventPayload.Usage.CompletionTokens
+			}
+			if eventPayload.Usage.TotalTokens > 0 {
+				totalTokens = eventPayload.Usage.TotalTokens
+			}
+			if eventPayload.Usage.InputTokens > 0 {
+				inputTokens = eventPayload.Usage.InputTokens
+			}
+			if eventPayload.Usage.OutputTokens > 0 {
+				outputTokens = eventPayload.Usage.OutputTokens
+			}
+			if eventPayload.Response.Usage.InputTokens > 0 {
+				inputTokens = eventPayload.Response.Usage.InputTokens
+			}
+			if eventPayload.Response.Usage.OutputTokens > 0 {
+				outputTokens = eventPayload.Response.Usage.OutputTokens
+			}
+		}
+		if totalTokens == 0 {
+			totalTokens = inputTokens + outputTokens
+		}
+		return inputTokens, outputTokens, totalTokens
+	}
+	if payload.Usage.InputTokens > 0 || payload.Usage.OutputTokens > 0 {
+		totalTokens := payload.Usage.TotalTokens
+		if totalTokens == 0 {
+			totalTokens = payload.Usage.InputTokens + payload.Usage.OutputTokens
+		}
+		return payload.Usage.InputTokens, payload.Usage.OutputTokens, totalTokens
 	}
 	return payload.Usage.PromptTokens, payload.Usage.CompletionTokens, payload.Usage.TotalTokens
 }

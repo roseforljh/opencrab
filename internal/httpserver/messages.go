@@ -88,8 +88,15 @@ func (h *messagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAnthropicError(w, statusCode, err.Error(), "invalid_request_error")
 		return
 	}
-	routes, err := resolveMessagesRoutes(request.Model)
+	routes, err := resolveMessagesRoutes(request.Model, body)
 	if err != nil {
+		requestError := &gateway.RequestError{}
+		if errors.As(err, &requestError) {
+			statusCode = requestError.StatusCode
+			logClaudeRequest(request.Model, "openai", statusCode, startedAt, body, nil, err)
+			writeAnthropicError(w, statusCode, requestError.Message, "invalid_request_error")
+			return
+		}
 		statusCode = http.StatusBadGateway
 		logClaudeRequest(request.Model, "", statusCode, startedAt, body, nil, err)
 		writeAnthropicError(w, statusCode, err.Error(), "api_error")

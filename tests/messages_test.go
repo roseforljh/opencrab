@@ -394,6 +394,210 @@ func TestMessagesFallsBackToOpenAIStream(t *testing.T) {
 	}
 }
 
+func TestMessagesFallbackUsesOpenAIResponsesWhenMetadataPresent(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	var receivedPath string
+	var receivedBody map[string]any
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_bridge","object":"response","status":"completed","model":"claude-sonnet-4-5","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fallback-responses-ok"}]}],"usage":{"input_tokens":8,"output_tokens":3,"total_tokens":11}}`))
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"metadata":{"source":"qa"},"messages":[{"role":"user","content":"ping"}]}`
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected metadata fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	if receivedPath != "/v1/responses" {
+		t.Fatalf("expected openai responses fallback path, got %q", receivedPath)
+	}
+	if _, ok := receivedBody["metadata"].(map[string]any); !ok {
+		t.Fatalf("expected metadata to be preserved, got %#v", receivedBody["metadata"])
+	}
+	if receivedBody["max_output_tokens"] == nil {
+		t.Fatalf("expected max_output_tokens in responses payload")
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read metadata fallback body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"fallback-responses-ok"`) || !strings.Contains(text, `"type":"message"`) {
+		t.Fatalf("expected bridged anthropic message, got %s", text)
+	}
+	if !strings.Contains(text, `"input_tokens":8`) || !strings.Contains(text, `"output_tokens":3`) {
+		t.Fatalf("expected usage mapping from responses, got %s", text)
+	}
+}
+
+func TestMessagesFallbackUsesOpenAIResponsesStreamWhenMetadataPresent(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream\",\"model\":\"claude-sonnet-4-5\",\"status\":\"in_progress\"}}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Hel\"}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"lo\"}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream\",\"model\":\"claude-sonnet-4-5\",\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":2}}}\n\n"))
+		flusher.Flush()
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"metadata":{"source":"qa"},"messages":[{"role":"user","content":"ping"}]}`
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected metadata stream fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	assertContentTypeContains(t, response, "text/event-stream")
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read metadata stream body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{"event: message_start", "event: content_block_start", "event: content_block_delta", `"text":"Hel"`, `"text":"lo"`, `"output_tokens":2`, "event: message_stop"} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected responses stream marker %q, got %s", marker, text)
+		}
+	}
+}
+
+func TestMessagesFallbackUsesOpenAIResponsesStreamWithoutCompletedEvent(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_no_done\",\"model\":\"claude-sonnet-4-5\",\"status\":\"in_progress\"}}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Hello\"}\n\n"))
+		flusher.Flush()
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"metadata":{"source":"qa"},"messages":[{"role":"user","content":"ping"}]}`
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected metadata stream fallback without completed event to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read metadata stream without completed event body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{"event: content_block_stop", "event: message_stop"} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected synthesized stream marker %q, got %s", marker, text)
+		}
+	}
+}
+
+func TestMessagesFallbackUsesOpenAIResponsesToolArgumentsFromAddedEvent(t *testing.T) {
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_tool_added\",\"model\":\"claude-sonnet-4-5\",\"status\":\"in_progress\"}}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Paris\\\"}\"}}\n\n"))
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_tool_added\",\"model\":\"claude-sonnet-4-5\",\"status\":\"completed\",\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}}\n\n"))
+		flusher.Flush()
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	payload := `{"model":"claude-sonnet-4-5","max_tokens":128,"stream":true,"metadata":{"source":"qa"},"messages":[{"role":"user","content":"ping"}]}`
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), payload, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected tool added event stream fallback to return 200, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read tool added event stream body: %v", err)
+	}
+	text := string(body)
+	for _, marker := range []string{`"type":"tool_use"`, `"name":"get_weather"`, `"partial_json":"{\"city\":\"Paris\"}"`} {
+		if !strings.Contains(text, marker) {
+			t.Fatalf("expected tool argument marker %q, got %s", marker, text)
+		}
+	}
+}
+
 func TestMessagesFallbackMapsOpenAIErrorTypes(t *testing.T) {
 	testCases := []struct {
 		name         string
@@ -638,8 +842,69 @@ func TestMessagesFallbackRejectsUnsupportedClaudeFields(t *testing.T) {
 	if !strings.Contains(text, `"type":"error"`) || !strings.Contains(text, `"invalid_request_error"`) {
 		t.Fatalf("expected anthropic-style invalid request error, got %s", text)
 	}
-	if !strings.Contains(text, `thinking is not supported when routing Claude Messages through OpenAI chat completions`) {
+	if !strings.Contains(text, `thinking is not supported when routing Claude Messages through OpenAI`) {
 		t.Fatalf("expected stable unsupported field error, got %s", text)
+	}
+}
+
+func TestMessagesFallbackRejectsUnknownTopLevelClaudeField(t *testing.T) {
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createOpenAIChannel(t, apiAddr, "openai-only", "https://example.com/v1", "openai-key", "claude-sonnet-4-5")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"metadata":{"source":"ok"},"foo_mode":"bar","messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected unknown top-level field to return 400, got %d: %s", response.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read unknown field body: %v", err)
+	}
+	if !strings.Contains(string(body), `foo_mode is not supported when routing Claude Messages through OpenAI`) {
+		t.Fatalf("expected stable unknown field error, got %s", string(body))
+	}
+}
+
+func TestMessagesDoesNotFallbackToOpenAIWhenRequestIsOpenAIIncompatible(t *testing.T) {
+	var claudeHits int
+	claudeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claudeHits++
+		http.Error(w, "try next", http.StatusServiceUnavailable)
+	}))
+	defer claudeUpstream.Close()
+
+	var openAIHits int
+	openAIUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		openAIHits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_unused","object":"chat.completion","model":"claude-sonnet-4-5","choices":[{"index":0,"message":{"role":"assistant","content":"should-not-run"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`))
+	}))
+	defer openAIUpstream.Close()
+
+	apiAddr := reserveLocalAddress(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startAPIServer(t, ctx, apiAddr, map[string]string{})
+	defer stopProcess(t, cmd)
+	createClaudeChannel(t, apiAddr, "claude-primary", claudeUpstream.URL, "claude-key", "claude-sonnet-4-5")
+	createOpenAIChannel(t, apiAddr, "openai-fallback", openAIUpstream.URL+"/v1", "openai-key", "claude-sonnet-4-5")
+
+	response := doPOST(t, fmt.Sprintf("http://%s/v1/messages", apiAddr), `{"model":"claude-sonnet-4-5","max_tokens":128,"top_k":3,"messages":[{"role":"user","content":"ping"}]}`, map[string]string{"Content-Type": "application/json"})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("expected claude upstream failure to surface without openai fallback, got %d: %s", response.StatusCode, string(body))
+	}
+	if claudeHits != 1 {
+		t.Fatalf("expected claude upstream to be attempted once, got %d", claudeHits)
+	}
+	if openAIHits != 0 {
+		t.Fatalf("expected incompatible request to skip openai fallback, got %d hits", openAIHits)
 	}
 }
 
